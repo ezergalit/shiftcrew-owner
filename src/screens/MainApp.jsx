@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import {
   Home, CalendarDays, CalendarCheck, ListChecks, Menu as MenuIcon,
-  Bell, ChevronRight, ChevronLeft, Sun, Sunset, Moon, X, Check, Plus,
+  Bell, ChevronRight, ChevronLeft, X, Check, Plus,
   Send, AlertTriangle, Sparkles, Users, Clock, Wallet, MapPin, User,
   FileText, BarChart3, Umbrella, Copy, Smartphone, Utensils, Soup,
   IceCream, Wine, GraduationCap, Star, Flame, Trophy, Pencil,
@@ -9,6 +9,8 @@ import {
   UserPlus, Trash2,
 } from "lucide-react";
 import { scOwner, rowToItem } from "../lib/shiftcrew";
+import { loadPositions, savePositions, seatsForDay, describePosition } from "../lib/positions";
+import PositionsEditor from "../components/PositionsEditor";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MainApp — the RESTAURANT-OWNER / manager side of ShiftCrew. Dark UI with teal
@@ -28,12 +30,6 @@ const DAYS = [
   { key: 4, full: "חמישי",  short: "ה'" },
   { key: 5, full: "שישי",   short: "ו'" },
   { key: 6, full: "שבת",    short: "ש'" },
-];
-
-const SHIFTS = [
-  { key: "morning", label: "בוקר", time: "10:00–16:00", hours: 6, icon: Sun    },
-  { key: "evening", label: "ערב",  time: "16:00–23:00", hours: 7, icon: Sunset },
-  { key: "night",   label: "לילה", time: "22:00–03:00", hours: 5, icon: Moon   },
 ];
 
 // Roster — each carries an avatar color (TabitShift gives everyone a distinct
@@ -63,29 +59,21 @@ const EMPLOYEES = [
 const EMP = Object.fromEntries(EMPLOYEES.map((e) => [e.id, e]));
 const SUBMITTED = new Set(["e1", "e2", "e3", "e4", "e6", "e7", "e8"]); // who handed in availability
 
-// How many people each (day,shift) needs. Weekends + evenings are busier.
-function required(dayKey, shiftKey) {
-  if (shiftKey === "night") return dayKey >= 4 ? 2 : 0;          // nights only Thu–Sat
-  const weekend = dayKey === 4 || dayKey === 5 || dayKey === 6;  // Thu/Fri/Sat
-  if (shiftKey === "evening") return weekend ? 4 : 3;
-  return weekend ? 3 : 2;                                        // morning
-}
-
-const slotId = (d, s) => `${d}-${s}`;
-
-// Seeded so the schedule opens looking "half built".
-const SEED = {
-  "1-morning": ["e3", "e4", "e7"],
-  "1-evening": ["e6", "e8"],
-  "0-morning": ["e2", "e7"],
-  "0-evening": ["e4", "e6"],
-  "4-evening": ["e3", "e5", "e9"],
-  "5-evening": ["e3", "e5", "e6", "e9"],
-  "5-night":   ["e8"],
-  "6-evening": ["e4", "e5", "e8", "e9"],
-};
-
 const TODAY_KEY = 1; // Monday 8 June (per demo anchor)
+
+// Strongest availability an employee submitted for a given weekday (across any of
+// the demo morning/evening/night slots). Drives the assignment-sheet ranking now
+// that staffing is position/seat-based rather than fixed morning/evening shifts.
+function availForDay(e, dayKey) {
+  let best = 0;
+  Object.entries(e.avail || {}).forEach(([k, v]) => {
+    if (k.startsWith(dayKey + "-")) {
+      const r = v === "want" ? 2 : v === "ok" ? 1 : 0;
+      if (r > best) best = r;
+    }
+  });
+  return best === 2 ? "want" : best === 1 ? "ok" : null;
+}
 
 // ── The restaurant's FULL menu — the SAME content the waiter app trains on.
 // The manager owns this content here: edit items, set "מנת היום", and watch the
@@ -144,30 +132,61 @@ function fmtRange(start) {
 export default function MainApp({ restaurant, ownerName, onSignOut }) {
   const restId = restaurant?.id || null;
   const weekStart = useMemo(() => new Date(2026, 5, 7), []); // Sun 7.6.2026
-  const [assign, setAssign] = useState(SEED);
+
+  // Owner-defined positions (each with its own staffing style) loaded from the
+  // isolated shiftcrew_owner schema. The whole weekly schedule is derived from the
+  // SEATS these positions expand into — one assignable person per seat per day.
+  const [positions, setPositions] = useState([]);
+  const [positionsLoading, setPositionsLoading] = useState(true);
+
+  // assign: seat.key → employee id (a single person per seat).
+  const [assign, setAssign] = useState({});
   const [published, setPublished] = useState(false);
   const [tab, setTab] = useState("home");
 
+  useEffect(() => {
+    if (!restId) { setPositionsLoading(false); return; }
+    let alive = true;
+    (async () => {
+      try {
+        const ps = await loadPositions(restId);
+        if (alive) setPositions(ps);
+      } catch (err) {
+        console.error("[shiftcrew] positions load failed:", err);
+      } finally {
+        if (alive) setPositionsLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [restId]);
+
   const stats = useMemo(() => {
     let shiftsCount = 0, hours = 0, cost = 0, openSlots = 0;
-    DAYS.forEach((d) => SHIFTS.forEach((s) => {
-      const req = required(d.key, s.key);
-      const have = (assign[slotId(d.key, s.key)] || []).length;
-      if (req > 0 && have < req) openSlots += req - have;
-      shiftsCount += have;
-      (assign[slotId(d.key, s.key)] || []).forEach((id) => {
-        hours += s.hours; cost += s.hours * (EMP[id]?.rate || 0);
+    for (let day = 0; day < 7; day++) {
+      positions.forEach((p) => {
+        seatsForDay(p, day).forEach((seat) => {
+          const empId = assign[seat.key];
+          if (empId) {
+            shiftsCount += 1;
+            hours += seat.hours;
+            cost += seat.hours * (EMP[empId]?.rate || 0);
+          } else {
+            openSlots += 1;
+          }
+        });
       });
-    }));
-    return { shiftsCount, hours, cost, openSlots };
-  }, [assign]);
+    }
+    return { shiftsCount, hours: Math.round(hours), cost: Math.round(cost), openSlots };
+  }, [positions, assign]);
 
-  const setSlot = (slot, empId) => {
+  // Assign (or clear) the single person on a seat. Passing empId=null clears it.
+  const assignSeat = (seatKey, empId) => {
     setPublished(false);
     setAssign((prev) => {
-      const cur = prev[slot] || [];
-      const next = cur.includes(empId) ? cur.filter((x) => x !== empId) : [...cur, empId];
-      return { ...prev, [slot]: next };
+      const next = { ...prev };
+      if (empId == null) delete next[seatKey];
+      else next[seatKey] = empId;
+      return next;
     });
   };
 
@@ -199,7 +218,7 @@ export default function MainApp({ restaurant, ownerName, onSignOut }) {
       {/* Body */}
       <div className="flex-1 overflow-y-auto pb-28">
         {tab === "home"  && <HomeTab weekStart={weekStart} stats={stats} published={published} go={setTab} ownerName={ownerName} />}
-        {tab === "sched" && <ScheduleTab weekStart={weekStart} assign={assign} setSlot={setSlot} published={published} setPublished={setPublished} stats={stats} />}
+        {tab === "sched" && <ScheduleTab weekStart={weekStart} positions={positions} positionsLoading={positionsLoading} loaded={!positionsLoading} restId={restId} setPositions={setPositions} assign={assign} assignSeat={assignSeat} published={published} setPublished={setPublished} />}
         {tab === "avail" && <AvailabilityTab weekStart={weekStart} />}
         {tab === "staff" && <StaffTab restId={restId} />}
         {tab === "tasks" && <TasksTab />}
@@ -423,9 +442,51 @@ function AiInsightCard() {
 
 // ── Schedule builder ──────────────────────────────────────────────────────────
 
-function ScheduleTab({ weekStart, assign, setSlot, published, setPublished, stats }) {
+function ScheduleTab({ weekStart, positions, positionsLoading, restId, setPositions, assign, assignSeat, published, setPublished }) {
   const [day, setDay] = useState(TODAY_KEY);
-  const [sheet, setSheet] = useState(null); // open slot id or null
+  const [sheet, setSheet] = useState(null); // { position, seat } or null
+  const [managing, setManaging] = useState(false);
+
+  // Employees already on another seat THIS day — hidden from the picker so one
+  // person isn't double-booked on the same date.
+  const takenThisDay = useMemo(() => {
+    const taken = new Set();
+    positions.forEach((p) => seatsForDay(p, day).forEach((seat) => {
+      if (seat.key !== sheet?.seat.key && assign[seat.key]) taken.add(assign[seat.key]);
+    }));
+    return taken;
+  }, [positions, day, assign, sheet]);
+
+  // Loading / empty states.
+  if (positionsLoading) {
+    return (
+      <div className="px-4 py-20 text-center text-gray-600">
+        <Loader2 size={28} className="mx-auto animate-spin" />
+      </div>
+    );
+  }
+  if (!positions.length) {
+    return (
+      <div className="px-4">
+        <div className="text-center py-12">
+          <div className="w-16 h-16 rounded-3xl bg-[#15302b] flex items-center justify-center mx-auto mb-4">
+            <Users size={30} className="text-[#2f9e8f]" />
+          </div>
+          <p className="text-base font-black text-gray-100">עוד אין תפקידים מוגדרים</p>
+          <p className="text-sm text-gray-400 mt-1.5 leading-relaxed max-w-xs mx-auto">
+            כדי לבנות סידור, הגדר/י קודם את התפקידים שלך — מלצרים, ברמנים, מנהלי משמרת, מטבח — וכל אחד עם אופן האיוש שלו.
+          </p>
+          <button onClick={() => setManaging(true)}
+            className="mt-5 inline-flex items-center gap-2 rounded-2xl px-5 py-3 font-black text-sm bg-[#2a8576] text-white active:bg-[#247567]">
+            <Plus size={16} /> הגדרת תפקידים
+          </button>
+        </div>
+        {managing && (
+          <ManagePositionsSheet restId={restId} positions={positions} setPositions={setPositions} onClose={() => setManaging(false)} />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="px-4">
@@ -454,49 +515,67 @@ function ScheduleTab({ weekStart, assign, setSlot, published, setPublished, stat
       </div>
 
       {/* Coverage summary chip */}
-      <div className="flex items-center gap-2 mb-3 text-xs text-gray-400">
-        <Users size={14} className="text-gray-500" />
-        <span>{DAYS[day].full}, {fmtDay(weekStart, day).getDate()} ביוני · הקש/י על משמרת לעריכת השיבוץ</span>
+      <div className="flex items-center justify-between mb-3">
+        <button onClick={() => setManaging(true)}
+          className="flex items-center gap-1.5 text-[11px] font-bold text-[#3fd0bc] bg-[#15302b] border border-[#2f9e8f] rounded-full px-3 py-1.5 active:bg-[#1c4f48]">
+          <Pencil size={12} /> תפקידים
+        </button>
+        <div className="flex items-center gap-2 text-xs text-gray-400">
+          <span>{DAYS[day].full}, {fmtDay(weekStart, day).getDate()} ביוני · הקש/י על מקום לשיבוץ</span>
+          <Users size={14} className="text-gray-500" />
+        </div>
       </div>
 
-      {/* Shift cards for the selected day */}
+      {/* One card per position, listing its seats for the selected day */}
       <div className="space-y-3">
-        {SHIFTS.map((s) => {
-          const id = slotId(day, s.key);
-          const req = required(day, s.key);
-          const have = (assign[id] || []).length;
-          if (req === 0) return null;
-          const full = have >= req;
+        {positions.map((p) => {
+          const seats = seatsForDay(p, day);
+          if (!seats.length) return null;
+          const filled = seats.filter((s) => assign[s.key]).length;
+          const full = filled >= seats.length;
           return (
-            <button key={s.key} onClick={() => setSheet(id)}
-              className="w-full bg-[#191b1f] rounded-2xl p-4 text-right active:bg-[#20232a] transition-colors">
-              <div className="flex items-center justify-between mb-2">
+            <div key={p.id} className="bg-[#191b1f] rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-3">
                 <span className={`text-[11px] font-black px-2.5 py-1 rounded-full ${
-                  have === 0 ? "bg-[#3a1d22] text-[#f0788e]"
+                  filled === 0 ? "bg-[#3a1d22] text-[#f0788e]"
                   : full ? "bg-[#15302b] text-[#3fd0bc]" : "bg-[#33290f] text-[#f3c14b]"}`}>
-                  {have}/{req} מאוישים
+                  {filled}/{seats.length} מאוישים
                 </span>
-                <div className="flex items-center gap-2">
-                  <div className="text-left">
-                    <p className="font-black text-gray-100">{s.label}</p>
-                    <p className="text-[11px] text-gray-500">{s.time}</p>
+                <div className="flex items-center gap-2 text-right">
+                  <div>
+                    <p className="font-black text-gray-100">{p.name}</p>
+                    <p className="text-[11px] text-gray-500">{describePosition(p)}</p>
                   </div>
-                  <s.icon size={18} className="text-gray-400" />
+                  <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: p.color }} />
                 </div>
               </div>
-              {have > 0 ? (
-                <div className="flex items-center justify-end gap-2 flex-wrap">
-                  {(assign[id] || []).map((eid) => (
-                    <span key={eid} className="flex items-center gap-1.5 bg-[#22252b] rounded-full pr-1 pl-2.5 py-0.5">
-                      <Avatar emp={EMP[eid]} size={20} />
-                      <span className="text-[11px] font-semibold text-gray-200">{EMP[eid].name.split(" ")[0]}</span>
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-gray-500 text-right">אין עובדים משובצים — הקש/י לשיבוץ</p>
-              )}
-            </button>
+              <div className="space-y-1.5">
+                {seats.map((seat) => {
+                  const eid = assign[seat.key];
+                  const emp = eid ? EMP[eid] : null;
+                  return (
+                    <button key={seat.key} onClick={() => setSheet({ position: p, seat })}
+                      className={`w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-right transition-colors ${
+                        emp ? "bg-[#1d3a35] active:bg-[#224640]" : "bg-[#1c1e22] active:bg-[#22252b]"}`}>
+                      {emp ? <Avatar emp={emp} size={30} /> : (
+                        <span className="w-[30px] h-[30px] rounded-full border-2 border-dashed border-gray-600 flex items-center justify-center flex-shrink-0">
+                          <Plus size={14} className="text-gray-500" />
+                        </span>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        {emp ? (
+                          <p className="text-sm font-bold text-gray-100 truncate">{emp.name}</p>
+                        ) : (
+                          <p className="text-sm font-bold text-gray-500">לשיבוץ</p>
+                        )}
+                        <p className="text-[11px] text-gray-500" dir="ltr">{seat.from}–{seat.to}</p>
+                      </div>
+                      <span className="text-[10px] font-bold text-gray-500 whitespace-nowrap">{seat.hours} ש׳</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           );
         })}
       </div>
@@ -515,20 +594,36 @@ function ScheduleTab({ weekStart, assign, setSlot, published, setPublished, stat
 
       {/* Assignment bottom sheet */}
       {sheet && (
-        <AssignSheet slot={sheet} assign={assign} setSlot={setSlot} weekStart={weekStart} onClose={() => setSheet(null)} />
+        <AssignSheet
+          position={sheet.position}
+          seat={sheet.seat}
+          dayKey={day}
+          weekStart={weekStart}
+          current={assign[sheet.seat.key]}
+          takenIds={takenThisDay}
+          assignSeat={assignSeat}
+          onClose={() => setSheet(null)}
+        />
+      )}
+
+      {managing && (
+        <ManagePositionsSheet restId={restId} positions={positions} setPositions={setPositions} onClose={() => setManaging(false)} />
       )}
     </div>
   );
 }
 
-function AssignSheet({ slot, assign, setSlot, weekStart, onClose }) {
-  const [dayKey, shiftKey] = slot.split("-");
-  const shift = SHIFTS.find((s) => s.key === shiftKey);
-  const dd = fmtDay(weekStart, Number(dayKey));
-  const assigned = assign[slot] || [];
-  const req = required(Number(dayKey), shiftKey);
-  const roster = [...EMPLOYEES].filter((e) => !assigned.includes(e.id))
-    .sort((a, b) => availRank(b, slot) - availRank(a, slot));
+function AssignSheet({ position, seat, dayKey, weekStart, current, takenIds, assignSeat, onClose }) {
+  const dd = fmtDay(weekStart, dayKey);
+  const dayCode = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][dayKey];
+  const curEmp = current ? EMP[current] : null;
+  const roster = [...EMPLOYEES]
+    .filter((e) => e.id !== current && !takenIds.has(e.id))
+    .sort((a, b) => {
+      const ra = availForDay(a, dayCode) === "want" ? 2 : availForDay(a, dayCode) === "ok" ? 1 : 0;
+      const rb = availForDay(b, dayCode) === "want" ? 2 : availForDay(b, dayCode) === "ok" ? 1 : 0;
+      return rb - ra;
+    });
 
   return (
     <div className="fixed inset-0 z-30 max-w-md mx-auto flex flex-col justify-end">
@@ -537,52 +632,102 @@ function AssignSheet({ slot, assign, setSlot, weekStart, onClose }) {
         {/* Sheet header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#22252b]">
           <button onClick={onClose}><X size={22} className="text-gray-400" /></button>
-          <div className="text-left">
-            <p className="font-black text-gray-100">{DAYS[Number(dayKey)].full}, {dd.getDate()} ביוני · {shift.label}</p>
-            <p className="text-[11px] text-gray-500">{shift.time} · {assigned.length}/{req} מאוישים</p>
+          <div className="text-left flex items-center gap-2">
+            <div>
+              <p className="font-black text-gray-100">{DAYS[dayKey].full}, {dd.getDate()} ביוני · {position.name}</p>
+              <p className="text-[11px] text-gray-500" dir="ltr">{seat.from}–{seat.to} · {seat.hours}h</p>
+            </div>
+            <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: position.color }} />
           </div>
         </div>
 
         <div className="overflow-y-auto px-4 py-3">
-          {/* Assigned */}
-          {assigned.length > 0 && (
+          {/* Currently assigned */}
+          {curEmp && (
             <>
-              <p className="text-[11px] font-bold text-gray-500 mb-2 px-1">משובצים למשמרת</p>
-              <div className="space-y-1.5 mb-4">
-                {assigned.map((eid) => (
-                  <div key={eid} className="flex items-center gap-3 bg-[#1d3a35] rounded-2xl px-3 py-2.5">
-                    <Avatar emp={EMP[eid]} size={38} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-gray-100 truncate">{EMP[eid].name}</p>
-                      <p className="text-[11px] text-gray-400">{EMP[eid].role}</p>
-                    </div>
-                    <button onClick={() => setSlot(slot, eid)}
-                      className="w-8 h-8 rounded-full bg-[#22252b] flex items-center justify-center">
-                      <X size={15} className="text-[#f0788e]" />
-                    </button>
-                  </div>
-                ))}
+              <p className="text-[11px] font-bold text-gray-500 mb-2 px-1">משובץ/ת למקום הזה</p>
+              <div className="flex items-center gap-3 bg-[#1d3a35] rounded-2xl px-3 py-2.5 mb-4">
+                <Avatar emp={curEmp} size={38} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-gray-100 truncate">{curEmp.name}</p>
+                  <p className="text-[11px] text-gray-400">{curEmp.role}</p>
+                </div>
+                <button onClick={() => { assignSeat(seat.key, null); onClose(); }}
+                  className="w-8 h-8 rounded-full bg-[#22252b] flex items-center justify-center">
+                  <X size={15} className="text-[#f0788e]" />
+                </button>
               </div>
             </>
           )}
 
-          {/* Roster to add */}
+          {/* Roster to pick from */}
           <p className="text-[11px] font-bold text-gray-500 mb-2 px-1 flex items-center gap-1">
-            <Plus size={12} /> הוספת עובד/ת (לפי הזמינות שהוגשה)
+            <Plus size={12} /> {curEmp ? "החלפה לעובד/ת אחר/ת" : "שיבוץ עובד/ת"} (לפי הזמינות שהוגשה)
           </p>
           <div className="space-y-1.5">
             {roster.map((e) => (
-              <button key={e.id} onClick={() => setSlot(slot, e.id)}
+              <button key={e.id} onClick={() => { assignSeat(seat.key, e.id); onClose(); }}
                 className="w-full flex items-center gap-3 bg-[#1c1e22] rounded-2xl px-3 py-2.5 text-right active:bg-[#22252b]">
                 <Avatar emp={e} size={38} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-gray-100 truncate">{e.name}</p>
                   <p className="text-[11px] text-gray-400">{e.role} · ₪{e.rate}/שעה</p>
                 </div>
-                <AvailBadge state={e.avail[slot]} />
+                <AvailBadge state={availForDay(e, dayCode)} />
               </button>
             ))}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Manage Positions bottom-sheet — lets the owner add/edit/remove positions and
+// their staffing styles AFTER onboarding (e.g. existing restaurants that signed
+// up before positions existed). Edits a local draft, then replace-all saves to
+// shiftcrew_owner on confirm.
+function ManagePositionsSheet({ restId, positions, setPositions, onClose }) {
+  const [draft, setDraft] = useState(positions);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState(false);
+
+  const save = async () => {
+    setSaving(true); setErr(false);
+    try {
+      await savePositions(restId, draft);
+      setPositions(draft);
+      onClose();
+    } catch (e) {
+      console.error("[shiftcrew] save positions failed:", e);
+      setErr(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-30 max-w-md mx-auto flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative bg-[#16181c] rounded-t-3xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#22252b]">
+          <button onClick={onClose}><X size={22} className="text-gray-400" /></button>
+          <p className="font-black text-gray-100">ניהול תפקידים</p>
+        </div>
+        <div className="overflow-y-auto px-4 py-4 flex-1" dir="rtl">
+          <PositionsEditor positions={draft} setPositions={setDraft} />
+        </div>
+        <div className="px-5 py-4 border-t border-[#22252b]">
+          {err && (
+            <p className="text-[12px] font-bold text-[#f0788e] flex items-center gap-1.5 mb-2 justify-center">
+              <AlertTriangle size={13} /> השמירה נכשלה — נסה/י שוב
+            </p>
+          )}
+          <button onClick={save} disabled={saving}
+            className={`w-full rounded-2xl py-3.5 font-black text-base flex items-center justify-center gap-2 ${
+              saving ? "bg-[#1c1e22] text-gray-600" : "bg-[#2a8576] text-white active:bg-[#247567]"}`}>
+            {saving ? <><Loader2 size={18} className="animate-spin" /> שומר…</> : <><Check size={18} /> שמירת התפקידים</>}
+          </button>
         </div>
       </div>
     </div>
@@ -1283,11 +1428,6 @@ function SheetField({ label, children }) {
 }
 
 // ── shared ─────────────────────────────────────────────────────────────────────
-
-function availRank(e, slot) {
-  const a = e.avail[slot];
-  return a === "want" ? 2 : a === "ok" ? 1 : 0;
-}
 
 function Avatar({ emp, size = 28 }) {
   if (!emp) return null;
