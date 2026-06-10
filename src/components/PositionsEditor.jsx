@@ -160,9 +160,9 @@ function PositionCard({ pos, open, onToggle, update, updateConfig, setModel, rem
         </span>
       </div>
 
-      {/* Collapsed summary */}
+      {/* Collapsed summary — also taps to expand, so the whole card is one target */}
       {!open && (
-        <div className="px-3 pb-3 -mt-1 text-right">
+        <div onClick={onToggle} className="px-3 pb-3 -mt-1 text-right cursor-pointer active:bg-[#1c1e22]">
           <span className="text-[11px] text-gray-500">
             {pos.model === MODEL_STAGGER ? "כניסה מדורגת" : "משמרות קבועות"}
           </span>
