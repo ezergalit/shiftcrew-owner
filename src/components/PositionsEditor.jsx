@@ -1,10 +1,10 @@
 import { useState } from "react";
 import {
-  Plus, Trash2, Clock, ChevronDown, ChevronUp, Minus, Sun, TrendingUp,
-  Info, Sparkles, Users, Lightbulb, Check, ArrowUpFromLine,
+  Plus, Trash2, Clock, ChevronDown, ChevronUp, Sun, TrendingUp,
+  Sparkles, Users, Lightbulb, Check, ArrowUpFromLine,
 } from "lucide-react";
 import {
-  MODEL_BLOCKS, MODEL_STAGGER, newPosition, newId, expandStagger, spanHours,
+  MODEL_BLOCKS, MODEL_STAGGER, newPosition, newId,
 } from "../lib/positions";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -244,20 +244,38 @@ function BlocksEditor({ pos, setPositions }) {
   );
 }
 
-// ── Stagger model: open/close + staggered ARRIVALS only ──────────────────────────
+// ── Stagger model: open/close + staggered ARRIVALS, per weekday ──────────────────
 // Waiters/bar trickle in as the place fills. They don't clock out on a schedule —
 // the manager sends people home when it quiets down — so we only model arrivals.
+// Each arrival has a headcount PER WEEKDAY (Fri/Sat run hotter than a Tuesday).
 // Everyone who arrives works through to closing.
+const ALL_DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat", "hol"];
+const countsOf = (a) =>
+  a.counts || Object.fromEntries(ALL_DAY_KEYS.map((d) => [d, Math.max(0, Number(a.delta) || 0)]));
+
 function StaggerEditor({ pos, updateConfig, setPositions }) {
   const c = pos.config || {};
-  const seats = expandStagger(c);
   const mutateArr = (fn) =>
     setPositions((p) => p.map((x) => (x.id === pos.id ? { ...x, config: { ...x.config, arrivals: fn(x.config.arrivals || []) } } : x)));
   const updateArrival = (aid, patch) => mutateArr((as) => as.map((a) => (a.id === aid ? { ...a, ...patch } : a)));
-  const addArrival = () => mutateArr((as) => [...as, { id: newId("a"), time: "16:00", delta: 1 }]);
+  const setCount = (aid, dayKey, val) =>
+    mutateArr((as) => as.map((a) => {
+      if (a.id !== aid) return a;
+      const { delta, ...rest } = a; // drop any legacy single-delta
+      return { ...rest, counts: { ...countsOf(a), [dayKey]: Math.max(0, val) } };
+    }));
+  const addArrival = () => mutateArr((as) => [...as, {
+    id: newId("a"), time: "16:00",
+    counts: { sun: 1, mon: 1, tue: 1, wed: 1, thu: 1, fri: 2, sat: 2, hol: 1 },
+  }]);
   const removeArrival = (aid) => mutateArr((as) => as.filter((a) => a.id !== aid));
-  // Only positive arrivals are kept now; legacy departure rows (delta<0) are hidden.
-  const sorted = [...(c.arrivals || [])].filter((a) => Number(a.delta) > 0).sort((a, b) => a.time.localeCompare(b.time));
+  const sorted = [...(c.arrivals || [])].sort((a, b) => a.time.localeCompare(b.time));
+
+  // Per-day totals across all arrivals — drives the preview that shows how
+  // staffing differs between, say, a Tuesday and a Friday.
+  const dayTotals = DAYS.map((d) => ({
+    ...d, total: sorted.reduce((s, a) => s + (countsOf(a)[d.key] ?? 0), 0),
+  }));
 
   return (
     <div>
@@ -269,22 +287,33 @@ function StaggerEditor({ pos, updateConfig, setPositions }) {
         <span className="text-gray-500 text-xs">פתיחה</span>
       </div>
 
-      {/* Arrival events — how many people clock in at each time, until close */}
-      <div className="space-y-1.5">
-        {sorted.map((a) => (
-          <div key={a.id} className="flex items-center gap-2 bg-[#1c1e22] rounded-xl px-2.5 py-2">
-            <button onClick={() => removeArrival(a.id)} className="w-7 h-7 rounded-lg bg-[#16181c] flex items-center justify-center text-gray-500 active:text-[#e34d6c] flex-shrink-0">
-              <Trash2 size={13} />
-            </button>
-            <div className="flex items-center gap-1.5 flex-1">
-              <button onClick={() => updateArrival(a.id, { delta: Math.max(1, a.delta - 1) })} className="w-7 h-7 rounded-full bg-[#16181c] flex items-center justify-center text-gray-300 active:bg-[#22252b]"><Minus size={13} /></button>
-              <span className="w-9 text-center text-sm font-black text-[#3fd0bc]">+{a.delta}</span>
-              <button onClick={() => updateArrival(a.id, { delta: a.delta + 1 })} className="w-7 h-7 rounded-full bg-[#16181c] flex items-center justify-center text-gray-300 active:bg-[#22252b]"><Plus size={13} /></button>
+      {/* Arrival events — each with a per-weekday headcount */}
+      <div className="space-y-2.5">
+        {sorted.map((a) => {
+          const counts = countsOf(a);
+          return (
+            <div key={a.id} className="rounded-2xl bg-[#1c1e22] p-3">
+              <div className="flex items-center gap-2">
+                <button onClick={() => removeArrival(a.id)} className="w-7 h-7 rounded-lg bg-[#16181c] flex items-center justify-center text-gray-500 active:text-[#e34d6c] flex-shrink-0">
+                  <Trash2 size={14} />
+                </button>
+                <span className="flex-1 text-right text-[12px] font-bold text-gray-300 flex items-center gap-1.5 justify-end">
+                  כניסת עובדים בשעה <ArrowUpFromLine size={13} className="text-[#3fd0bc]" />
+                </span>
+                <TimeBox value={a.time} onChange={(v) => updateArrival(a.id, { time: v })} />
+              </div>
+              <p className="text-[10px] text-gray-500 mt-3 mb-1 text-right">כמה נכנסים בכל יום</p>
+              <div className="grid grid-cols-7 gap-1">
+                {DAYS.map((d) => (
+                  <DayCount key={d.key} letter={d.letter} weekend={d.weekend}
+                    value={counts[d.key] ?? 0}
+                    onInc={() => setCount(a.id, d.key, (counts[d.key] ?? 0) + 1)}
+                    onDec={() => setCount(a.id, d.key, (counts[d.key] ?? 0) - 1)} />
+                ))}
+              </div>
             </div>
-            <ArrowUpFromLine size={14} className="text-[#3fd0bc]" />
-            <TimeBox value={a.time} onChange={(v) => updateArrival(a.id, { time: v })} />
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <button onClick={addArrival}
@@ -292,22 +321,19 @@ function StaggerEditor({ pos, updateConfig, setPositions }) {
         <ArrowUpFromLine size={14} /> הוספת כניסה
       </button>
 
-      {/* Live preview */}
+      {/* Live preview — total people per day, so weekday vs weekend is obvious */}
       <div className="mt-3 bg-[#14161a] border border-[#22252b] rounded-2xl p-3 text-right">
         <div className="flex items-center gap-1.5 justify-end text-[11px] font-black text-[#2f9e8f] mb-2">
-          תצוגה מקדימה · {seats.length} כניסות ביום <Sparkles size={12} />
+          תצוגה מקדימה · סה״כ עובדים ביום <Sparkles size={12} />
         </div>
-        {seats.length === 0 ? (
-          <p className="text-[11px] text-gray-500">הוסף/י כניסות כדי לראות את פריסת המשמרות.</p>
-        ) : (
-          <div className="flex flex-wrap gap-1.5 justify-end">
-            {seats.map((s, i) => (
-              <span key={i} className="text-[10px] font-bold text-gray-300 bg-[#1c1e22] rounded-full px-2 py-1">
-                {s.from}–{s.to} <span className="text-gray-500">({spanHours(s.from, s.to)} ש׳)</span>
-              </span>
-            ))}
-          </div>
-        )}
+        <div className="grid grid-cols-7 gap-1">
+          {dayTotals.map((d) => (
+            <div key={d.key} className={`flex flex-col items-center rounded-lg py-1.5 ${d.weekend ? "bg-[#15302b]" : "bg-[#1c1e22]"}`}>
+              <span className={`text-[10px] font-bold ${d.weekend ? "text-[#3fd0bc]" : "text-gray-500"}`}>{d.letter}</span>
+              <span className="text-sm font-black text-gray-100 leading-none mt-1">{d.total}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

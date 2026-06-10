@@ -41,10 +41,12 @@ export function newPosition(name, model, colorIdx = 0) {
       id: uid("pos"), name: name || "מלצרים", model: MODEL_STAGGER, color,
       config: {
         open: "10:00", close: "23:00",
+        // Each arrival carries a headcount PER WEEKDAY — weekends (Thu/Fri/Sat)
+        // run hotter, so more people clock in then.
         arrivals: [
-          { id: uid("a"), time: "10:00", delta: 2 },
-          { id: uid("a"), time: "13:00", delta: 1 },
-          { id: uid("a"), time: "18:00", delta: 2 },
+          { id: uid("a"), time: "10:00", counts: { sun: 2, mon: 2, tue: 2, wed: 2, thu: 2, fri: 3, sat: 3, hol: 2 } },
+          { id: uid("a"), time: "13:00", counts: { sun: 1, mon: 1, tue: 1, wed: 1, thu: 1, fri: 2, sat: 2, hol: 1 } },
+          { id: uid("a"), time: "18:00", counts: { sun: 1, mon: 1, tue: 1, wed: 2, thu: 2, fri: 3, sat: 3, hol: 2 } },
         ],
       },
     };
@@ -70,17 +72,24 @@ export function spanHours(from, to) {
   return Math.round((mins / 60) * 10) / 10;
 }
 
-// Expand staggered ARRIVALS into concrete seats. Each arrival opens `delta` seats
-// starting at its time; every seat runs through to close (the manager sends people
-// home in real time — departures aren't scheduled). Legacy departure rows
-// (delta<0) are ignored. Returns [{ from, to }] sorted by start time.
-export function expandStagger(config) {
+// How many people an arrival event brings on a given weekday. Supports the new
+// per-day `counts` shape and the legacy single `delta` (applied to every day).
+export function arrivalCount(arr, dayKey) {
+  if (arr?.counts) return Math.max(0, arr.counts[dayKey] ?? 0);
+  return Math.max(0, Number(arr?.delta) || 0);
+}
+
+// Expand staggered ARRIVALS into concrete seats FOR A GIVEN DAY. Each arrival
+// opens its per-day headcount of seats at its time; every seat runs through to
+// close (the manager sends people home in real time — departures aren't
+// scheduled). Returns [{ from, to }] sorted by start time.
+export function expandStagger(config, dayKey = "sun") {
   const arrivals = [...(config?.arrivals || [])].sort((a, b) => a.time.localeCompare(b.time));
   const close = config?.close || "23:00";
   const done = [];
   for (const e of arrivals) {
-    const d = Number(e.delta) || 0;
-    for (let i = 0; i < d; i++) done.push({ from: e.time, to: close });
+    const n = arrivalCount(e, dayKey);
+    for (let i = 0; i < n; i++) done.push({ from: e.time, to: close });
   }
   return done.sort((a, b) => a.from.localeCompare(b.from));
 }
@@ -94,7 +103,7 @@ export function seatsForDay(position, dayIdx) {
   const dayKey = DAY_ORDER[dayIdx];
   const seats = [];
   if (position.model === MODEL_STAGGER) {
-    expandStagger(position.config).forEach((s, i) => {
+    expandStagger(position.config, dayKey).forEach((s, i) => {
       seats.push({
         key: `${position.id}|${dayIdx}|s${i}`,
         label: `כניסה ${s.from}`, from: s.from, to: s.to, hours: spanHours(s.from, s.to),
@@ -121,14 +130,11 @@ export const seatCountForDay = (position, dayIdx) => seatsForDay(position, dayId
 export function describePosition(position) {
   if (position.model === MODEL_STAGGER) {
     const c = position.config || {};
-    const peak = (() => {
-      let cur = 0, max = 0;
-      [...(c.arrivals || [])].sort((a, b) => a.time.localeCompare(b.time)).forEach((e) => {
-        cur += Number(e.delta) || 0; if (cur > max) max = cur;
-      });
-      return max;
-    })();
-    return `כניסה מדורגת · ${c.open}–${c.close} · שיא ${peak}`;
+    // Total people across the day, by weekday — show the range (e.g. 4–8).
+    const totals = DAY_ORDER.map((dk) => (c.arrivals || []).reduce((s, e) => s + arrivalCount(e, dk), 0));
+    const min = Math.min(...totals), max = Math.max(...totals);
+    const range = min === max ? `${max}` : `${min}–${max}`;
+    return `כניסה מדורגת · ${c.open}–${c.close} · ${range} ביום`;
   }
   const blocks = position.config?.blocks || [];
   return `${blocks.length} משמרות · ${blocks.map((b) => b.label).join(" · ")}`;
