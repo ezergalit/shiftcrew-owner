@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   Plus, Trash2, Clock, ChevronDown, ChevronUp, Minus, Sun, TrendingUp,
-  Info, Sparkles, Users, Lightbulb, Check, ArrowDownToLine, ArrowUpFromLine,
+  Info, Sparkles, Users, Lightbulb, Check, ArrowUpFromLine,
 } from "lucide-react";
 import {
   MODEL_BLOCKS, MODEL_STAGGER, newPosition, newId, expandStagger, spanHours,
@@ -244,16 +244,20 @@ function BlocksEditor({ pos, setPositions }) {
   );
 }
 
-// ── Stagger model: open/close + arrival/departure events ─────────────────────────
+// ── Stagger model: open/close + staggered ARRIVALS only ──────────────────────────
+// Waiters/bar trickle in as the place fills. They don't clock out on a schedule —
+// the manager sends people home when it quiets down — so we only model arrivals.
+// Everyone who arrives works through to closing.
 function StaggerEditor({ pos, updateConfig, setPositions }) {
   const c = pos.config || {};
   const seats = expandStagger(c);
   const mutateArr = (fn) =>
     setPositions((p) => p.map((x) => (x.id === pos.id ? { ...x, config: { ...x.config, arrivals: fn(x.config.arrivals || []) } } : x)));
   const updateArrival = (aid, patch) => mutateArr((as) => as.map((a) => (a.id === aid ? { ...a, ...patch } : a)));
-  const addArrival = (delta) => mutateArr((as) => [...as, { id: newId("a"), time: delta > 0 ? "16:00" : "22:00", delta }]);
+  const addArrival = () => mutateArr((as) => [...as, { id: newId("a"), time: "16:00", delta: 1 }]);
   const removeArrival = (aid) => mutateArr((as) => as.filter((a) => a.id !== aid));
-  const sorted = [...(c.arrivals || [])].sort((a, b) => a.time.localeCompare(b.time));
+  // Only positive arrivals are kept now; legacy departure rows (delta<0) are hidden.
+  const sorted = [...(c.arrivals || [])].filter((a) => Number(a.delta) > 0).sort((a, b) => a.time.localeCompare(b.time));
 
   return (
     <div>
@@ -265,41 +269,28 @@ function StaggerEditor({ pos, updateConfig, setPositions }) {
         <span className="text-gray-500 text-xs">פתיחה</span>
       </div>
 
-      {/* Events */}
+      {/* Arrival events — how many people clock in at each time, until close */}
       <div className="space-y-1.5">
-        {sorted.map((a) => {
-          const arrive = Number(a.delta) >= 0;
-          return (
-            <div key={a.id} className="flex items-center gap-2 bg-[#1c1e22] rounded-xl px-2.5 py-2">
-              <button onClick={() => removeArrival(a.id)} className="w-7 h-7 rounded-lg bg-[#16181c] flex items-center justify-center text-gray-500 active:text-[#e34d6c] flex-shrink-0">
-                <Trash2 size={13} />
-              </button>
-              <div className="flex items-center gap-1.5 flex-1">
-                <button onClick={() => updateArrival(a.id, { delta: a.delta - 1 })} className="w-7 h-7 rounded-full bg-[#16181c] flex items-center justify-center text-gray-300 active:bg-[#22252b]"><Minus size={13} /></button>
-                <span className={`w-9 text-center text-sm font-black ${arrive ? "text-[#3fd0bc]" : "text-[#f0788e]"}`}>
-                  {arrive ? `+${a.delta}` : a.delta}
-                </span>
-                <button onClick={() => updateArrival(a.id, { delta: a.delta + 1 })} className="w-7 h-7 rounded-full bg-[#16181c] flex items-center justify-center text-gray-300 active:bg-[#22252b]"><Plus size={13} /></button>
-              </div>
-              {arrive
-                ? <ArrowUpFromLine size={14} className="text-[#3fd0bc]" />
-                : <ArrowDownToLine size={14} className="text-[#f0788e]" />}
-              <TimeBox value={a.time} onChange={(v) => updateArrival(a.id, { time: v })} />
+        {sorted.map((a) => (
+          <div key={a.id} className="flex items-center gap-2 bg-[#1c1e22] rounded-xl px-2.5 py-2">
+            <button onClick={() => removeArrival(a.id)} className="w-7 h-7 rounded-lg bg-[#16181c] flex items-center justify-center text-gray-500 active:text-[#e34d6c] flex-shrink-0">
+              <Trash2 size={13} />
+            </button>
+            <div className="flex items-center gap-1.5 flex-1">
+              <button onClick={() => updateArrival(a.id, { delta: Math.max(1, a.delta - 1) })} className="w-7 h-7 rounded-full bg-[#16181c] flex items-center justify-center text-gray-300 active:bg-[#22252b]"><Minus size={13} /></button>
+              <span className="w-9 text-center text-sm font-black text-[#3fd0bc]">+{a.delta}</span>
+              <button onClick={() => updateArrival(a.id, { delta: a.delta + 1 })} className="w-7 h-7 rounded-full bg-[#16181c] flex items-center justify-center text-gray-300 active:bg-[#22252b]"><Plus size={13} /></button>
             </div>
-          );
-        })}
+            <ArrowUpFromLine size={14} className="text-[#3fd0bc]" />
+            <TimeBox value={a.time} onChange={(v) => updateArrival(a.id, { time: v })} />
+          </div>
+        ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-2 mt-2.5">
-        <button onClick={() => addArrival(1)}
-          className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 border border-dashed border-[#2f9e8f]/40 text-[#3fd0bc] font-bold text-[12px] active:bg-[#15302b]">
-          <ArrowUpFromLine size={14} /> כניסה
-        </button>
-        <button onClick={() => addArrival(-1)}
-          className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 border border-dashed border-[#f0788e]/40 text-[#f0788e] font-bold text-[12px] active:bg-[#3a1d22]">
-          <ArrowDownToLine size={14} /> יציאה
-        </button>
-      </div>
+      <button onClick={addArrival}
+        className="w-full mt-2.5 flex items-center justify-center gap-1.5 rounded-xl py-2.5 border border-dashed border-[#2f9e8f]/40 text-[#3fd0bc] font-bold text-[12px] active:bg-[#15302b]">
+        <ArrowUpFromLine size={14} /> הוספת כניסה
+      </button>
 
       {/* Live preview */}
       <div className="mt-3 bg-[#14161a] border border-[#22252b] rounded-2xl p-3 text-right">

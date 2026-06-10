@@ -45,7 +45,6 @@ export function newPosition(name, model, colorIdx = 0) {
           { id: uid("a"), time: "10:00", delta: 2 },
           { id: uid("a"), time: "13:00", delta: 1 },
           { id: uid("a"), time: "18:00", delta: 2 },
-          { id: uid("a"), time: "22:00", delta: -2 },
         ],
       },
     };
@@ -71,27 +70,18 @@ export function spanHours(from, to) {
   return Math.round((mins / 60) * 10) / 10;
 }
 
-// Expand staggered arrival/departure events into concrete seats. Each positive
-// delta opens that many seats starting now; each negative delta closes the
-// earliest-opened ones (FIFO — first in, first out). Anything still open at the
-// end runs until close. Returns [{ from, to }] sorted by start time.
+// Expand staggered ARRIVALS into concrete seats. Each arrival opens `delta` seats
+// starting at its time; every seat runs through to close (the manager sends people
+// home in real time — departures aren't scheduled). Legacy departure rows
+// (delta<0) are ignored. Returns [{ from, to }] sorted by start time.
 export function expandStagger(config) {
   const arrivals = [...(config?.arrivals || [])].sort((a, b) => a.time.localeCompare(b.time));
   const close = config?.close || "23:00";
-  const open = [];
   const done = [];
   for (const e of arrivals) {
     const d = Number(e.delta) || 0;
-    if (d > 0) {
-      for (let i = 0; i < d; i++) open.push({ from: e.time, to: null });
-    } else if (d < 0) {
-      for (let i = 0; i < -d; i++) {
-        const seat = open.shift();
-        if (seat) { seat.to = e.time; done.push(seat); }
-      }
-    }
+    for (let i = 0; i < d; i++) done.push({ from: e.time, to: close });
   }
-  open.forEach((seat) => { seat.to = close; done.push(seat); });
   return done.sort((a, b) => a.from.localeCompare(b.from));
 }
 
