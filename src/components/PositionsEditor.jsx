@@ -143,18 +143,18 @@ export default function PositionsEditor({ positions, setPositions }) {
 function PositionCard({ pos, open, onToggle, update, updateConfig, setModel, remove, setPositions }) {
   return (
     <div className="rounded-2xl border border-[#22252b] bg-[#191b1f] overflow-hidden">
-      {/* Header row — tap anywhere to expand/collapse (except the name field
-          and the delete button, which stop the toggle). */}
+      {/* Header row — tap anywhere to expand/collapse (except the delete button).
+          The name is a plain label here so a tap never lands in a text field by
+          accident; renaming happens inside the expanded editor below. */}
       <div onClick={onToggle} className="flex items-center gap-2 p-3 cursor-pointer active:bg-[#1c1e22]">
         <button onClick={(e) => { e.stopPropagation(); remove(pos.id); }}
           className="w-8 h-8 rounded-xl bg-[#1c1e22] flex items-center justify-center text-gray-500 active:text-[#e34d6c] active:bg-[#3a1d22] flex-shrink-0">
           <Trash2 size={15} />
         </button>
         <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: pos.color }} />
-        <input value={pos.name} onChange={(e) => update(pos.id, { name: e.target.value })}
-          onClick={(e) => e.stopPropagation()}
-          className="flex-1 min-w-0 bg-transparent text-right font-black text-gray-100 placeholder:text-gray-600 focus:outline-none"
-          placeholder="שם התפקיד" />
+        <span className="flex-1 min-w-0 text-right font-black text-gray-100 truncate">
+          {pos.name || "תפקיד חדש"}
+        </span>
         <span className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 flex-shrink-0">
           {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
         </span>
@@ -172,6 +172,14 @@ function PositionCard({ pos, open, onToggle, update, updateConfig, setModel, rem
       {/* Expanded editor */}
       {open && (
         <div className="px-3 pb-3.5 border-t border-[#22252b] pt-3">
+          {/* Rename — deliberate, inside the editor (not the tappable header) */}
+          <div className="mb-3">
+            <p className="text-[10px] text-gray-500 mb-1 text-right">שם התפקיד</p>
+            <input value={pos.name} onChange={(e) => update(pos.id, { name: e.target.value })}
+              className="w-full bg-[#1c1e22] border border-[#22252b] rounded-xl px-3 py-2.5 text-right font-bold text-gray-100 placeholder:text-gray-600 focus:outline-none focus:border-[#2f9e8f]"
+              placeholder="שם התפקיד" />
+          </div>
+
           {/* Style picker */}
           <div className="grid grid-cols-2 gap-2 mb-3">
             {Object.values(MODELS).map((m) => {
