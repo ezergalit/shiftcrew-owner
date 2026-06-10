@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import {
   Home, CalendarDays, CalendarCheck, ListChecks, Menu as MenuIcon,
   Bell, ChevronRight, ChevronLeft, X, Check, Plus,
@@ -73,6 +73,52 @@ function availForDay(e, dayKey) {
     }
   });
   return best === 2 ? "want" : best === 1 ? "ok" : null;
+}
+
+const DAY_CODES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+// Which demo availability bucket a seat falls into, by its start time.
+function timeBucket(from) {
+  const h = parseInt((from || "0").split(":")[0], 10) || 0;
+  if (h < 16) return "morning";
+  if (h < 22) return "evening";
+  return "night";
+}
+
+// Auto-fill the whole week from submitted availability: for each seat, pick the
+// best-matching person who's free that day and hasn't been placed yet. Exact
+// time-bucket "want" wins, then bucket "ok", then any-time want/ok. The owner
+// then drags people around to finalize. Returns { seatKey → empId }.
+function buildAutoAssign(positions) {
+  const map = {};
+  for (let day = 0; day < 7; day++) {
+    const dayCode = DAY_CODES[day];
+    const takenToday = new Set();
+    const seats = [];
+    positions.forEach((p) => seatsForDay(p, day).forEach((seat) => seats.push(seat)));
+    seats.forEach((seat) => {
+      const bucket = timeBucket(seat.from);
+      const scored = EMPLOYEES
+        .filter((e) => !takenToday.has(e.id) && SUBMITTED.has(e.id) && availForDay(e, dayCode))
+        .map((e) => {
+          const exact = e.avail[`${day}-${bucket}`];
+          const any = availForDay(e, dayCode);
+          let score = 0;
+          if (exact === "want") score = 4;
+          else if (exact === "ok") score = 3;
+          else if (any === "want") score = 2;
+          else if (any === "ok") score = 1;
+          return { e, score };
+        })
+        .filter((x) => x.score > 0)
+        .sort((a, b) => b.score - a.score);
+      if (scored.length) {
+        map[seat.key] = scored[0].e.id;
+        takenToday.add(scored[0].e.id);
+      }
+    });
+  }
+  return map;
 }
 
 // ── The restaurant's FULL menu — the SAME content the waiter app trains on.
@@ -150,7 +196,10 @@ export default function MainApp({ restaurant, ownerName, onSignOut }) {
     (async () => {
       try {
         const ps = await loadPositions(restId);
-        if (alive) setPositions(ps);
+        if (alive) {
+          setPositions(ps);
+          setAssign(buildAutoAssign(ps)); // pre-fill from availability; owner tweaks
+        }
       } catch (err) {
         console.error("[shiftcrew] positions load failed:", err);
       } finally {
@@ -190,6 +239,22 @@ export default function MainApp({ restaurant, ownerName, onSignOut }) {
     });
   };
 
+  // Drag-and-drop move: drop onto an empty seat = move; onto a filled seat = swap.
+  const moveSeat = (fromKey, toKey) => {
+    if (!fromKey || !toKey || fromKey === toKey) return;
+    setPublished(false);
+    setAssign((prev) => {
+      const next = { ...prev };
+      const a = next[fromKey], b = next[toKey];
+      if (b == null) { delete next[fromKey]; next[toKey] = a; }
+      else { next[toKey] = a; next[fromKey] = b; }
+      return next;
+    });
+  };
+
+  // Re-run the availability auto-fill (owner can reset after manual edits).
+  const autoFill = () => { setPublished(false); setAssign(buildAutoAssign(positions)); };
+
   const TABS = [
     { key: "home",  label: "בית",          icon: Home },
     { key: "sched", label: "סידור",         icon: CalendarDays },
@@ -218,7 +283,7 @@ export default function MainApp({ restaurant, ownerName, onSignOut }) {
       {/* Body */}
       <div className="flex-1 overflow-y-auto pb-28">
         {tab === "home"  && <HomeTab weekStart={weekStart} stats={stats} published={published} go={setTab} ownerName={ownerName} />}
-        {tab === "sched" && <ScheduleTab weekStart={weekStart} positions={positions} positionsLoading={positionsLoading} loaded={!positionsLoading} restId={restId} setPositions={setPositions} assign={assign} assignSeat={assignSeat} published={published} setPublished={setPublished} />}
+        {tab === "sched" && <ScheduleTab weekStart={weekStart} positions={positions} positionsLoading={positionsLoading} restId={restId} setPositions={setPositions} assign={assign} assignSeat={assignSeat} moveSeat={moveSeat} autoFill={autoFill} published={published} setPublished={setPublished} />}
         {tab === "avail" && <AvailabilityTab weekStart={weekStart} />}
         {tab === "staff" && <StaffTab restId={restId} />}
         {tab === "tasks" && <TasksTab />}
@@ -442,10 +507,52 @@ function AiInsightCard() {
 
 // ── Schedule builder ──────────────────────────────────────────────────────────
 
-function ScheduleTab({ weekStart, positions, positionsLoading, restId, setPositions, assign, assignSeat, published, setPublished }) {
+function ScheduleTab({ weekStart, positions, positionsLoading, restId, setPositions, assign, assignSeat, moveSeat, autoFill, published, setPublished }) {
   const [day, setDay] = useState(TODAY_KEY);
   const [sheet, setSheet] = useState(null); // { position, seat } or null
   const [managing, setManaging] = useState(false);
+
+  // ── Drag & drop: grab an avatar and drop it on another seat to move/swap. ──
+  // Pointer-events (not HTML5 draggable) so it works on touch. We track the
+  // drag in a ref for the window listeners and mirror it to state for rendering
+  // the floating ghost + drop highlight.
+  const dragRef = useRef(null);
+  const suppressClickRef = useRef(false);
+  const [drag, setDrag] = useState(null); // { empId, fromKey, x, y, overKey, moved }
+
+  const startDrag = (e, fromKey, empId) => {
+    if (!empId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const start = { empId, fromKey, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, overKey: null, moved: false };
+    dragRef.current = start;
+    setDrag(start);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  const onMove = (e) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const moved = d.moved || Math.abs(e.clientX - d.sx) > 5 || Math.abs(e.clientY - d.sy) > 5;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const overKey = el?.closest("[data-seatkey]")?.getAttribute("data-seatkey") || null;
+    const next = { ...d, x: e.clientX, y: e.clientY, overKey, moved };
+    dragRef.current = next;
+    setDrag(next);
+  };
+
+  const onUp = () => {
+    const d = dragRef.current;
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    dragRef.current = null;
+    setDrag(null);
+    if (d && d.moved && d.overKey && d.overKey !== d.fromKey) {
+      moveSeat(d.fromKey, d.overKey);
+      suppressClickRef.current = true; // swallow the click that follows the release
+    }
+  };
 
   // Employees already on another seat THIS day — hidden from the picker so one
   // person isn't double-booked on the same date.
@@ -514,17 +621,24 @@ function ScheduleTab({ weekStart, positions, positionsLoading, restId, setPositi
         })}
       </div>
 
-      {/* Coverage summary chip */}
-      <div className="flex items-center justify-between mb-3">
-        <button onClick={() => setManaging(true)}
-          className="flex items-center gap-1.5 text-[11px] font-bold text-[#3fd0bc] bg-[#15302b] border border-[#2f9e8f] rounded-full px-3 py-1.5 active:bg-[#1c4f48]">
-          <Pencil size={12} /> תפקידים
-        </button>
+      {/* Coverage summary chip + actions */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => setManaging(true)}
+            className="flex items-center gap-1.5 text-[11px] font-bold text-[#3fd0bc] bg-[#15302b] border border-[#2f9e8f] rounded-full px-3 py-1.5 active:bg-[#1c4f48]">
+            <Pencil size={12} /> תפקידים
+          </button>
+          <button onClick={autoFill}
+            className="flex items-center gap-1.5 text-[11px] font-bold text-[#c9b6ff] bg-[#241f3a] border border-[#7c5cff] rounded-full px-3 py-1.5 active:bg-[#2e2748]">
+            <Sparkles size={12} /> סידור אוטומטי
+          </button>
+        </div>
         <div className="flex items-center gap-2 text-xs text-gray-400">
-          <span>{DAYS[day].full}, {fmtDay(weekStart, day).getDate()} ביוני · הקש/י על מקום לשיבוץ</span>
+          <span>{DAYS[day].full}, {fmtDay(weekStart, day).getDate()} ביוני</span>
           <Users size={14} className="text-gray-500" />
         </div>
       </div>
+      <p className="text-[11px] text-gray-500 mb-3 text-right">גרור/י עובד למקום אחר כדי להחליף משמרת · הקש/י על מקום ריק לשיבוץ</p>
 
       {/* One card per position, listing its seats for the selected day */}
       <div className="space-y-3">
@@ -553,11 +667,28 @@ function ScheduleTab({ weekStart, positions, positionsLoading, restId, setPositi
                 {seats.map((seat) => {
                   const eid = assign[seat.key];
                   const emp = eid ? EMP[eid] : null;
+                  const isOver = drag?.moved && drag.overKey === seat.key && drag.fromKey !== seat.key;
+                  const isSource = drag?.moved && drag.fromKey === seat.key;
                   return (
-                    <button key={seat.key} onClick={() => setSheet({ position: p, seat })}
-                      className={`w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-right transition-colors ${
-                        emp ? "bg-[#1d3a35] active:bg-[#224640]" : "bg-[#1c1e22] active:bg-[#22252b]"}`}>
-                      {emp ? <Avatar emp={emp} size={30} /> : (
+                    <div
+                      key={seat.key}
+                      data-seatkey={seat.key}
+                      onClick={() => {
+                        if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+                        setSheet({ position: p, seat });
+                      }}
+                      className={`w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-right transition-all cursor-pointer ${
+                        emp ? "bg-[#1d3a35] active:bg-[#224640]" : "bg-[#1c1e22] active:bg-[#22252b]"} ${
+                        isOver ? "ring-2 ring-[#3fd0bc] scale-[1.01]" : ""} ${isSource ? "opacity-40" : ""}`}>
+                      {emp ? (
+                        <span
+                          onPointerDown={(e) => startDrag(e, seat.key, eid)}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ touchAction: "none" }}
+                          className="cursor-grab active:cursor-grabbing flex-shrink-0">
+                          <Avatar emp={emp} size={30} />
+                        </span>
+                      ) : (
                         <span className="w-[30px] h-[30px] rounded-full border-2 border-dashed border-gray-600 flex items-center justify-center flex-shrink-0">
                           <Plus size={14} className="text-gray-500" />
                         </span>
@@ -571,7 +702,7 @@ function ScheduleTab({ weekStart, positions, positionsLoading, restId, setPositi
                         <p className="text-[11px] text-gray-500" dir="ltr">{seat.from}–{seat.to}</p>
                       </div>
                       <span className="text-[10px] font-bold text-gray-500 whitespace-nowrap">{seat.hours} ש׳</span>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -589,6 +720,16 @@ function ScheduleTab({ weekStart, positions, positionsLoading, restId, setPositi
       {published && (
         <div className="flex items-center gap-2 mt-3 text-[12px] text-[#2f9e8f] font-semibold">
           <Sparkles size={14} /> כל העובדים קיבלו התראה — המשמרות מופיעות באפליקציה שלהם.
+        </div>
+      )}
+
+      {/* Floating drag ghost — follows the pointer while dragging an avatar. */}
+      {drag?.moved && drag.empId && (
+        <div className="fixed z-50 pointer-events-none"
+          style={{ left: drag.x, top: drag.y, transform: "translate(-50%, -50%)" }}>
+          <div className="rounded-full shadow-2xl shadow-black/50 ring-2 ring-[#3fd0bc]">
+            <Avatar emp={EMP[drag.empId]} size={44} />
+          </div>
         </div>
       )}
 
