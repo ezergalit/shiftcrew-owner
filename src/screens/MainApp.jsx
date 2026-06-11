@@ -782,7 +782,7 @@ function AssignSheet({ position, seat, dayKey, weekStart, current, takenIds, ass
           </div>
         </div>
 
-        <div className="overflow-y-auto px-4 py-3">
+        <div className="overflow-y-auto overscroll-contain px-4 py-3">
           {/* Currently assigned */}
           {curEmp && (
             <>
@@ -855,7 +855,7 @@ function ManagePositionsSheet({ restId, positions, setPositions, onClose }) {
           <button onClick={onClose}><X size={22} className="text-gray-400" /></button>
           <p className="font-black text-gray-100">ניהול תפקידים</p>
         </div>
-        <div className="overflow-y-auto px-4 py-4 flex-1" dir="rtl">
+        <div className="overflow-y-auto overscroll-contain px-4 py-4 flex-1" dir="rtl">
           <PositionsEditor positions={draft} setPositions={setDraft} />
         </div>
         <div className="px-5 py-4 border-t border-[#22252b]">
@@ -1470,7 +1470,7 @@ function ItemSheet({ item, isSpecial, onToggleSpecial, onSave, onClose, isNew = 
           <p className="font-black text-gray-100">{isNew ? "מנה חדשה" : "עריכת פריט"}</p>
         </div>
 
-        <div className="overflow-y-auto px-5 py-4 space-y-4">
+        <div className="overflow-y-auto overscroll-contain px-5 py-4 space-y-4">
           {/* Team mastery (existing) / new-dish note */}
           {isNew ? (
             <div className="flex items-center gap-2 bg-[#15302b] rounded-2xl px-3 py-2.5">
