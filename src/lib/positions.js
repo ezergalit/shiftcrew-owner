@@ -31,10 +31,14 @@ const uid = (p = "id") => `${p}${Date.now().toString(36)}${(_seq++).toString(36)
 
 // Weekend (Thu/Fri/Sat in the Israeli week) tends to need more hands.
 const defaultBlockCounts = () => ({ sun: 2, mon: 2, tue: 2, wed: 2, thu: 3, fri: 3, sat: 3, hol: 2 });
+// A flat headcount for every day — used for roles that need a fixed number on
+// at all times regardless of how busy it is (e.g. exactly one shift manager).
+const flatBlockCounts = (n) => ({ sun: n, mon: n, tue: n, wed: n, thu: n, fri: n, sat: n, hol: n });
 
 // Build a fresh position pre-filled with a sensible config for its style, so the
-// owner edits rather than starts from a blank slate.
-export function newPosition(name, model, colorIdx = 0) {
+// owner edits rather than starts from a blank slate. `opts.blockCount` pins a
+// fixed headcount per day for block roles (e.g. exactly one shift manager).
+export function newPosition(name, model, colorIdx = 0, opts = {}) {
   const color = POSITION_COLORS[colorIdx % POSITION_COLORS.length];
   if (model === MODEL_STAGGER) {
     return {
@@ -51,12 +55,13 @@ export function newPosition(name, model, colorIdx = 0) {
       },
     };
   }
+  const counts = () => (opts.blockCount != null ? flatBlockCounts(opts.blockCount) : defaultBlockCounts());
   return {
     id: uid("pos"), name: name || "תפקיד", model: MODEL_BLOCKS, color,
     config: {
       blocks: [
-        { id: uid("b"), label: "בוקר", from: "08:00", to: "16:00", counts: defaultBlockCounts() },
-        { id: uid("b"), label: "ערב", from: "16:00", to: "23:00", counts: defaultBlockCounts() },
+        { id: uid("b"), label: "בוקר", from: "08:00", to: "16:00", counts: counts() },
+        { id: uid("b"), label: "ערב", from: "16:00", to: "23:00", counts: counts() },
       ],
     },
   };

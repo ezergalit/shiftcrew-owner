@@ -40,7 +40,8 @@ const MODELS = {
 const TEMPLATES = [
   { name: "מלצרים", model: MODEL_STAGGER },
   { name: "ברמנים", model: MODEL_STAGGER },
-  { name: "מנהל/ת משמרת", model: MODEL_BLOCKS },
+  // A shift manager: assume exactly one on duty at all times, every day.
+  { name: "מנהל/ת משמרת", model: MODEL_BLOCKS, blockCount: 1 },
   { name: "מטבח", model: MODEL_BLOCKS },
   { name: "מארח/ת", model: MODEL_BLOCKS },
 ];
@@ -55,8 +56,8 @@ export default function PositionsEditor({ positions, setPositions }) {
     setPositions((p) => p.map((x) => (x.id === id ? { ...x, config: { ...x.config, ...patch } } : x)));
   const remove = (id) => setPositions((p) => p.filter((x) => x.id !== id));
 
-  const add = (name, model) => {
-    const pos = newPosition(name, model, positions.length);
+  const add = (name, model, opts = {}) => {
+    const pos = newPosition(name, model, positions.length, opts);
     setPositions((p) => [...p, pos]);
     setOpenId(pos.id);
   };
@@ -126,7 +127,7 @@ export default function PositionsEditor({ positions, setPositions }) {
       <p className="text-[11px] font-bold text-gray-500 mt-4 mb-2 px-1">הוספה מהירה</p>
       <div className="flex flex-wrap gap-2">
         {TEMPLATES.filter((t) => !usedTemplates.has(t.name)).map((t) => (
-          <button key={t.name} onClick={() => add(t.name, t.model)}
+          <button key={t.name} onClick={() => add(t.name, t.model, { blockCount: t.blockCount })}
             className="flex items-center gap-1.5 rounded-full bg-[#191b1f] border border-[#22252b] px-3 py-2 text-[12px] font-bold text-gray-200 active:bg-[#20232a]">
             <Plus size={13} className="text-[#2f9e8f]" /> {t.name}
           </button>
