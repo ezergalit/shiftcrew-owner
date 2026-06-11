@@ -8,7 +8,10 @@ import {
   ShieldCheck, TrendingUp, Replace, Carrot, Loader2, LogOut, Phone,
   UserPlus, Trash2,
 } from "lucide-react";
-import { scOwner, rowToItem } from "../lib/shiftcrew";
+import {
+  scOwner, rowToItem, loadStaff, loadAvailability, loadSchedule,
+  saveDraft, publishSchedule, isoDate,
+} from "../lib/shiftcrew";
 import { loadPositions, savePositions, seatsForDay, describePosition } from "../lib/positions";
 import PositionsEditor from "../components/PositionsEditor";
 
@@ -32,52 +35,10 @@ const DAYS = [
   { key: 6, full: "שבת",    short: "ש'" },
 ];
 
-// Roster — each carries an avatar color (TabitShift gives everyone a distinct
-// initials circle), role, hourly rate, and the availability they submitted for
-// next week, keyed `${dayKey}-${shiftKey}`: "want" = ביקש/ה, "ok" = יכול/ה.
-const EMPLOYEES = [
-  { id: "e1", name: "אביה אוחיון",  role: "מנהל/ת מסעדה",   color: "#14b8a6", rate: 75,
-    avail: { "1-morning": "want", "3-morning": "want", "4-evening": "want", "5-evening": "ok" } },
-  { id: "e2", name: "טל אנגלנדר",   role: "מנהל/ת משמרת",   color: "#7c5cff", rate: 62,
-    avail: { "0-morning": "want", "1-morning": "ok", "2-morning": "want", "5-evening": "want", "6-evening": "want" } },
-  { id: "e3", name: "יאיר יהל",     role: "מלצר/ית פתיחה",  color: "#db2777", rate: 50,
-    avail: { "1-morning": "want", "3-evening": "want", "4-evening": "want", "5-evening": "want", "6-morning": "ok" } },
-  { id: "e4", name: "נויה ישראל",   role: "מלצר/ית פתיחה",  color: "#65a30d", rate: 48,
-    avail: { "0-evening": "want", "1-morning": "ok", "2-evening": "want", "4-evening": "want", "6-evening": "want" } },
-  { id: "e5", name: "מיכל יעקובי",  role: "מלצר/ית",        color: "#ea7317", rate: 46,
-    avail: { "1-morning": "ok", "3-evening": "want", "5-evening": "want", "6-evening": "want" } },
-  { id: "e6", name: "נועה לוי",     role: "מלצר/ית",        color: "#0d9488", rate: 52,
-    avail: { "0-morning": "want", "1-evening": "want", "4-evening": "ok", "5-evening": "want" } },
-  { id: "e7", name: "עומר טל",      role: "מלצר/ית",        color: "#2563eb", rate: 50,
-    avail: { "1-morning": "want", "2-morning": "ok", "5-morning": "want", "6-morning": "want" } },
-  { id: "e8", name: "שירה אבני",    role: "ברמן/ית",        color: "#e11d48", rate: 56,
-    avail: { "1-evening": "want", "4-night": "want", "5-night": "want", "6-evening": "want" } },
-  { id: "e9", name: "דניאל מור",    role: "מארח/ת",         color: "#d97706", rate: 46,
-    avail: { "4-evening": "want", "5-evening": "want", "6-evening": "want" } },
-];
+const TODAY_KEY = 1; // Monday-anchored default day for the schedule view.
 
-const EMP = Object.fromEntries(EMPLOYEES.map((e) => [e.id, e]));
-const SUBMITTED = new Set(["e1", "e2", "e3", "e4", "e6", "e7", "e8"]); // who handed in availability
-
-const TODAY_KEY = 1; // Monday 8 June (per demo anchor)
-
-// Strongest availability an employee submitted for a given weekday (across any of
-// the demo morning/evening/night slots). Drives the assignment-sheet ranking now
-// that staffing is position/seat-based rather than fixed morning/evening shifts.
-function availForDay(e, dayKey) {
-  let best = 0;
-  Object.entries(e.avail || {}).forEach(([k, v]) => {
-    if (k.startsWith(dayKey + "-")) {
-      const r = v === "want" ? 2 : v === "ok" ? 1 : 0;
-      if (r > best) best = r;
-    }
-  });
-  return best === 2 ? "want" : best === 1 ? "ok" : null;
-}
-
-const DAY_CODES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
-
-// Which demo availability bucket a seat falls into, by its start time.
+// Which availability bucket a seat falls into, by its start time. Matches the
+// waiter app's morning(<16:00)/evening(16:00–21:59)/night(≥22:00) split.
 function timeBucket(from) {
   const h = parseInt((from || "0").split(":")[0], 10) || 0;
   if (h < 16) return "morning";
@@ -85,24 +46,51 @@ function timeBucket(from) {
   return "night";
 }
 
+// ── Real availability (waiter → owner) ────────────────────────────────────────
+// Rows from shiftcrew_owner.availability: { staff_id, day_of_week (0..6), bucket,
+// pref ("want"|"ok") }. We index them by staff + day + bucket for fast lookup.
+function indexAvailability(rows) {
+  const idx = {};
+  (rows || []).forEach((r) => {
+    (idx[r.staff_id] ||= {});
+    (idx[r.staff_id][r.day_of_week] ||= {});
+    idx[r.staff_id][r.day_of_week][r.bucket] = r.pref;
+  });
+  return idx;
+}
+
+// Strongest preference a staff member submitted for a weekday (across buckets).
+function dayPref(availIndex, staffId, dayIdx) {
+  const buckets = availIndex?.[staffId]?.[dayIdx];
+  if (!buckets) return null;
+  let best = 0;
+  Object.values(buckets).forEach((v) => {
+    const r = v === "want" ? 2 : v === "ok" ? 1 : 0;
+    if (r > best) best = r;
+  });
+  return best === 2 ? "want" : best === 1 ? "ok" : null;
+}
+
+// Staff ids that submitted ANY availability for the week.
+const submittedSet = (rows) => new Set((rows || []).map((r) => r.staff_id));
+
 // Auto-fill the whole week from submitted availability: for each seat, pick the
-// best-matching person who's free that day and hasn't been placed yet. Exact
-// time-bucket "want" wins, then bucket "ok", then any-time want/ok. The owner
-// then drags people around to finalize. Returns { seatKey → empId }.
-function buildAutoAssign(positions) {
+// best-matching active person who's free that day and hasn't been placed yet.
+// Exact time-bucket "want" wins, then bucket "ok", then any-time want/ok. The
+// owner then drags people around to finalize. Returns { seatKey → staffId }.
+function buildAutoAssign(positions, staff, availIndex) {
   const map = {};
   for (let day = 0; day < 7; day++) {
-    const dayCode = DAY_CODES[day];
     const takenToday = new Set();
     const seats = [];
     positions.forEach((p) => seatsForDay(p, day).forEach((seat) => seats.push(seat)));
     seats.forEach((seat) => {
       const bucket = timeBucket(seat.from);
-      const scored = EMPLOYEES
-        .filter((e) => !takenToday.has(e.id) && SUBMITTED.has(e.id) && availForDay(e, dayCode))
+      const scored = (staff || [])
+        .filter((e) => e.active && !takenToday.has(e.id) && dayPref(availIndex, e.id, day))
         .map((e) => {
-          const exact = e.avail[`${day}-${bucket}`];
-          const any = availForDay(e, dayCode);
+          const exact = availIndex[e.id]?.[day]?.[bucket];
+          const any = dayPref(availIndex, e.id, day);
           let score = 0;
           if (exact === "want") score = 4;
           else if (exact === "ok") score = 3;
@@ -152,7 +140,6 @@ const MENU0 = [
   { id: "m14", cat: "drinks", name: "אספרסו מרטיני", price: 54, desc: "וודקה, ליקר קפה ואספרסו טרי.", ingredients: ["וודקה", "ליקר קפה", "אספרסו"], allergens: [], learnedBy: 2 },
   { id: "m15", cat: "drinks", name: "יין הבית לבן", price: 38, desc: "סוביניון בלאן צונן, כוס.", ingredients: ["ענבים"], allergens: ["סולפיטים"], learnedBy: 6 },
 ];
-const TEAM_SIZE = EMPLOYEES.length; // mastery is measured against the whole team
 const DEFAULT_SPECIALS = ["m6", "m10"]; // מנת היום set by the manager
 
 // What the OWNER decides matters most — drives what the AI drills the team on.
@@ -178,6 +165,7 @@ function fmtRange(start) {
 export default function MainApp({ restaurant, ownerName, onSignOut }) {
   const restId = restaurant?.id || null;
   const weekStart = useMemo(() => new Date(2026, 5, 7), []); // Sun 7.6.2026
+  const weekIso = useMemo(() => isoDate(weekStart), [weekStart]);
 
   // Owner-defined positions (each with its own staffing style) loaded from the
   // isolated shiftcrew_owner schema. The whole weekly schedule is derived from the
@@ -185,47 +173,63 @@ export default function MainApp({ restaurant, ownerName, onSignOut }) {
   const [positions, setPositions] = useState([]);
   const [positionsLoading, setPositionsLoading] = useState(true);
 
-  // assign: seat.key → employee id (a single person per seat).
+  // The REAL roster (shiftcrew_owner.staff) + the availability the team submitted
+  // through the waiter app (shiftcrew_owner.availability). Both feed the builder.
+  const [staff, setStaff] = useState([]);
+  const [availRows, setAvailRows] = useState([]);
+
+  // assign: seat.key → staff id (a single person per seat).
   const [assign, setAssign] = useState({});
   const [published, setPublished] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState("home");
+
+  // Derived lookups over the real data.
+  const empMap = useMemo(() => Object.fromEntries(staff.map((s) => [s.id, s])), [staff]);
+  const availIndex = useMemo(() => indexAvailability(availRows), [availRows]);
+  const submitted = useMemo(() => submittedSet(availRows), [availRows]);
 
   useEffect(() => {
     if (!restId) { setPositionsLoading(false); return; }
     let alive = true;
     (async () => {
       try {
-        const ps = await loadPositions(restId);
-        if (alive) {
-          setPositions(ps);
-          setAssign(buildAutoAssign(ps)); // pre-fill from availability; owner tweaks
-        }
+        const [ps, st, av, sched] = await Promise.all([
+          loadPositions(restId),
+          loadStaff(restId),
+          loadAvailability(restId, weekIso),
+          loadSchedule(restId, weekIso),
+        ]);
+        if (!alive) return;
+        setPositions(ps);
+        setStaff(st);
+        setAvailRows(av);
+        // Resume the saved draft if one exists; otherwise pre-fill from real
+        // availability so the owner starts from a sensible auto-arrangement.
+        const idx = indexAvailability(av);
+        const hasDraft = sched.assignments && Object.keys(sched.assignments).length;
+        setAssign(hasDraft ? sched.assignments : buildAutoAssign(ps, st, idx));
+        setPublished(sched.status === "published");
       } catch (err) {
-        console.error("[shiftcrew] positions load failed:", err);
+        console.error("[shiftcrew] schedule load failed:", err);
       } finally {
         if (alive) setPositionsLoading(false);
       }
     })();
     return () => { alive = false; };
-  }, [restId]);
+  }, [restId, weekIso]);
 
   const stats = useMemo(() => {
-    let shiftsCount = 0, hours = 0, cost = 0, openSlots = 0;
+    let shiftsCount = 0, hours = 0, openSlots = 0;
     for (let day = 0; day < 7; day++) {
       positions.forEach((p) => {
         seatsForDay(p, day).forEach((seat) => {
-          const empId = assign[seat.key];
-          if (empId) {
-            shiftsCount += 1;
-            hours += seat.hours;
-            cost += seat.hours * (EMP[empId]?.rate || 0);
-          } else {
-            openSlots += 1;
-          }
+          if (assign[seat.key]) { shiftsCount += 1; hours += seat.hours; }
+          else openSlots += 1;
         });
       });
     }
-    return { shiftsCount, hours: Math.round(hours), cost: Math.round(cost), openSlots };
+    return { shiftsCount, hours: Math.round(hours), openSlots };
   }, [positions, assign]);
 
   // Assign (or clear) the single person on a seat. Passing empId=null clears it.
@@ -253,7 +257,54 @@ export default function MainApp({ restaurant, ownerName, onSignOut }) {
   };
 
   // Re-run the availability auto-fill (owner can reset after manual edits).
-  const autoFill = () => { setPublished(false); setAssign(buildAutoAssign(positions)); };
+  const autoFill = () => { setPublished(false); setAssign(buildAutoAssign(positions, staff, availIndex)); };
+
+  // Persist the in-progress schedule as a draft (no waiter notification yet).
+  const saveDraftNow = async () => {
+    if (!restId) return false;
+    setSaving(true);
+    try {
+      await saveDraft(restId, weekIso, assign);
+      return true;
+    } catch (e) {
+      console.error("[shiftcrew] save draft failed:", e);
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Publish: snapshot every FILLED seat into rows the waiter app reads (matched
+  // to each person by name), then persist + push via the cross-schema RPC.
+  const publishNow = async () => {
+    if (!restId) return false;
+    setSaving(true);
+    try {
+      const rows = [];
+      for (let day = 0; day < 7; day++) {
+        positions.forEach((p) => {
+          seatsForDay(p, day).forEach((seat) => {
+            const emp = empMap[assign[seat.key]];
+            if (!emp) return;
+            rows.push({
+              day, label: `${p.name} · ${seat.from}–${seat.to}`,
+              name: emp.name, from: seat.from, to: seat.to,
+              position: p.name, color: p.color,
+            });
+          });
+        });
+      }
+      await saveDraft(restId, weekIso, assign);
+      await publishSchedule(restId, weekIso, rows);
+      setPublished(true);
+      return true;
+    } catch (e) {
+      console.error("[shiftcrew] publish failed:", e);
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const TABS = [
     { key: "home",  label: "בית",          icon: Home },
@@ -282,12 +333,12 @@ export default function MainApp({ restaurant, ownerName, onSignOut }) {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto pb-28">
-        {tab === "home"  && <HomeTab weekStart={weekStart} stats={stats} published={published} go={setTab} ownerName={ownerName} />}
-        {tab === "sched" && <ScheduleTab weekStart={weekStart} positions={positions} positionsLoading={positionsLoading} restId={restId} setPositions={setPositions} assign={assign} assignSeat={assignSeat} moveSeat={moveSeat} autoFill={autoFill} published={published} setPublished={setPublished} />}
-        {tab === "avail" && <AvailabilityTab weekStart={weekStart} />}
+        {tab === "home"  && <HomeTab weekStart={weekStart} stats={stats} published={published} go={setTab} ownerName={ownerName} staff={staff} submitted={submitted} />}
+        {tab === "sched" && <ScheduleTab weekStart={weekStart} positions={positions} positionsLoading={positionsLoading} restId={restId} setPositions={setPositions} assign={assign} assignSeat={assignSeat} moveSeat={moveSeat} autoFill={autoFill} published={published} staff={staff} empMap={empMap} availIndex={availIndex} saving={saving} saveDraftNow={saveDraftNow} publishNow={publishNow} />}
+        {tab === "avail" && <AvailabilityTab weekStart={weekStart} staff={staff} availIndex={availIndex} submitted={submitted} />}
         {tab === "staff" && <StaffTab restId={restId} />}
         {tab === "tasks" && <TasksTab />}
-        {tab === "menu"  && <MenuTab restId={restId} />}
+        {tab === "menu"  && <MenuTab restId={restId} teamSize={Math.max(1, staff.length)} submitted={submitted.size} />}
       </div>
 
       {/* Bottom nav */}
@@ -309,9 +360,9 @@ export default function MainApp({ restaurant, ownerName, onSignOut }) {
 
 // ── Home (manager dashboard) ──────────────────────────────────────────────────
 
-function HomeTab({ weekStart, stats, published, go, ownerName }) {
-  const dateStr = `יום שני, 8 ביוני 2026`;
-  const submitted = SUBMITTED.size;
+function HomeTab({ weekStart, stats, published, go, ownerName, staff, submitted }) {
+  const dateStr = fmtRange(weekStart);
+  const submittedCount = submitted.size;
   const greet = ownerName ? `שלום ${ownerName},` : "שלום,";
   return (
     <div className="px-4 space-y-4">
@@ -331,7 +382,7 @@ function HomeTab({ weekStart, stats, published, go, ownerName }) {
       {/* Stat tiles */}
       <div className="grid grid-cols-2 gap-3">
         <HomeStat label="שעות שבועיות" value={stats.hours} />
-        <HomeStat label="עלות שכר שבועית" value={`₪${stats.cost.toLocaleString()}`} />
+        <HomeStat label="אנשי צוות" value={staff.length} />
       </div>
 
       {/* Publish CTA */}
@@ -353,7 +404,7 @@ function HomeTab({ weekStart, stats, published, go, ownerName }) {
         <ChevronLeft size={20} className="text-gray-500" />
         <div>
           <p className="font-black text-gray-100">זמינות לשבוע הבא</p>
-          <p className="text-xs text-gray-400 mt-0.5">{submitted} מתוך {EMPLOYEES.length} עובדים הגישו</p>
+          <p className="text-xs text-gray-400 mt-0.5">{submittedCount} מתוך {staff.length} עובדים הגישו</p>
         </div>
         <CalendarCheck size={22} className="text-[#2f9e8f]" />
       </button>
@@ -507,7 +558,12 @@ function AiInsightCard() {
 
 // ── Schedule builder ──────────────────────────────────────────────────────────
 
-function ScheduleTab({ weekStart, positions, positionsLoading, restId, setPositions, assign, assignSeat, moveSeat, autoFill, published, setPublished }) {
+function ScheduleTab({ weekStart, positions, positionsLoading, restId, setPositions, assign, assignSeat, moveSeat, autoFill, published, staff, empMap, availIndex, saving, saveDraftNow, publishNow }) {
+  const [savedTick, setSavedTick] = useState(false);
+  const onSaveDraft = async () => {
+    const ok = await saveDraftNow();
+    if (ok) { setSavedTick(true); setTimeout(() => setSavedTick(false), 2200); }
+  };
   const [day, setDay] = useState(TODAY_KEY);
   const [sheet, setSheet] = useState(null); // { position, seat } or null
   const [managing, setManaging] = useState(false);
@@ -666,7 +722,7 @@ function ScheduleTab({ weekStart, positions, positionsLoading, restId, setPositi
               <div className="space-y-1.5">
                 {seats.map((seat) => {
                   const eid = assign[seat.key];
-                  const emp = eid ? EMP[eid] : null;
+                  const emp = eid ? empMap[eid] : null;
                   const isOver = drag?.moved && drag.overKey === seat.key && drag.fromKey !== seat.key;
                   const isSource = drag?.moved && drag.fromKey === seat.key;
                   return (
@@ -711,11 +767,22 @@ function ScheduleTab({ weekStart, positions, positionsLoading, restId, setPositi
         })}
       </div>
 
-      {/* Publish */}
-      <button onClick={() => setPublished(true)} disabled={published}
-        className={`w-full mt-5 rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 ${
+      {/* Save draft — persists the in-progress arrangement without notifying the team */}
+      <button onClick={onSaveDraft} disabled={saving}
+        className={`w-full mt-5 rounded-2xl py-3.5 font-black text-sm flex items-center justify-center gap-2 border ${
+          savedTick ? "bg-[#15302b] border-[#2f9e8f] text-[#3fd0bc]" : "bg-[#191b1f] border-[#22252b] text-gray-200 active:bg-[#20232a]"}`}>
+        {saving ? <><Loader2 size={16} className="animate-spin" /> שומר…</>
+          : savedTick ? <><Check size={16} /> הטיוטה נשמרה</>
+          : <><Check size={16} /> שמירת טיוטה</>}
+      </button>
+
+      {/* Publish — snapshots the schedule to the waiter app */}
+      <button onClick={publishNow} disabled={published || saving}
+        className={`w-full mt-3 rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 ${
           published ? "bg-[#15302b] text-[#2f9e8f]" : "bg-[#2a8576] text-white active:bg-[#247567]"}`}>
-        {published ? <><Check size={18} /> הסידור פורסם</> : <><Send size={17} /> פרסום הסידור</>}
+        {published ? <><Check size={18} /> הסידור פורסם</>
+          : saving ? <><Loader2 size={18} className="animate-spin" /> מפרסם…</>
+          : <><Send size={17} /> פרסום הסידור</>}
       </button>
       {published && (
         <div className="flex items-center gap-2 mt-3 text-[12px] text-[#2f9e8f] font-semibold">
@@ -728,7 +795,7 @@ function ScheduleTab({ weekStart, positions, positionsLoading, restId, setPositi
         <div className="fixed z-50 pointer-events-none"
           style={{ left: drag.x, top: drag.y, transform: "translate(-50%, -50%)" }}>
           <div className="rounded-full shadow-2xl shadow-black/50 ring-2 ring-[#3fd0bc]">
-            <Avatar emp={EMP[drag.empId]} size={44} />
+            <Avatar emp={empMap[drag.empId]} size={44} />
           </div>
         </div>
       )}
@@ -743,6 +810,9 @@ function ScheduleTab({ weekStart, positions, positionsLoading, restId, setPositi
           current={assign[sheet.seat.key]}
           takenIds={takenThisDay}
           assignSeat={assignSeat}
+          staff={staff}
+          empMap={empMap}
+          availIndex={availIndex}
           onClose={() => setSheet(null)}
         />
       )}
@@ -754,17 +824,13 @@ function ScheduleTab({ weekStart, positions, positionsLoading, restId, setPositi
   );
 }
 
-function AssignSheet({ position, seat, dayKey, weekStart, current, takenIds, assignSeat, onClose }) {
+function AssignSheet({ position, seat, dayKey, weekStart, current, takenIds, assignSeat, staff, empMap, availIndex, onClose }) {
   const dd = fmtDay(weekStart, dayKey);
-  const dayCode = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][dayKey];
-  const curEmp = current ? EMP[current] : null;
-  const roster = [...EMPLOYEES]
-    .filter((e) => e.id !== current && !takenIds.has(e.id))
-    .sort((a, b) => {
-      const ra = availForDay(a, dayCode) === "want" ? 2 : availForDay(a, dayCode) === "ok" ? 1 : 0;
-      const rb = availForDay(b, dayCode) === "want" ? 2 : availForDay(b, dayCode) === "ok" ? 1 : 0;
-      return rb - ra;
-    });
+  const curEmp = current ? empMap[current] : null;
+  const prefRank = (e) => { const p = dayPref(availIndex, e.id, dayKey); return p === "want" ? 2 : p === "ok" ? 1 : 0; };
+  const roster = (staff || [])
+    .filter((e) => e.active && e.id !== current && !takenIds.has(e.id))
+    .sort((a, b) => prefRank(b) - prefRank(a));
 
   return (
     <div className="fixed inset-0 z-30 max-w-md mx-auto flex flex-col justify-end">
@@ -805,6 +871,11 @@ function AssignSheet({ position, seat, dayKey, weekStart, current, takenIds, ass
           <p className="text-[11px] font-bold text-gray-500 mb-2 px-1 flex items-center gap-1">
             <Plus size={12} /> {curEmp ? "החלפה לעובד/ת אחר/ת" : "שיבוץ עובד/ת"} (לפי הזמינות שהוגשה)
           </p>
+          {roster.length === 0 && (
+            <p className="text-[12px] text-gray-500 bg-[#1c1e22] rounded-2xl px-3 py-4 text-center">
+              אין אנשי צוות פנויים לשיבוץ — הוסף/י צוות בלשונית "צוות".
+            </p>
+          )}
           <div className="space-y-1.5">
             {roster.map((e) => (
               <button key={e.id} onClick={() => { assignSeat(seat.key, e.id); onClose(); }}
@@ -812,9 +883,9 @@ function AssignSheet({ position, seat, dayKey, weekStart, current, takenIds, ass
                 <Avatar emp={e} size={38} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-gray-100 truncate">{e.name}</p>
-                  <p className="text-[11px] text-gray-400">{e.role} · ₪{e.rate}/שעה</p>
+                  <p className="text-[11px] text-gray-400">{e.role}</p>
                 </div>
-                <AvailBadge state={availForDay(e, dayCode)} />
+                <AvailBadge state={dayPref(availIndex, e.id, dayKey)} />
               </button>
             ))}
           </div>
@@ -877,45 +948,59 @@ function ManagePositionsSheet({ restId, positions, setPositions, onClose }) {
 
 // ── Availability review (team submissions) ────────────────────────────────────
 
-function AvailabilityTab({ weekStart }) {
-  const nextWeek = useMemo(() => { const d = new Date(weekStart); d.setDate(d.getDate() + 7); return d; }, [weekStart]);
+function AvailabilityTab({ weekStart, staff, availIndex, submitted }) {
+  // Count how many "want" / "ok" slots a staff member submitted across the week.
+  const countsFor = (sid) => {
+    let wants = 0, oks = 0;
+    Object.values(availIndex[sid] || {}).forEach((buckets) => {
+      Object.values(buckets).forEach((v) => { if (v === "want") wants += 1; else if (v === "ok") oks += 1; });
+    });
+    return { wants, oks };
+  };
   return (
     <div className="px-4">
       <div className="flex items-center justify-between py-2 mb-1">
         <button className="w-8 h-8 flex items-center justify-center text-gray-500"><ChevronRight size={20} /></button>
-        <p className="text-sm font-bold text-gray-200">{fmtRange(nextWeek)}</p>
+        <p className="text-sm font-bold text-gray-200">{fmtRange(weekStart)}</p>
         <button className="w-8 h-8 flex items-center justify-center text-gray-500"><ChevronLeft size={20} /></button>
       </div>
-      <p className="text-xs text-gray-400 mb-3">{SUBMITTED.size} מתוך {EMPLOYEES.length} עובדים הגישו זמינות</p>
+      <p className="text-xs text-gray-400 mb-3">{submitted.size} מתוך {staff.length} עובדים הגישו זמינות</p>
 
-      <div className="space-y-2.5">
-        {EMPLOYEES.map((e) => {
-          const submitted = SUBMITTED.has(e.id);
-          const wants = Object.values(e.avail).filter((v) => v === "want").length;
-          const oks = Object.values(e.avail).filter((v) => v === "ok").length;
-          return (
-            <div key={e.id} className="bg-[#191b1f] rounded-2xl p-3.5">
-              <div className="flex items-center gap-3">
-                <Avatar emp={e} size={40} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-gray-100 truncate">{e.name}</p>
-                  <p className="text-[11px] text-gray-400">{e.role}</p>
+      {staff.length === 0 ? (
+        <div className="text-center py-12 text-gray-500">
+          <CalendarCheck size={34} className="mx-auto mb-2 text-gray-600" />
+          <p className="text-sm">עדיין אין צוות</p>
+          <p className="text-[12px] text-gray-600 mt-1">הוסף/י אנשי צוות בלשונית "צוות"</p>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {staff.map((e) => {
+            const did = submitted.has(e.id);
+            const { wants, oks } = countsFor(e.id);
+            return (
+              <div key={e.id} className="bg-[#191b1f] rounded-2xl p-3.5">
+                <div className="flex items-center gap-3">
+                  <Avatar emp={e} size={40} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-gray-100 truncate">{e.name}</p>
+                    <p className="text-[11px] text-gray-400">{e.role}</p>
+                  </div>
+                  {did
+                    ? <span className="text-[11px] font-black text-[#3fd0bc] bg-[#15302b] px-2.5 py-1 rounded-full">הגיש/ה ✓</span>
+                    : <span className="text-[11px] font-bold text-[#f0788e] bg-[#3a1d22] px-2.5 py-1 rounded-full">טרם הגיש/ה</span>}
                 </div>
-                {submitted
-                  ? <span className="text-[11px] font-black text-[#3fd0bc] bg-[#15302b] px-2.5 py-1 rounded-full">הגיש/ה ✓</span>
-                  : <span className="text-[11px] font-bold text-[#f0788e] bg-[#3a1d22] px-2.5 py-1 rounded-full">טרם הגיש/ה</span>}
+                {did && (
+                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#22252b] text-[11px]">
+                    <span className="text-[#3fd0bc] font-bold">ביקש/ה {wants} משמרות</span>
+                    <span className="text-gray-600">·</span>
+                    <span className="text-gray-400 font-semibold">זמין/ה ל-{oks} נוספות</span>
+                  </div>
+                )}
               </div>
-              {submitted && (
-                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#22252b] text-[11px]">
-                  <span className="text-[#3fd0bc] font-bold">ביקש/ה {wants} משמרות</span>
-                  <span className="text-gray-600">·</span>
-                  <span className="text-gray-400 font-semibold">זמין/ה ל-{oks} נוספות</span>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1160,7 +1245,7 @@ function StaffTab({ restId }) {
 // content: edit menu items, pick "מנת היום", and watch the AI turn the menu into
 // the team's daily practice — with live mastery across the whole team.
 
-function MenuTab({ restId }) {
+function MenuTab({ restId, teamSize, submitted }) {
   const [menu, setMenu] = useState(MENU0);
   const [specials, setSpecials] = useState(() => new Set(DEFAULT_SPECIALS));
   const [priorities, setPriorities] = useState(() => new Set(DEFAULT_PRIORITIES));
@@ -1259,10 +1344,11 @@ function MenuTab({ restId }) {
 
   // Team-wide mastery: average of learnedBy/team across all items.
   const mastery = useMemo(() => {
-    const totalPairs = menu.length * TEAM_SIZE;
+    const totalPairs = menu.length * teamSize;
+    if (!totalPairs) return 0;
     const learned = menu.reduce((s, m) => s + m.learnedBy, 0);
     return Math.round((learned / totalPairs) * 100);
-  }, [menu]);
+  }, [menu, teamSize]);
 
   const specialItems = menu.filter((m) => specials.has(m.id));
   const editItem = menu.find((m) => m.id === editId) || null;
@@ -1284,7 +1370,7 @@ function MenuTab({ restId }) {
         </p>
         <div className="grid grid-cols-3 gap-2 mt-4">
           <HeroStat value={`${mastery}%`} label="שליטת הצוות" />
-          <HeroStat value={`${SUBMITTED.size}/${TEAM_SIZE}`} label="תרגלו היום" />
+          <HeroStat value={teamSize} label="אנשי צוות" />
           <HeroStat value={menu.length} label="פריטים" />
         </div>
       </div>
@@ -1374,7 +1460,7 @@ function MenuTab({ restId }) {
                 </div>
                 <div className="space-y-2">
                   {items.map((m) => {
-                    const pct = Math.round((m.learnedBy / TEAM_SIZE) * 100);
+                    const pct = Math.round((m.learnedBy / teamSize) * 100);
                     return (
                       <button key={m.id} onClick={() => setEditId(m.id)}
                         className="w-full bg-[#191b1f] rounded-2xl p-3.5 text-right active:bg-[#20232a] transition-colors">
@@ -1389,7 +1475,7 @@ function MenuTab({ restId }) {
                           </span>
                         </div>
                         <div className="flex items-center gap-2 mt-2.5">
-                          <span className="text-[10px] font-bold text-gray-500 w-12 text-left">{m.learnedBy}/{TEAM_SIZE}</span>
+                          <span className="text-[10px] font-bold text-gray-500 w-12 text-left">{m.learnedBy}/{teamSize}</span>
                           <div className="flex-1 h-1.5 bg-[#1c1e22] rounded-full overflow-hidden">
                             <div className="h-full bg-[#2f9e8f] rounded-full" style={{ width: `${pct}%` }} />
                           </div>
@@ -1412,6 +1498,7 @@ function MenuTab({ restId }) {
       {editItem && (
         <ItemSheet
           item={editItem}
+          teamSize={teamSize}
           isSpecial={specials.has(editItem.id)}
           onToggleSpecial={() => toggleSpecial(editItem.id)}
           onSave={(u) => { saveItem(u); setEditId(null); }}
@@ -1422,6 +1509,7 @@ function MenuTab({ restId }) {
       {creating && (
         <ItemSheet
           isNew
+          teamSize={teamSize}
           item={{ id: "new", cat: "mains", name: "", price: 0, desc: "", ingredients: [], allergens: [], learnedBy: 0 }}
           isSpecial={false}
           onToggleSpecial={() => {}}
@@ -1444,13 +1532,13 @@ function HeroStat({ value, label }) {
 
 // Item editor bottom-sheet — name / price / desc / allergens are all editable
 // in-memory, plus a "מנת היום" toggle. Demonstrates owning the menu content.
-function ItemSheet({ item, isSpecial, onToggleSpecial, onSave, onClose, isNew = false }) {
+function ItemSheet({ item, teamSize = 1, isSpecial, onToggleSpecial, onSave, onClose, isNew = false }) {
   const [name, setName] = useState(item.name);
   const [price, setPrice] = useState(String(item.price || ""));
   const [desc, setDesc] = useState(item.desc);
   const [cat, setCat] = useState(item.cat);
   const [allergens, setAllergens] = useState(new Set(item.allergens));
-  const pct = Math.round((item.learnedBy / TEAM_SIZE) * 100);
+  const pct = Math.round((item.learnedBy / teamSize) * 100);
   const canSave = name.trim().length > 0;
 
   const toggleAllergen = (a) =>
@@ -1480,7 +1568,7 @@ function ItemSheet({ item, isSpecial, onToggleSpecial, onSave, onClose, isNew = 
           ) : (
             <div className="flex items-center gap-2 bg-[#191b1f] rounded-2xl px-3 py-2.5">
               <GraduationCap size={16} className="text-[#2f9e8f]" />
-              <span className="text-xs text-gray-300 font-semibold">{item.learnedBy} מתוך {TEAM_SIZE} מהצוות שולטים בפריט</span>
+              <span className="text-xs text-gray-300 font-semibold">{item.learnedBy} מתוך {teamSize} מהצוות שולטים בפריט</span>
               <span className="mr-auto text-xs font-black text-[#3fd0bc]">{pct}%</span>
             </div>
           )}

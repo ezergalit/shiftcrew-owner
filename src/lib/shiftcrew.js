@@ -55,3 +55,88 @@ export async function getOwnerRestaurant(ownerAuthId) {
   if (e2) throw e2;
   return { ...created, justCreated: true };
 }
+
+// ── Unified staff roster ──────────────────────────────────────────────────────
+// The SAME phone roster powers BOTH waiter-app access and scheduling: everyone
+// the owner adds here is schedulable and can log into the waiter app. Each row:
+// { id, name, phone, role, active }. A stable per-person avatar colour is derived
+// from the phone so the owner and waiter apps colour the same person identically.
+const AVATAR_PALETTE = [
+  "#14b8a6", "#7c5cff", "#db2777", "#65a30d", "#ea7317",
+  "#0d9488", "#2563eb", "#e11d48", "#d97706",
+];
+export function avatarColor(seed) {
+  let h = 0;
+  for (const c of String(seed || "")) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+}
+
+// Active staff only — the people who can actually be put on the schedule.
+export async function loadStaff(restId) {
+  if (!restId) return [];
+  const { data, error } = await scOwner
+    .from("staff").select("*").eq("restaurant_id", restId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data || []).map((s) => ({
+    id: s.id,
+    name: s.name?.trim() || s.phone,
+    phone: s.phone,
+    role: s.role || "מלצר/ית",
+    active: s.active,
+    color: avatarColor(s.phone),
+  }));
+}
+
+// ── Availability (waiter → owner) ─────────────────────────────────────────────
+// Rows in shiftcrew_owner.availability, written by the waiter app, read here so
+// the owner's auto-fill uses REAL preferences. Each row: { staff_id, week_start,
+// day_of_week (0..6), bucket ("morning"|"evening"|"night"), pref ("want"|"ok") }.
+export async function loadAvailability(restId, weekStart) {
+  if (!restId || !weekStart) return [];
+  const { data, error } = await scOwner
+    .from("availability").select("*")
+    .eq("restaurant_id", restId).eq("week_start", weekStart);
+  if (error) throw error;
+  return data || [];
+}
+
+// ── Weekly schedule (draft + publish) ─────────────────────────────────────────
+// The owner's in-progress schedule is a { seatKey -> staffId } map persisted on
+// schedule_weeks.assignments. `saveDraft` upserts it; `publishSchedule` snapshots
+// the expanded rows into the waiter app via the cross-schema RPC.
+export async function loadSchedule(restId, weekStart) {
+  if (!restId || !weekStart) return { assignments: {}, status: "draft" };
+  const { data, error } = await scOwner
+    .from("schedule_weeks").select("assignments,status")
+    .eq("restaurant_id", restId).eq("week_start", weekStart).maybeSingle();
+  if (error) throw error;
+  return data || { assignments: {}, status: "draft" };
+}
+
+export async function saveDraft(restId, weekStart, assignments) {
+  if (!restId) throw new Error("missing restaurant id");
+  const { error } = await scOwner
+    .from("schedule_weeks")
+    .upsert(
+      { restaurant_id: restId, week_start: weekStart, assignments, status: "draft" },
+      { onConflict: "restaurant_id,week_start" }
+    );
+  if (error) throw error;
+}
+
+// rows: [{ day, label, name, from, to, position, color }] — expanded filled seats.
+export async function publishSchedule(restId, weekStart, rows) {
+  if (!restId) throw new Error("missing restaurant id");
+  const { error } = await scOwner.rpc("publish_schedule", {
+    p_restaurant_id: restId, p_week_start: weekStart, p_rows: rows,
+  });
+  if (error) throw error;
+}
+
+// Format a Date as the "YYYY-MM-DD" the schedule/availability tables key on.
+export function isoDate(d) {
+  const z = new Date(d);
+  z.setMinutes(z.getMinutes() - z.getTimezoneOffset());
+  return z.toISOString().slice(0, 10);
+}
