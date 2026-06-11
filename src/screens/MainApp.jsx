@@ -287,7 +287,7 @@ export default function MainApp({ restaurant, ownerName, onSignOut }) {
             const emp = empMap[assign[seat.key]];
             if (!emp) return;
             rows.push({
-              day, label: `${p.name} · ${seat.from}–${seat.to}`,
+              day, label: `${p.name} · מ־${seat.from}`,
               name: emp.name, from: seat.from, to: seat.to,
               position: p.name, color: p.color,
             });
@@ -755,9 +755,8 @@ function ScheduleTab({ weekStart, positions, positionsLoading, restId, setPositi
                         ) : (
                           <p className="text-sm font-bold text-gray-500">לשיבוץ</p>
                         )}
-                        <p className="text-[11px] text-gray-500" dir="ltr">{seat.from}–{seat.to}</p>
+                        <p className="text-[11px] text-gray-500">מ־<span dir="ltr">{seat.from}</span></p>
                       </div>
-                      <span className="text-[10px] font-bold text-gray-500 whitespace-nowrap">{seat.hours} ש׳</span>
                     </div>
                   );
                 })}
@@ -842,7 +841,7 @@ function AssignSheet({ position, seat, dayKey, weekStart, current, takenIds, ass
           <div className="text-left flex items-center gap-2">
             <div>
               <p className="font-black text-gray-100">{DAYS[dayKey].full}, {dd.getDate()} ביוני · {position.name}</p>
-              <p className="text-[11px] text-gray-500" dir="ltr">{seat.from}–{seat.to} · {seat.hours}h</p>
+              <p className="text-[11px] text-gray-500">מ־<span dir="ltr">{seat.from}</span></p>
             </div>
             <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: position.color }} />
           </div>
