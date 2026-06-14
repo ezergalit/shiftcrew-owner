@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { ChefHat, Loader2, ShieldAlert, LogOut, ArrowLeft } from "lucide-react";
 import { supabase } from "./lib/supabase";
-import { getOwnerRestaurant } from "./lib/shiftcrew";
+import { getOwnerRestaurant, markOnboarded } from "./lib/shiftcrew";
 import OwnerLogin from "./auth/OwnerLogin";
 import SetupWizard from "./screens/SetupWizard";
 import MainApp from "./screens/MainApp";
@@ -53,7 +53,10 @@ export default function App() {
         setPhase("setup");
       } else {
         setPhase("app");
-        if (!localStorage.getItem(TOUR_KEY)) setShowTour(true);
+        // Show the guided tour once per owner, ever. We trust the DB flag
+        // (onboarded) so it never re-appears in a fresh browser/incognito;
+        // localStorage is just a fast local short-circuit.
+        if (!rest.onboarded && !localStorage.getItem(TOUR_KEY)) setShowTour(true);
       }
     } catch (err) {
       console.error("[shiftcrew] session resolve failed:", err);
@@ -79,11 +82,13 @@ export default function App() {
   const finishSetup = () => {
     setPhase("app");
     localStorage.setItem(TOUR_KEY, "1"); // wizard already taught them; skip the tour
+    if (restaurant?.id) markOnboarded(restaurant.id); // never teach this owner again
   };
 
   const closeTour = () => {
     localStorage.setItem(TOUR_KEY, "1");
     setShowTour(false);
+    if (restaurant?.id) markOnboarded(restaurant.id); // persist across devices
   };
 
   const ownerFirstName = owner?.name?.trim()?.split(/\s+/)[0] || "";

@@ -26,12 +26,15 @@ export async function getOwnerRestaurant(ownerAuthId) {
   // 1. Already have a ShiftCrew restaurant for this owner?
   const { data: existing, error } = await scOwner
     .from("restaurants")
-    .select("id, name, type, address")
+    .select("id, name, type, address, onboarded_at")
     .eq("owner_auth_id", ownerAuthId)
     .order("created_at", { ascending: true })
     .limit(1);
   if (error) throw error;
-  if (existing && existing.length) return { ...existing[0], justCreated: false };
+  if (existing && existing.length) {
+    const r = existing[0];
+    return { ...r, onboarded: !!r.onboarded_at, justCreated: false };
+  }
 
   // 2. None yet — pull their real ShiftMatch restaurant to pre-fill (read only).
   const { data: smRests } = await supabase
@@ -53,7 +56,7 @@ export async function getOwnerRestaurant(ownerAuthId) {
   const { data: created, error: e2 } = await scOwner
     .from("restaurants").insert(seed).select("id, name, type, address").single();
   if (e2) throw e2;
-  return { ...created, justCreated: true };
+  return { ...created, onboarded: false, justCreated: true };
 }
 
 // ── Unified staff roster ──────────────────────────────────────────────────────
@@ -139,4 +142,27 @@ export function isoDate(d) {
   const z = new Date(d);
   z.setMinutes(z.getMinutes() - z.getTimezoneOffset());
   return z.toISOString().slice(0, 10);
+}
+
+// Sunday (local midnight) of the week containing `ref`, shifted by `offsetWeeks`.
+// The Israeli week is Sunday-first, so getDay()===0 is the start. This is what
+// makes the schedule track real time instead of being pinned to a fixed week.
+export function weekStartDate(ref = new Date(), offsetWeeks = 0) {
+  const d = new Date(ref);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - d.getDay() + offsetWeeks * 7);
+  return d;
+}
+
+// ── Onboarding (DB-backed, survives incognito / new devices) ──────────────────
+// The first-login tutorial was gated only by localStorage, so it reappeared in a
+// fresh browser/incognito. We persist it on the restaurant row instead so an owner
+// is taught exactly once, ever. `onboarded` is surfaced by getOwnerRestaurant.
+export async function markOnboarded(restId) {
+  if (!restId) return;
+  const { error } = await scOwner
+    .from("restaurants")
+    .update({ onboarded_at: new Date().toISOString() })
+    .eq("id", restId);
+  if (error) console.error("[shiftcrew] markOnboarded:", error);
 }

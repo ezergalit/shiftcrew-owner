@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import {
   scOwner, rowToItem, loadStaff, loadAvailability, loadSchedule,
-  saveDraft, publishSchedule, isoDate,
+  saveDraft, publishSchedule, isoDate, weekStartDate,
 } from "../lib/shiftcrew";
 import { loadPositions, savePositions, seatsForDay, describePosition } from "../lib/positions";
 import PositionsEditor from "../components/PositionsEditor";
@@ -153,18 +153,25 @@ const PRIORITIES = [
 ];
 const DEFAULT_PRIORITIES = ["allergens", "specials"];
 
+const HEB_MONTHS = ["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
 function fmtDay(weekStart, dayKey) {
   const d = new Date(weekStart); d.setDate(d.getDate() + dayKey); return d;
 }
+// "14 ביוני" — date + real Hebrew month (no longer hardcoded to June).
+function dayLabel(d) {
+  return `${d.getDate()} ב${HEB_MONTHS[d.getMonth()]}`;
+}
 function fmtRange(start) {
   const end = new Date(start); end.setDate(end.getDate() + 6);
-  const months = ["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
-  return `${start.getDate()} – ${end.getDate()} ב${months[end.getMonth()]} ${end.getFullYear()}`;
+  return `${start.getDate()} – ${end.getDate()} ב${HEB_MONTHS[end.getMonth()]} ${end.getFullYear()}`;
 }
 
 export default function MainApp({ restaurant, ownerName, onSignOut }) {
   const restId = restaurant?.id || null;
-  const weekStart = useMemo(() => new Date(2026, 5, 7), []); // Sun 7.6.2026
+  // The schedule tracks REAL time: offset 0 = this week, +1 = next, etc. The owner
+  // navigates with the week arrows, and publishing auto-advances to the next week.
+  const [weekOffset, setWeekOffset] = useState(0);
+  const weekStart = useMemo(() => weekStartDate(new Date(), weekOffset), [weekOffset]);
   const weekIso = useMemo(() => isoDate(weekStart), [weekStart]);
 
   // Owner-defined positions (each with its own staffing style) loaded from the
@@ -297,6 +304,9 @@ export default function MainApp({ restaurant, ownerName, onSignOut }) {
       await saveDraft(restId, weekIso, assign);
       await publishSchedule(restId, weekIso, rows);
       setPublished(true);
+      // The week is done — roll the builder forward so the owner naturally plans
+      // the next week instead of staring at the one they just sent out.
+      setTimeout(() => setWeekOffset((o) => o + 1), 900);
       return true;
     } catch (e) {
       console.error("[shiftcrew] publish failed:", e);
@@ -334,7 +344,7 @@ export default function MainApp({ restaurant, ownerName, onSignOut }) {
       {/* Body */}
       <div className="flex-1 overflow-y-auto pb-28">
         {tab === "home"  && <HomeTab weekStart={weekStart} stats={stats} published={published} go={setTab} ownerName={ownerName} staff={staff} submitted={submitted} />}
-        {tab === "sched" && <ScheduleTab weekStart={weekStart} positions={positions} positionsLoading={positionsLoading} restId={restId} setPositions={setPositions} assign={assign} assignSeat={assignSeat} moveSeat={moveSeat} autoFill={autoFill} published={published} staff={staff} empMap={empMap} availIndex={availIndex} saving={saving} saveDraftNow={saveDraftNow} publishNow={publishNow} />}
+        {tab === "sched" && <ScheduleTab weekStart={weekStart} weekOffset={weekOffset} setWeekOffset={setWeekOffset} positions={positions} positionsLoading={positionsLoading} restId={restId} setPositions={setPositions} assign={assign} assignSeat={assignSeat} moveSeat={moveSeat} autoFill={autoFill} published={published} staff={staff} empMap={empMap} availIndex={availIndex} saving={saving} saveDraftNow={saveDraftNow} publishNow={publishNow} />}
         {tab === "avail" && <AvailabilityTab weekStart={weekStart} staff={staff} availIndex={availIndex} submitted={submitted} />}
         {tab === "staff" && <StaffTab restId={restId} />}
         {tab === "tasks" && <TasksTab />}
@@ -558,7 +568,7 @@ function AiInsightCard() {
 
 // ── Schedule builder ──────────────────────────────────────────────────────────
 
-function ScheduleTab({ weekStart, positions, positionsLoading, restId, setPositions, assign, assignSeat, moveSeat, autoFill, published, staff, empMap, availIndex, saving, saveDraftNow, publishNow }) {
+function ScheduleTab({ weekStart, weekOffset, setWeekOffset, positions, positionsLoading, restId, setPositions, assign, assignSeat, moveSeat, autoFill, published, staff, empMap, availIndex, saving, saveDraftNow, publishNow }) {
   const [savedTick, setSavedTick] = useState(false);
   const onSaveDraft = async () => {
     const ok = await saveDraftNow();
@@ -653,11 +663,23 @@ function ScheduleTab({ weekStart, positions, positionsLoading, restId, setPositi
 
   return (
     <div className="px-4">
-      {/* Week nav */}
+      {/* Week nav — RTL: right arrow = previous week, left = next week */}
       <div className="flex items-center justify-between py-2 mb-1">
-        <button className="w-8 h-8 flex items-center justify-center text-gray-500"><ChevronRight size={20} /></button>
-        <p className="text-sm font-bold text-gray-200">{fmtRange(weekStart)}</p>
-        <button className="w-8 h-8 flex items-center justify-center text-gray-500"><ChevronLeft size={20} /></button>
+        <button onClick={() => setWeekOffset((o) => o - 1)}
+          className="w-8 h-8 flex items-center justify-center text-gray-400 active:text-gray-200">
+          <ChevronRight size={20} />
+        </button>
+        <div className="text-center">
+          <p className="text-sm font-bold text-gray-200">{fmtRange(weekStart)}</p>
+          <p className="text-[10px] font-bold text-[#2f9e8f] mt-0.5">
+            {weekOffset === 0 ? "השבוע" : weekOffset === 1 ? "השבוע הבא" : `עוד ${weekOffset} שבועות`}
+            {weekOffset < 0 && (weekOffset === -1 ? "שבוע שעבר" : `לפני ${-weekOffset} שבועות`)}
+          </p>
+        </div>
+        <button onClick={() => setWeekOffset((o) => o + 1)}
+          className="w-8 h-8 flex items-center justify-center text-gray-400 active:text-gray-200">
+          <ChevronLeft size={20} />
+        </button>
       </div>
 
       {/* Day pills */}
@@ -690,7 +712,7 @@ function ScheduleTab({ weekStart, positions, positionsLoading, restId, setPositi
           </button>
         </div>
         <div className="flex items-center gap-2 text-xs text-gray-400">
-          <span>{DAYS[day].full}, {fmtDay(weekStart, day).getDate()} ביוני</span>
+          <span>{DAYS[day].full}, {dayLabel(fmtDay(weekStart, day))}</span>
           <Users size={14} className="text-gray-500" />
         </div>
       </div>
@@ -840,7 +862,7 @@ function AssignSheet({ position, seat, dayKey, weekStart, current, takenIds, ass
           <button onClick={onClose}><X size={22} className="text-gray-400" /></button>
           <div className="text-left flex items-center gap-2">
             <div>
-              <p className="font-black text-gray-100">{DAYS[dayKey].full}, {dd.getDate()} ביוני · {position.name}</p>
+              <p className="font-black text-gray-100">{DAYS[dayKey].full}, {dayLabel(dd)} · {position.name}</p>
               <p className="text-[11px] text-gray-500">מ־<span dir="ltr">{seat.from}</span></p>
             </div>
             <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: position.color }} />
