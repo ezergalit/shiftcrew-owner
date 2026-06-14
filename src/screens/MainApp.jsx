@@ -1091,12 +1091,25 @@ function TasksTab() {
 // reads them through the waiter_access() RPC. Phone is normalized server-side,
 // so any of 054-1234567 / 0541234567 / +972541234567 match the same person.
 
+// Access roles decide what management screens a person unlocks in the TEAM app
+// (phone login). Distinct from the job title above. Kept in sync with the DB
+// check constraint on staff.access_role and with the waiter app's gating.
+const ACCESS_ROLES = [
+  { key: "waiter",       label: "מלצר/ית",        short: "מלצר/ית",   desc: "לימוד תפריט, סידור וזמינות אישיים — בלי ניהול", Icon: User,         color: "#8a8f98", bg: "#1c1e22", bd: "#2a2d34" },
+  { key: "scheduler",    label: "אחראי/ת סידור",   short: "סידור",     desc: "בונה ומפרסם/ת את הסידור השבועי לכל הצוות",     Icon: CalendarDays, color: "#7c5cff", bg: "#241f3a", bd: "#7c5cff" },
+  { key: "menu_manager", label: "אחראי/ת תפריט",   short: "תפריט",     desc: "עורך/ת את התפריט, המנות והשאלות עליהן",          Icon: Utensils,     color: "#ea7317", bg: "#2a2114", bd: "#ea7317" },
+  { key: "admin",        label: "מנהל/ת",          short: "ניהול",     desc: "מוסיף/ה ומסיר/ה אנשי צוות ומשנה הרשאות",         Icon: ShieldCheck,  color: "#2f9e8f", bg: "#15302b", bd: "#2f9e8f" },
+];
+const accessRoleMeta = (k) => ACCESS_ROLES.find((r) => r.key === k) || ACCESS_ROLES[0];
+
 function StaffTab({ restId }) {
   const [staff, setStaff] = useState([]);
   const [loading, setLoading] = useState(true);
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
   const [role, setRole] = useState("מלצר/ית");
+  const [accessRole, setAccessRole] = useState("waiter");
+  const [editRole, setEditRole] = useState(null); // staff id whose role picker is open
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
@@ -1117,7 +1130,7 @@ function StaffTab({ restId }) {
     if (!p || !restId) return;
     setSaving(true); setErr("");
     const { data, error } = await scOwner.from("staff")
-      .insert({ restaurant_id: restId, phone: p, name: name.trim(), role })
+      .insert({ restaurant_id: restId, phone: p, name: name.trim(), role, access_role: accessRole })
       .select("*").single();
     setSaving(false);
     if (error) {
@@ -1125,7 +1138,13 @@ function StaffTab({ restId }) {
       return;
     }
     setStaff((prev) => [data, ...prev]);
-    setPhone(""); setName(""); setRole("מלצר/ית");
+    setPhone(""); setName(""); setRole("מלצר/ית"); setAccessRole("waiter");
+  };
+
+  const setStaffAccessRole = async (s, key) => {
+    setStaff((prev) => prev.map((x) => (x.id === s.id ? { ...x, access_role: key } : x)));
+    const { error } = await scOwner.from("staff").update({ access_role: key }).eq("id", s.id);
+    if (error) { console.error("[shiftcrew] access_role update:", error); load(); }
   };
 
   const toggleActive = async (s) => {
@@ -1156,10 +1175,10 @@ function StaffTab({ restId }) {
           <Smartphone size={14} /> גישה למלצרים — בלי הרשמה
         </div>
         <p className="text-[15px] font-black leading-snug">
-          מוסיף/ה את מספר הטלפון של המלצר/ית — וזהו.
+          מוסיף/ה את מספר הטלפון של איש/אשת הצוות — וזהו.
         </p>
         <p className="text-sm text-white/80 font-semibold mt-1 leading-relaxed">
-          המלצר/ית פותח/ת את אפליקציית ShiftCrew ומקליד/ה את אותו מספר — בלי סיסמה, בלי משתמש. רק מי שהוספת כאן יכול/ה להיכנס.
+          הם פותחים את אפליקציית ShiftCrew ומקלידים את אותו מספר — בלי סיסמה, בלי משתמש. ההרשאה שתבחר/י קובעת מה הם יכולים לנהל: אחראי/ת סידור בונה את הסידור, אחראי/ת תפריט עורך/ת את התפריט, ומנהל/ת מנהל/ת את הצוות.
         </p>
       </div>
 
@@ -1197,6 +1216,30 @@ function StaffTab({ restId }) {
             })}
           </div>
         </div>
+        <div>
+          <p className="text-[11px] font-bold text-gray-500 mb-1.5 px-1">הרשאות באפליקציה</p>
+          <div className="space-y-1.5">
+            {ACCESS_ROLES.map((r) => {
+              const on = accessRole === r.key;
+              return (
+                <button key={r.key} onClick={() => setAccessRole(r.key)}
+                  className={`w-full text-right flex items-center gap-2.5 px-3 py-2 rounded-xl border transition-colors ${
+                    on ? "" : "bg-[#1c1e22] border-[#22252b]"}`}
+                  style={on ? { background: r.bg, borderColor: r.bd } : undefined}>
+                  <span className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ background: on ? r.bd : "#22252b" }}>
+                    <r.Icon size={15} style={{ color: on ? "#fff" : r.color }} />
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[12px] font-black" style={{ color: on ? r.color : "#cbd1d9" }}>{r.label}</span>
+                    <span className="block text-[10px] text-gray-500 leading-tight">{r.desc}</span>
+                  </span>
+                  {on && <Check size={15} style={{ color: r.color }} className="flex-shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         {err && (
           <p className="text-[12px] font-bold text-[#f0788e] flex items-center gap-1.5">
             <AlertTriangle size={13} /> {err}
@@ -1229,24 +1272,50 @@ function StaffTab({ restId }) {
             {staff.map((s) => {
               const display = s.name?.trim() || s.phone;
               const initials = (s.name?.trim() || "?").split(" ").map((w) => w[0]).slice(0, 2).join("");
+              const ar = accessRoleMeta(s.access_role);
+              const open = editRole === s.id;
               return (
-                <div key={s.id} className={`bg-[#191b1f] rounded-2xl p-3.5 flex items-center gap-3 ${!s.active ? "opacity-50" : ""}`}>
-                  <span className="inline-flex items-center justify-center rounded-full text-white font-black flex-shrink-0"
-                    style={{ width: 40, height: 40, fontSize: 15, background: colorFor(s.phone) }}>
-                    {s.name?.trim() ? initials : <Phone size={16} />}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-gray-100 truncate">{display}</p>
-                    <p className="text-[11px] text-gray-400" dir="ltr">{s.phone} · {s.role}</p>
+                <div key={s.id} className={`bg-[#191b1f] rounded-2xl p-3.5 ${!s.active ? "opacity-50" : ""}`}>
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex items-center justify-center rounded-full text-white font-black flex-shrink-0"
+                      style={{ width: 40, height: 40, fontSize: 15, background: colorFor(s.phone) }}>
+                      {s.name?.trim() ? initials : <Phone size={16} />}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-100 truncate">{display}</p>
+                      <p className="text-[11px] text-gray-400" dir="ltr">{s.phone} · {s.role}</p>
+                    </div>
+                    <button onClick={() => toggleActive(s)}
+                      className={`text-[10px] font-black px-2.5 py-1 rounded-full ${
+                        s.active ? "bg-[#15302b] text-[#3fd0bc]" : "bg-[#22252b] text-gray-400"}`}>
+                      {s.active ? "פעיל/ה" : "מושהה"}
+                    </button>
+                    <button onClick={() => remove(s)} className="w-8 h-8 rounded-full bg-[#1c1e22] flex items-center justify-center flex-shrink-0 active:bg-[#22252b]">
+                      <Trash2 size={15} className="text-[#f0788e]" />
+                    </button>
                   </div>
-                  <button onClick={() => toggleActive(s)}
-                    className={`text-[10px] font-black px-2.5 py-1 rounded-full ${
-                      s.active ? "bg-[#15302b] text-[#3fd0bc]" : "bg-[#22252b] text-gray-400"}`}>
-                    {s.active ? "פעיל/ה" : "מושהה"}
+                  {/* Access-role chip — tap to change what this person can manage */}
+                  <button onClick={() => setEditRole(open ? null : s.id)}
+                    className="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-black"
+                    style={{ background: ar.bg, borderColor: ar.bd, color: ar.color }}>
+                    <ar.Icon size={11} /> {ar.label}
+                    <ChevronLeft size={11} className={`transition-transform ${open ? "-rotate-90" : ""}`} />
                   </button>
-                  <button onClick={() => remove(s)} className="w-8 h-8 rounded-full bg-[#1c1e22] flex items-center justify-center flex-shrink-0 active:bg-[#22252b]">
-                    <Trash2 size={15} className="text-[#f0788e]" />
-                  </button>
+                  {open && (
+                    <div className="mt-2 grid grid-cols-2 gap-1.5">
+                      {ACCESS_ROLES.map((r) => {
+                        const on = (s.access_role || "waiter") === r.key;
+                        return (
+                          <button key={r.key}
+                            onClick={() => { setStaffAccessRole(s, r.key); setEditRole(null); }}
+                            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-[10px] font-bold"
+                            style={on ? { background: r.bg, borderColor: r.bd, color: r.color } : { background: "#1c1e22", borderColor: "#22252b", color: "#9aa0a8" }}>
+                            <r.Icon size={12} /> {r.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
