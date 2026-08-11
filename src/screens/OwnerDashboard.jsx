@@ -152,6 +152,16 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     }
   }, [restaurant]);
 
+  // Re-fetch just the menu (used after the paste-a-menu tutorial bulk-inserts dishes
+  // directly via Supabase, bypassing the `items` state entirely — without this, the
+  // Menu tab would show "no dishes yet" right after a successful import).
+  const loadMenuItems = async () => {
+    if (!restaurant?.id) return;
+    const { data, error } = await db.from("menu_items")
+      .select("*").eq("restaurant_id", restaurant.id).order("created_at");
+    if (!error) setItems((data || []).map(dishFromDb));
+  };
+
   // Load menu items + team members + leaderboard + today's brief-reads + brief + managers
   useEffect(() => {
     if (!restaurant?.id) return;
@@ -270,7 +280,8 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     setMenuSetupActive(true);
   };
 
-  const handleMenuSetupDone = (count) => {
+  const handleMenuSetupDone = async (count) => {
+    if (count > 0) await loadMenuItems();
     setMenuSetupActive(false);
     setTab("menu");
     if (count > 0) setShowMenuTip(true);
