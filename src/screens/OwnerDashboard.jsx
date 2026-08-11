@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Home, BookOpen, FileText, Users, Settings, LogOut, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus } from "lucide-react";
+import { Home, BookOpen, FileText, Users, Settings, LogOut, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera } from "lucide-react";
 import CuisineSelector from "../components/CuisineSelector";
 import { supabase } from "../lib/supabase";
 
@@ -96,6 +96,29 @@ function parseMenuText(raw) {
   }
 
   return categories.filter((c) => c.dishes.length > 0);
+}
+
+// Downscale a menu photo client-side before sending it to the AI parser — phone photos
+// are huge, and the model reads a 1568px-wide image just as well as a 4000px one.
+async function downscaleImage(file, maxDim = 1568) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(new Error("קריאת הקובץ נכשלה"));
+    r.readAsDataURL(file);
+  });
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = () => reject(new Error("פענוח התמונה נכשל"));
+    i.src = dataUrl;
+  });
+  const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+  return { media_type: "image/jpeg", data: canvas.toDataURL("image/jpeg", 0.85).split(",")[1] };
 }
 
 export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpdated }) {
@@ -285,8 +308,12 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     setDetails(fromDbRestaurant(updated));
     onRestaurantUpdated?.(updated);
     setOnboarding(false);
-    // Straight into the menu-setup tutorial for a brand-new restaurant with no dishes yet.
-    setMenuSetupActive(true);
+    // Straight into the menu-import tutorial, but only for a restaurant that has no menu
+    // yet. An existing restaurant filling in its profile late (e.g. the fields added after
+    // it was created) must not be dropped into a paste-a-menu screen — anything pasted
+    // there is inserted on top of the dishes it already has.
+    if (items.length === 0) setMenuSetupActive(true);
+    else setTab("menu");
   };
 
   const handleMenuSetupDone = async (count) => {
@@ -839,15 +866,101 @@ function DailyBriefEditor({ draft, onChange, onSave, saving }) {
 }
 
 function MenuSetupTutorial({ restaurant, onDone }) {
-  const [phase, setPhase] = useState("paste"); // paste | review
+  const [phase, setPhase] = useState("paste"); // paste | questions | review
   const [rawText, setRawText] = useState("");
   const [categories, setCategories] = useState([]);
+  const [generalNotes, setGeneralNotes] = useState([]);
+  const [aiQuestions, setAiQuestions] = useState([]);
+  const [answers, setAnswers] = useState({});
+  const [pendingImage, setPendingImage] = useState(null); // kept so the Q&A round-trip re-sends the same photo
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiErr, setAiErr] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const handleParse = () => {
+  const normalizeAiCategories = (cats) =>
+    (cats || [])
+      .map((c) => ({
+        id: crypto.randomUUID(),
+        name: c.name || "כללי",
+        dishes: (c.dishes || []).map((d) => ({
+          id: crypto.randomUUID(),
+          name: d.name || "",
+          price: d.price ?? "",
+          description: d.description || "",
+          ingredients: Array.isArray(d.ingredients) ? d.ingredients : [],
+          allergens: Array.isArray(d.allergens) ? d.allergens : []
+        }))
+      }))
+      .filter((c) => c.dishes.length > 0);
+
+  // One call parses; a second call happens only when the model had a genuine structural
+  // doubt and asked (group-level questions, never dish-by-dish). Runs on Claude Haiku —
+  // a whole menu costs about an agora.
+  const runAi = async (payload) => {
+    setAiBusy(true);
+    setAiErr("");
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/menu-ai-parse`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data?.code === "missing_key") throw new Error("הפענוח החכם עוד לא הופעל — יש להגדיר מפתח ANTHROPIC_API_KEY ב-Supabase (Edge Functions → Secrets).");
+        throw new Error(data?.error || "שגיאה בפענוח");
+      }
+      const cats = normalizeAiCategories(data.categories);
+      setGeneralNotes(Array.isArray(data.generalNotes) ? data.generalNotes : []);
+      if (data.questions?.length > 0 && !payload.qa) {
+        setCategories(cats); // best-effort parse so far; final one comes after the answers
+        setAiQuestions(data.questions);
+        setAnswers({});
+        setPhase("questions");
+      } else {
+        setCategories(cats.length ? cats : [{ id: crypto.randomUUID(), name: "עיקריות", dishes: [] }]);
+        setPhase("review");
+      }
+    } catch (e) {
+      setAiErr(e.message);
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  // Cheap-first: the free price-based parser handles classic menus; the AI only runs
+  // when it comes back thin (e.g. a menu with no prices at all, like a sushi spec sheet).
+  const handleParse = async () => {
     const parsed = parseMenuText(rawText);
-    setCategories(parsed.length ? parsed : [{ id: crypto.randomUUID(), name: "עיקריות", dishes: [] }]);
-    setPhase("review");
+    const dishCount = parsed.reduce((n, c) => n + c.dishes.length, 0);
+    if (dishCount >= 3) {
+      setCategories(parsed.map((c) => ({ ...c, dishes: c.dishes.map((d) => ({ ingredients: [], allergens: [], ...d })) })));
+      setPhase("review");
+      return;
+    }
+    setPendingImage(null);
+    await runAi({ text: rawText });
+  };
+
+  const handlePhoto = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setAiErr("");
+    try {
+      const img = await downscaleImage(file);
+      setPendingImage(img);
+      await runAi({ image: img, text: rawText.trim() || undefined });
+    } catch (err) {
+      setAiErr(err.message);
+    }
+  };
+
+  const handleAnswers = async () => {
+    const qa = aiQuestions
+      .map((q) => ({ question: q.question, answer: (answers[q.id] || "").trim() }))
+      .filter((x) => x.answer);
+    await runAi({ text: rawText.trim() || undefined, image: pendingImage || undefined, qa });
   };
 
   const handleSkip = () => {
@@ -864,7 +977,7 @@ function MenuSetupTutorial({ restaurant, onDone }) {
   const removeDish = (catId, dishId) =>
     setCategories(categories.map((c) => (c.id === catId ? { ...c, dishes: c.dishes.filter((d) => d.id !== dishId) } : c)));
   const addDish = (catId) =>
-    setCategories(categories.map((c) => (c.id === catId ? { ...c, dishes: [...c.dishes, { id: crypto.randomUUID(), name: "", price: 0, description: "" }] } : c)));
+    setCategories(categories.map((c) => (c.id === catId ? { ...c, dishes: [...c.dishes, { id: crypto.randomUUID(), name: "", price: 0, description: "", ingredients: [], allergens: [] }] } : c)));
 
   const totalDishes = categories.reduce((n, c) => n + c.dishes.length, 0);
 
@@ -879,13 +992,20 @@ function MenuSetupTutorial({ restaurant, onDone }) {
           name: d.name.trim(),
           price: Number(d.price) || 0,
           description: d.description || "",
-          allergens: [],
+          ingredients: d.ingredients || [],
+          allergens: d.allergens || [],
           is_special: false
         }))
     );
     if (rows.length > 0) {
       const { error } = await db.from("menu_items").insert(rows);
       if (error) { alert("שמירה נכשלה: " + error.message); setSaving(false); return; }
+    }
+    // Menu-wide notes the parser found (e.g. "טריאקי וסויה — גלוטן") belong in the
+    // service notes the waiter app already shows in its welcome briefing.
+    if (generalNotes.length > 0) {
+      const merged = [restaurant.service_notes, ...generalNotes].filter(Boolean).join("\n");
+      await db.from("restaurants").update({ service_notes: merged }).eq("id", restaurant.id);
     }
     setSaving(false);
     onDone(rows.length);
@@ -898,34 +1018,92 @@ function MenuSetupTutorial({ restaurant, onDone }) {
           <ClipboardPaste size={22} className="text-[#2f9e8f]" />
         </div>
         <h1 className="text-2xl font-black">בואו נייבא את התפריט שלכם</h1>
-        <p className="text-sm text-[#8a8aa0] mt-1">{phase === "paste" ? "שלב 1 מתוך 2" : "שלב 2 מתוך 2"}</p>
+        <p className="text-sm text-[#8a8aa0] mt-1">
+          {phase === "paste" ? "שלב 1 מתוך 2" : phase === "questions" ? "רגע של הבהרה" : "שלב 2 מתוך 2"}
+        </p>
       </div>
 
       {phase === "paste" ? (
         <>
           <div className="flex-1 px-6 py-6 overflow-y-auto space-y-4">
             <p className="text-sm text-[#8a8aa0] leading-relaxed">
-              הדביקו כאן את התפריט שלכם כמו שהוא — שם מנה ומחיר בכל שורה, וכותרות קטגוריה (כמו "ראשונות" או "ראשונות קרות") בשורה נפרדת. נזהה את הקטגוריות והמנות אוטומטית, ותוכלו לתקן הכל במסך הבא לפני שנשמור.
+              הדביקו את התפריט שלכם כמו שהוא — בכל פורמט — או צלמו אותו. נזהה קטגוריות, מנות, מרכיבים ואלרגנים אוטומטית, ואם משהו לא יהיה ברור נשאל אתכם שאלה קצרה במקום לנחש. הכל ניתן לתיקון במסך הבא לפני שמירה.
             </p>
             <textarea
               value={rawText}
               onChange={(e) => setRawText(e.target.value)}
               placeholder={"ראשונות\nחומוס 32\nסלט יווני 38\n\nעיקריות\nפילה סלמון 78\nאנטריקוט 120"}
               className="w-full bg-[#16181c] border border-[#22252b] rounded-xl px-3 py-3 text-[#eef0f6] placeholder:text-[#8a8aa0] focus:outline-none focus:border-[#6d5efc] resize-none font-mono text-sm"
-              rows="12"
+              rows="10"
               dir="rtl"
             />
+            {aiErr && <p className="text-xs font-bold text-[#e0315a] flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" /> {aiErr}</p>}
+            {aiBusy && <p className="text-xs font-bold text-[#a79bff]">מפענח את התפריט... זה לוקח כמה שניות</p>}
           </div>
           <div className="px-6 pb-6 space-y-3 border-t border-[#22252b] pt-4">
             <button
               onClick={handleParse}
-              disabled={!rawText.trim()}
+              disabled={!rawText.trim() || aiBusy}
               className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-lg hover:bg-[#5b4ef0] transition disabled:opacity-40"
             >
-              פענוח אוטומטי
+              {aiBusy ? "מפענח..." : "פענוח אוטומטי"}
             </button>
-            <button onClick={handleSkip} className="w-full bg-[#22252b] text-[#8a8aa0] font-bold py-3 rounded-lg hover:bg-[#2c2e35] transition">
+            <label className={`w-full bg-[#22252b] text-[#eef0f6] font-bold py-3 rounded-lg hover:bg-[#2c2e35] transition flex items-center justify-center gap-2 cursor-pointer ${aiBusy ? "opacity-40 pointer-events-none" : ""}`}>
+              <Camera size={16} /> צילום של התפריט
+              <input type="file" accept="image/*" onChange={handlePhoto} className="hidden" />
+            </label>
+            <button onClick={handleSkip} disabled={aiBusy} className="w-full bg-[#22252b] text-[#8a8aa0] font-bold py-3 rounded-lg hover:bg-[#2c2e35] transition disabled:opacity-40">
               אמלא ידנית בעצמי
+            </button>
+          </div>
+        </>
+      ) : phase === "questions" ? (
+        <>
+          <div className="flex-1 px-6 py-6 overflow-y-auto space-y-4">
+            <p className="text-sm text-[#8a8aa0] leading-relaxed">
+              כמעט סיימנו — כדי לא לנחש, יש לנו {aiQuestions.length === 1 ? "שאלה קצרה אחת" : `${aiQuestions.length} שאלות קצרות`}:
+            </p>
+            {aiQuestions.map((q) => (
+              <div key={q.id} className="bg-[#16181c] border border-[#22252b] rounded-xl p-3 space-y-2">
+                <p className="text-sm font-bold text-[#eef0f6] leading-relaxed">{q.question}</p>
+                <div className="flex flex-wrap gap-2">
+                  {(q.options || []).map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setAnswers({ ...answers, [q.id]: opt })}
+                      className={`text-xs font-bold px-3 py-2 rounded-full border transition ${
+                        answers[q.id] === opt
+                          ? "bg-[#6d5efc]/15 border-[#6d5efc] text-[#a79bff]"
+                          : "bg-[#0c0d10] border-[#22252b] text-[#8a8aa0] hover:border-[#3a3d45]"
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={(q.options || []).includes(answers[q.id]) ? "" : answers[q.id] || ""}
+                  onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
+                  placeholder="או כתבו תשובה משלכם..."
+                  className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-3 py-2 text-[#eef0f6] placeholder:text-[#8a8aa0] focus:outline-none focus:border-[#6d5efc] text-xs"
+                  dir="rtl"
+                />
+              </div>
+            ))}
+            {aiErr && <p className="text-xs font-bold text-[#e0315a] flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" /> {aiErr}</p>}
+          </div>
+          <div className="px-6 pb-6 space-y-3 border-t border-[#22252b] pt-4">
+            <button
+              onClick={handleAnswers}
+              disabled={aiBusy || !aiQuestions.every((q) => (answers[q.id] || "").trim())}
+              className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-lg hover:bg-[#5b4ef0] transition disabled:opacity-40"
+            >
+              {aiBusy ? "מפענח..." : "המשך לפענוח סופי"}
+            </button>
+            <button onClick={() => setPhase("review")} disabled={aiBusy} className="w-full bg-[#22252b] text-[#8a8aa0] font-bold py-3 rounded-lg hover:bg-[#2c2e35] transition disabled:opacity-40">
+              דלגו — אסדר בעצמי במסך הבא
             </button>
           </div>
         </>
@@ -948,22 +1126,31 @@ function MenuSetupTutorial({ restaurant, onDone }) {
                 </div>
                 <div className="space-y-1.5">
                   {cat.dishes.map((d) => (
-                    <div key={d.id} className="flex items-center gap-1.5">
-                      <input
-                        type="text"
-                        value={d.name}
-                        onChange={(e) => updateDish(cat.id, d.id, { name: e.target.value })}
-                        placeholder="שם המנה"
-                        className="flex-1 bg-[#0c0d10] border border-[#22252b] rounded-lg px-2.5 py-1.5 text-[#eef0f6] placeholder:text-[#8a8aa0] focus:outline-none focus:border-[#6d5efc] text-xs"
-                        dir="rtl"
-                      />
-                      <input
-                        type="number"
-                        value={d.price}
-                        onChange={(e) => updateDish(cat.id, d.id, { price: e.target.value })}
-                        className="w-16 bg-[#0c0d10] border border-[#22252b] rounded-lg px-2 py-1.5 text-[#eef0f6] focus:outline-none focus:border-[#6d5efc] text-xs"
-                      />
-                      <button onClick={() => removeDish(cat.id, d.id)} className="text-[#8a8aa0] p-1"><X size={14} /></button>
+                    <div key={d.id} className="space-y-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={d.name}
+                          onChange={(e) => updateDish(cat.id, d.id, { name: e.target.value })}
+                          placeholder="שם המנה"
+                          className="flex-1 bg-[#0c0d10] border border-[#22252b] rounded-lg px-2.5 py-1.5 text-[#eef0f6] placeholder:text-[#8a8aa0] focus:outline-none focus:border-[#6d5efc] text-xs"
+                          dir="rtl"
+                        />
+                        <input
+                          type="number"
+                          value={d.price}
+                          onChange={(e) => updateDish(cat.id, d.id, { price: e.target.value })}
+                          className="w-16 bg-[#0c0d10] border border-[#22252b] rounded-lg px-2 py-1.5 text-[#eef0f6] focus:outline-none focus:border-[#6d5efc] text-xs"
+                        />
+                        <button onClick={() => removeDish(cat.id, d.id)} className="text-[#8a8aa0] p-1"><X size={14} /></button>
+                      </div>
+                      {(d.description || d.ingredients?.length > 0 || d.allergens?.length > 0) && (
+                        <p className="text-[10px] text-[#8a8aa0] px-1 leading-relaxed">
+                          {d.description}
+                          {d.ingredients?.length > 0 && (d.description ? " · " : "") + "מרכיבים: " + d.ingredients.join(", ")}
+                          {d.allergens?.length > 0 && <span className="text-[#ff6b8f]"> · אלרגנים: {d.allergens.join(", ")}</span>}
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -973,6 +1160,14 @@ function MenuSetupTutorial({ restaurant, onDone }) {
             <button onClick={addCategory} className="w-full text-xs font-bold text-[#8a8aa0] border border-dashed border-[#22252b] rounded-lg py-2 hover:border-[#3a3d45] transition">
               + הוסף קטגוריה
             </button>
+            {generalNotes.length > 0 && (
+              <div className="bg-[#6d5efc]/10 border border-[#6d5efc]/40 rounded-xl p-3 space-y-1">
+                <p className="text-xs font-bold text-[#a79bff]">דגשים כלליים שנמצאו בתפריט (יתווספו להערות השירות לצוות):</p>
+                {generalNotes.map((n, i) => (
+                  <p key={i} className="text-[11px] text-[#8a8aa0] leading-relaxed">• {n}</p>
+                ))}
+              </div>
+            )}
           </div>
           <div className="px-6 pb-6 space-y-2 border-t border-[#22252b] pt-4">
             <button
