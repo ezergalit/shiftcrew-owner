@@ -37,8 +37,11 @@ export default function App() {
       if (!session?.restaurantId) { localStorage.removeItem(SESSION_KEY); if (alive) setPhase("login"); return; }
 
       try {
+        // maybeSingle, not single: a missing row here just means the saved session is
+        // stale (restaurant deleted), which we handle by returning to login — it is not
+        // an error worth throwing on.
         const { data, error } = await db.from("restaurants")
-          .select(RESTAURANT_COLUMNS).eq("id", session.restaurantId).single();
+          .select(RESTAURANT_COLUMNS).eq("id", session.restaurantId).maybeSingle();
         if (error || !data) { localStorage.removeItem(SESSION_KEY); if (alive) setPhase("login"); return; }
         if (alive) { setRestaurant(data); setPhase("app"); }
       } catch {

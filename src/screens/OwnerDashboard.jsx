@@ -238,15 +238,18 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     };
 
     if (editingItem.id) {
-      const { data, error } = await db.from("menu_items")
-        .update(payload).eq("id", editingItem.id).select().single();
+      const { error } = await db.from("menu_items").update(payload).eq("id", editingItem.id);
       if (error) { alert("שמירה נכשלה: " + error.message); return; }
-      setItems(items.map((i) => (i.id === editingItem.id ? dishFromDb(data) : i)));
+      setItems(items.map((i) => (i.id === editingItem.id ? { ...i, ...dishFromDb({ ...payload, id: editingItem.id }) } : i)));
     } else {
-      const { data, error } = await db.from("menu_items")
-        .insert(payload).select().single();
+      // The insert genuinely needs the generated id back, but take the first row rather
+      // than `.single()` so an unexpected empty response degrades into a refetch instead
+      // of a cryptic coerce error.
+      const { data, error } = await db.from("menu_items").insert(payload).select();
       if (error) { alert("שמירה נכשלה: " + error.message); return; }
-      setItems([...items, dishFromDb(data)]);
+      const row = data?.[0];
+      if (row) setItems([...items, dishFromDb(row)]);
+      else await loadMenuItems();
     }
     setEditingItem(null);
     setShowAddForm(false);
@@ -258,23 +261,29 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     setItems(items.filter((item) => item.id !== id));
   };
 
+  // NOTE: these deliberately do NOT use `.select(...).single()` after the update.
+  // `.single()` throws "Cannot coerce the result to a single JSON object" whenever the
+  // UPDATE returns zero rows for *any* reason, which surfaced to owners as an opaque
+  // "שמירה נכשלה" that stranded them mid-onboarding even though the write had gone
+  // through. The patch is already known client-side, so merge it locally instead of
+  // depending on a round-trip that can come back empty.
   const handleSaveDetails = async () => {
     const patch = toDbRestaurantPatch(detailsForm);
-    const { data, error } = await db.from("restaurants")
-      .update(patch).eq("id", restaurant.id).select(RESTAURANT_COLUMNS).single();
+    const { error } = await db.from("restaurants").update(patch).eq("id", restaurant.id);
     if (error) { alert("שמירה נכשלה: " + error.message); return; }
-    setDetails(fromDbRestaurant(data));
+    const updated = { ...restaurant, ...patch };
+    setDetails(fromDbRestaurant(updated));
     setEditingDetails(false);
-    onRestaurantUpdated?.(data);
+    onRestaurantUpdated?.(updated);
   };
 
   const handleCompleteOnboarding = async () => {
     const patch = { ...toDbRestaurantPatch(onboardingForm), onboarding_completed: true };
-    const { data, error } = await db.from("restaurants")
-      .update(patch).eq("id", restaurant.id).select(RESTAURANT_COLUMNS).single();
+    const { error } = await db.from("restaurants").update(patch).eq("id", restaurant.id);
     if (error) { alert("שמירה נכשלה: " + error.message); return; }
-    setDetails(fromDbRestaurant(data));
-    onRestaurantUpdated?.(data);
+    const updated = { ...restaurant, ...patch };
+    setDetails(fromDbRestaurant(updated));
+    onRestaurantUpdated?.(updated);
     setOnboarding(false);
     // Straight into the menu-setup tutorial for a brand-new restaurant with no dishes yet.
     setMenuSetupActive(true);
@@ -299,11 +308,11 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       notes: briefDraft.notes,
       updated_at: new Date().toISOString()
     };
-    const { data, error } = await db.from("daily_brief")
-      .upsert(patch, { onConflict: "restaurant_id,date" }).select().single();
+    const { error } = await db.from("daily_brief")
+      .upsert(patch, { onConflict: "restaurant_id,date" });
     setSavingBrief(false);
     if (error) { alert("שמירה נכשלה: " + error.message); return; }
-    setDailyBrief(data);
+    setDailyBrief(patch);
   };
 
   const handleAddManager = async () => {

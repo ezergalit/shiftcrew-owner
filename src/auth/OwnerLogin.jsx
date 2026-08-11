@@ -20,6 +20,7 @@ export default function OwnerLogin({ onGranted }) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
+  const [newCode, setNewCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -60,8 +61,13 @@ export default function OwnerLogin({ onGranted }) {
     } else {
       // Create new restaurant — fully open self-serve, no admin gate.
       try {
-        if (!name.trim() || !password.trim()) {
-          setErr("חובה למלא שם מסעדה וסיסמא.");
+        if (!name.trim() || !password.trim() || !newCode.trim()) {
+          setErr("חובה למלא שם מסעדה, קוד כניסה וסיסמא.");
+          setBusy(false);
+          return;
+        }
+        if (!/^[A-Za-z0-9]{4,12}$/.test(newCode.trim())) {
+          setErr("קוד הכניסה: 4-12 תווים, אותיות באנגלית וספרות בלבד.");
           setBusy(false);
           return;
         }
@@ -72,7 +78,8 @@ export default function OwnerLogin({ onGranted }) {
         }
         const { data, error } = await db.rpc("create_restaurant_account", {
           p_name: name.trim(),
-          p_password: password
+          p_password: password,
+          p_owner_code: newCode.trim().toUpperCase()
         });
         if (error) {
           console.error("Creation error:", error);
@@ -152,6 +159,15 @@ export default function OwnerLogin({ onGranted }) {
                   className="w-full bg-[#0c0d10] border border-[#22252b] rounded-2xl px-3.5 py-3 text-sm font-bold text-[#eef0f6] text-right placeholder:text-[#b4b4c4] focus:outline-none focus:border-[#6d5efc]" />
               </div>
               <div>
+                <p className="text-[12px] font-bold text-[#8a8aa0] mb-1.5 px-1">קוד כניסה — בחרו קוד שתזכרו</p>
+                <input value={newCode} onChange={(e) => setNewCode(e.target.value)}
+                  placeholder="לדוגמה: SALON2026" dir="ltr" autoComplete="off" autoCapitalize="characters"
+                  className="w-full bg-[#0c0d10] border border-[#22252b] rounded-2xl px-3.5 py-3 text-sm font-bold text-[#eef0f6] text-center placeholder:text-[#b4b4c4] focus:outline-none focus:border-[#6d5efc]" />
+                <p className="text-[11px] text-[#8a8aa0] mt-1.5 px-1 leading-relaxed">
+                  זה הקוד שתקלידו כדי להיכנס בפעם הבאה — 4-12 אותיות באנגלית וספרות.
+                </p>
+              </div>
+              <div>
                 <p className="text-[12px] font-bold text-[#8a8aa0] mb-1.5 px-1">סיסמא של בעלים</p>
                 <div className="relative">
                   <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
@@ -163,9 +179,9 @@ export default function OwnerLogin({ onGranted }) {
                 </div>
               </div>
               {err && <p className="text-xs font-bold text-[#e0315a] flex items-center gap-1.5"><AlertTriangle size={14} /> {err}</p>}
-              <button type="submit" disabled={!name.trim() || !password.trim() || busy}
+              <button type="submit" disabled={!name.trim() || !password.trim() || !newCode.trim() || busy}
                 className={`w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 transition-colors ${
-                  name.trim() && password.trim() && !busy ? "bg-[#6d5efc] text-white active:bg-[#5b4ef0] shadow-[0_6px_18px_rgba(109,94,252,0.35)]" : "bg-[#22252b] text-[#b4b4c4] cursor-not-allowed"
+                  name.trim() && password.trim() && newCode.trim() && !busy ? "bg-[#6d5efc] text-white active:bg-[#5b4ef0] shadow-[0_6px_18px_rgba(109,94,252,0.35)]" : "bg-[#22252b] text-[#b4b4c4] cursor-not-allowed"
                 }`}>
                 {busy ? <><Loader2 size={18} className="animate-spin" /> יוצר</> : "יצירה"}
               </button>
