@@ -1,12 +1,24 @@
 import { useState } from "react";
-import { ChefHat, ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
+import { ChefHat, Loader2, AlertTriangle, Eye, EyeOff } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 const SESSION_KEY = "menu-app-owner-session";
+const db = supabase.schema("menu_app");
+
+function toSession(restaurant) {
+  return {
+    restaurantId: restaurant.id,
+    restaurantName: restaurant.name,
+    ownerCode: restaurant.owner_code,
+    teamCode: restaurant.team_code
+  };
+}
 
 export default function OwnerLogin({ onGranted }) {
   const [mode, setMode] = useState("enter"); // enter | create
   const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -18,35 +30,63 @@ export default function OwnerLogin({ onGranted }) {
 
     if (mode === "enter") {
       try {
-        const { data, error } = await supabase.schema("menu_app")
-          .from("restaurants").select("id, name, owner_code").eq("owner_code", code.trim()).single();
-        if (error || !data) {
-          setErr("קוד לא נמצא. בדוק/י ונסה/י שוב.");
+        if (!code.trim() || !password.trim()) {
+          setErr("חובה למלא קוד וסיסמא.");
           setBusy(false);
           return;
         }
-        const session = { restaurantId: data.id, restaurantName: data.name, ownerCode: data.owner_code };
-        localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-        onGranted(data);
+        const { data, error } = await db.rpc("verify_owner_login", {
+          p_owner_code: code.trim(),
+          p_password: password
+        });
+        if (error) {
+          console.error("Login error:", error);
+          setErr("משהו השתבש. נסה/י שוב.");
+          setBusy(false);
+          return;
+        }
+        const restaurant = data?.[0];
+        if (!restaurant) {
+          setErr("קוד או סיסמא שגויים.");
+          setBusy(false);
+          return;
+        }
+        localStorage.setItem(SESSION_KEY, JSON.stringify(toSession(restaurant)));
+        onGranted(restaurant);
       } catch (e2) {
-        console.error(e2);
+        console.error("Login error:", e2);
         setErr("משהו השתבש. נסה/י שוב.");
       } finally { setBusy(false); }
     } else {
-      // Create new restaurant
+      // Create new restaurant — fully open self-serve, no admin gate.
       try {
-        const ownerCode = Math.random().toString(36).slice(2, 8).toUpperCase();
-        const teamCode = Math.random().toString(36).slice(2, 8).toUpperCase();
-        const { data, error } = await supabase.schema("menu_app")
-          .from("restaurants").insert({ name: name.trim(), owner_code: ownerCode, team_code: teamCode })
-          .select("id, name, owner_code").single();
-        if (error) throw error;
-        const session = { restaurantId: data.id, restaurantName: data.name, ownerCode: data.owner_code };
-        localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-        onGranted(data);
+        if (!name.trim() || !password.trim()) {
+          setErr("חובה למלא שם מסעדה וסיסמא.");
+          setBusy(false);
+          return;
+        }
+        if (password.length < 4) {
+          setErr("סיסמא חייבת להיות לפחות 4 תווים.");
+          setBusy(false);
+          return;
+        }
+        const { data, error } = await db.rpc("create_restaurant_account", {
+          p_name: name.trim(),
+          p_password: password
+        });
+        if (error) {
+          console.error("Creation error:", error);
+          throw new Error(error.message || "Failed to create restaurant");
+        }
+        const restaurant = data?.[0];
+        if (!restaurant) {
+          throw new Error("No data returned from create");
+        }
+        localStorage.setItem(SESSION_KEY, JSON.stringify(toSession(restaurant)));
+        onGranted(restaurant);
       } catch (e2) {
-        console.error(e2);
-        setErr("יצירה נכשלה. נסה/י שוב.");
+        console.error("Creation error:", e2?.message || JSON.stringify(e2));
+        setErr("יצירה נכשלה: " + (e2?.message || "שגיאה לא ידועה"));
       } finally { setBusy(false); }
     }
   };
@@ -84,10 +124,21 @@ export default function OwnerLogin({ onGranted }) {
                   placeholder="לדוגמה: ABC123" dir="ltr" autoComplete="off"
                   className="w-full bg-[#0c0d10] border border-[#22252b] rounded-2xl px-3.5 py-3 text-sm font-bold text-[#eef0f6] text-center placeholder:text-[#b4b4c4] focus:outline-none focus:border-[#6d5efc]" />
               </div>
+              <div>
+                <p className="text-[12px] font-bold text-[#8a8aa0] mb-1.5 px-1">סיסמא</p>
+                <div className="relative">
+                  <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••" autoComplete="off"
+                    className="w-full bg-[#0c0d10] border border-[#22252b] rounded-2xl px-3.5 py-3 text-sm font-bold text-[#eef0f6] text-center placeholder:text-[#b4b4c4] focus:outline-none focus:border-[#6d5efc]" />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-3 top-3 text-[#8a8aa0]">
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
               {err && <p className="text-xs font-bold text-[#e0315a] flex items-center gap-1.5"><AlertTriangle size={14} /> {err}</p>}
-              <button type="submit" disabled={!code.trim() || busy}
+              <button type="submit" disabled={!code.trim() || !password.trim() || busy}
                 className={`w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 transition-colors ${
-                  code.trim() && !busy ? "bg-[#6d5efc] text-white active:bg-[#5b4ef0] shadow-[0_6px_18px_rgba(109,94,252,0.35)]" : "bg-[#22252b] text-[#b4b4c4] cursor-not-allowed"
+                  code.trim() && password.trim() && !busy ? "bg-[#6d5efc] text-white active:bg-[#5b4ef0] shadow-[0_6px_18px_rgba(109,94,252,0.35)]" : "bg-[#22252b] text-[#b4b4c4] cursor-not-allowed"
                 }`}>
                 {busy ? <><Loader2 size={18} className="animate-spin" /> בדוק</> : "הכנסה"}
               </button>
@@ -100,10 +151,21 @@ export default function OwnerLogin({ onGranted }) {
                   placeholder="המסעדה שלי" dir="rtl"
                   className="w-full bg-[#0c0d10] border border-[#22252b] rounded-2xl px-3.5 py-3 text-sm font-bold text-[#eef0f6] text-right placeholder:text-[#b4b4c4] focus:outline-none focus:border-[#6d5efc]" />
               </div>
+              <div>
+                <p className="text-[12px] font-bold text-[#8a8aa0] mb-1.5 px-1">סיסמא של בעלים</p>
+                <div className="relative">
+                  <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••" autoComplete="off"
+                    className="w-full bg-[#0c0d10] border border-[#22252b] rounded-2xl px-3.5 py-3 text-sm font-bold text-[#eef0f6] text-center placeholder:text-[#b4b4c4] focus:outline-none focus:border-[#6d5efc]" />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-3 top-3 text-[#8a8aa0]">
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
               {err && <p className="text-xs font-bold text-[#e0315a] flex items-center gap-1.5"><AlertTriangle size={14} /> {err}</p>}
-              <button type="submit" disabled={!name.trim() || busy}
+              <button type="submit" disabled={!name.trim() || !password.trim() || busy}
                 className={`w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 transition-colors ${
-                  name.trim() && !busy ? "bg-[#6d5efc] text-white active:bg-[#5b4ef0] shadow-[0_6px_18px_rgba(109,94,252,0.35)]" : "bg-[#22252b] text-[#b4b4c4] cursor-not-allowed"
+                  name.trim() && password.trim() && !busy ? "bg-[#6d5efc] text-white active:bg-[#5b4ef0] shadow-[0_6px_18px_rgba(109,94,252,0.35)]" : "bg-[#22252b] text-[#b4b4c4] cursor-not-allowed"
                 }`}>
                 {busy ? <><Loader2 size={18} className="animate-spin" /> יוצר</> : "יצירה"}
               </button>
