@@ -140,6 +140,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // Team
   const [teamMembers, setTeamMembers] = useState([]);
   const [leaderboardByMember, setLeaderboardByMember] = useState({});
+  const [progressByMember, setProgressByMember] = useState({}); // id -> [{source_item_id, mastery}]
   const [briefReadsToday, setBriefReadsToday] = useState(new Set());
 
   // Daily brief
@@ -205,6 +206,24 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
         const map = {};
         lbData.forEach((r) => { map[r.team_member_id] = r; });
         setLeaderboardByMember(map);
+      }
+
+      // Per-dish scores, straight from menu_progress. leaderboard only stores a COUNT of
+      // dishes past the 4/5 pass mark, which misreads how much someone actually knows:
+      // nine dishes at exactly 4 (56%) outranks eight dishes at 5 (75%). It also can't say
+      // *which* dishes they're getting wrong. Both of those are what the owner needs.
+      const memberIds = (teamData || []).map((m) => m.id);
+      if (memberIds.length) {
+        const { data: progData } = await db.from("menu_progress")
+          .select("team_member_id, source_item_id, mastery")
+          .in("team_member_id", memberIds);
+        if (alive && progData) {
+          const map = {};
+          progData.forEach((r) => {
+            (map[r.team_member_id] ||= []).push(r);
+          });
+          setProgressByMember(map);
+        }
       }
 
       const { data: readsData } = await db.from("daily_brief_reads")
@@ -702,12 +721,48 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                     const lb = leaderboardByMember[member.id];
                     const didChallenge = lb?.last_study_date === today && (lb?.today_count || 0) >= 3;
                     const readBrief = briefReadsToday.has(member.id);
+
+                    // Same measure the waiter app shows: earned score over available score,
+                    // across the whole menu. A dish never studied counts as 0, so this is
+                    // "how much of the menu do they actually know", not "how many did they pass".
+                    const rows = progressByMember[member.id] || [];
+                    const byItem = Object.fromEntries(rows.map((r) => [r.source_item_id, r.mastery ?? 0]));
+                    const pct = items.length
+                      ? Math.round((items.reduce((s, it) => s + (byItem[it.id] || 0), 0) / (items.length * 5)) * 100)
+                      : 0;
+                    // Dishes they've actually answered wrong (2 or below), named — so the
+                    // owner knows what to send them back to study, not just that they're low.
+                    const weak = items.filter((it) => byItem[it.id] > 0 && byItem[it.id] <= 2);
+                    const untouched = items.filter((it) => !byItem[it.id]).length;
+                    const pctColor = pct >= 80 ? "#22c08c" : pct >= 50 ? "#f3a712" : "#e0315a";
+
                     return (
                       <div key={member.id} className="bg-[#16181c] rounded-lg p-3 border border-[#22252b]">
                         <div className="flex items-center justify-between mb-2">
                           <p className="font-bold text-[#eef0f6]">{member.name}</p>
-                          <p className="text-xs text-[#8a8aa0]">{lb?.mastered_count || 0} מנות נלמדו</p>
+                          <div className="text-left">
+                            <p className="text-lg font-black leading-none" style={{ color: pctColor }}>{pct}%</p>
+                            <p className="text-[10px] text-[#8a8aa0] mt-0.5">{lb?.mastered_count || 0}/{items.length} מנות נלמדו</p>
+                          </div>
                         </div>
+
+                        <div className="h-1.5 bg-[#22252b] rounded-full overflow-hidden mb-2">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pctColor }} />
+                        </div>
+
+                        {weak.length > 0 && (
+                          <div className="bg-[#3a1d22] border border-[#e0315a]/30 rounded-lg p-2 mb-2">
+                            <p className="text-[10px] font-black text-[#e0315a] mb-0.5">טועה ב-{weak.length} מנות</p>
+                            <p className="text-[11px] text-[#eef0f6] leading-snug">
+                              {weak.slice(0, 4).map((it) => it.name).join(", ")}
+                              {weak.length > 4 ? ` ועוד ${weak.length - 4}` : ""}
+                            </p>
+                          </div>
+                        )}
+                        {untouched > 0 && (
+                          <p className="text-[10px] text-[#8a8aa0] mb-2">עוד לא למד/ה {untouched} מנות</p>
+                        )}
+
                         <div className="flex gap-2">
                           <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${didChallenge ? "bg-[#1aa376]/15 text-[#22c08c]" : "bg-[#22252b] text-[#8a8aa0]"}`}>
                             {didChallenge ? "✓ אתגר יומי הושלם" : "אתגר יומי לא הושלם"}
