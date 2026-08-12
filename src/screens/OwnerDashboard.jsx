@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { Home, BookOpen, FileText, Users, Settings, LogOut, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera } from "lucide-react";
 import CuisineSelector from "../components/CuisineSelector";
 import LearningPathSettings from "../components/LearningPathSettings";
+import ProgressChart from "../components/ProgressChart";
+import MenuHealthReview from "../components/MenuHealthReview";
 import { supabase } from "../lib/supabase";
 
 const db = supabase.schema("menu_app");
@@ -152,6 +154,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const [leaderboardByMember, setLeaderboardByMember] = useState({});
   const [progressByMember, setProgressByMember] = useState({}); // id -> [{source_item_id, mastery}]
   const [examsByMember, setExamsByMember] = useState({}); // id -> [{category, score, passed, taken_at}]
+  const [snapshotsByMember, setSnapshotsByMember] = useState({}); // id -> [{taken_at, pct}]
   const [briefReadsToday, setBriefReadsToday] = useState(new Set());
 
   // Daily brief
@@ -234,6 +237,18 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             (map[r.team_member_id] ||= []).push(r);
           });
           setProgressByMember(map);
+        }
+
+        // Measurement points over time, for the improvement chart. Ordered oldest-first so
+        // the chart can plot them without sorting again.
+        const { data: snapData } = await db.from("progress_snapshots")
+          .select("team_member_id, taken_at, pct")
+          .in("team_member_id", memberIds)
+          .order("taken_at", { ascending: true });
+        if (alive && snapData) {
+          const map = {};
+          snapData.forEach((r) => { (map[r.team_member_id] ||= []).push(r); });
+          setSnapshotsByMember(map);
         }
       }
 
@@ -776,6 +791,15 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                           <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pctColor }} />
                         </div>
 
+                        {/* Where they started vs where they are — a 55% who began at 15%
+                            is a different story from a 55% who began at 60%. */}
+                        <ProgressChart
+                          baseline={member.baseline_pct}
+                          current={pct}
+                          seconds={member.total_seconds}
+                          snapshots={snapshotsByMember[member.id]}
+                        />
+
                         {weak.length > 0 && (
                           <div className="bg-[#3a1d22] border border-[#e0315a]/30 rounded-lg p-2 mb-2">
                             <p className="text-[10px] font-black text-[#e0315a] mb-0.5">טועה ב-{weak.length} מנות</p>
@@ -833,6 +857,10 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
         {tab === "settings" && (
           <div className="space-y-4">
+            {/* Fixing the menu comes before configuring what to test on it: what this
+                screen reports missing is exactly what limits the questions below. */}
+            <MenuHealthReview items={items} categories={existingCategories} onChanged={loadMenuItems} />
+
             {/* What the team is tested on and how the path is paced. Lives above the
                 account admin because it is the thing an owner comes here to change. */}
             <LearningPathSettings restaurant={restaurant} items={items} />
