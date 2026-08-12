@@ -907,7 +907,7 @@ function MenuSetupTutorial({ restaurant, onDone }) {
       });
       const data = await res.json();
       if (!res.ok) {
-        if (data?.code === "missing_key") throw new Error("הפענוח החכם עוד לא הופעל — יש להגדיר מפתח ANTHROPIC_API_KEY ב-Supabase (Edge Functions → Secrets).");
+        if (data?.code === "missing_key") throw new Error("הפענוח החכם עוד לא הופעל — יש להגדיר מפתח AI ב-Supabase (Edge Functions → Secrets): ANTHROPIC_API_KEY או OPENROUTER_API_KEY.");
         throw new Error(data?.error || "שגיאה בפענוח");
       }
       const cats = normalizeAiCategories(data.categories);
