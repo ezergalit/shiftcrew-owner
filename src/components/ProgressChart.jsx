@@ -26,7 +26,9 @@ export default function ProgressChart({ baseline, current, seconds, snapshots })
   // The live figure is always the last point, so the chart can't disagree with the big
   // number on the card above it.
   const series = points.length ? [...points, { t: Date.now(), pct: current }] : [];
-  const hasBaseline = Number.isFinite(Number(baseline));
+  // Number(null) is 0 and 0 is finite, so a waiter who never sat the intake used to be
+  // shown as "started at 0%" — and credited with inventing all of their progress.
+  const hasBaseline = baseline != null && baseline !== "" && Number.isFinite(Number(baseline));
   const start = hasBaseline ? Number(baseline) : series[0]?.pct;
   const delta = Number.isFinite(start) ? Math.round(current - start) : null;
 
@@ -85,7 +87,9 @@ export default function ProgressChart({ baseline, current, seconds, snapshots })
 
       <div className="flex items-center justify-between mt-1.5 text-[10px]">
         <span className="text-[#8a8aa0]">
-          {hasBaseline ? <>התחיל/ה ב-<span className="font-bold text-[#c4c4d4]">{Math.round(start)}%</span></> : "ללא נקודת פתיחה"}
+          {hasBaseline
+            ? <>התחיל/ה ב-<span className="font-bold text-[#c4c4d4]">{Math.round(start)}%</span></>
+            : "לא עשה/תה מבחן היכרות"}
         </span>
         <span className="text-[#8a8aa0] flex items-center gap-1">
           <Clock size={10} /> {fmtDuration(seconds)}
