@@ -46,6 +46,11 @@ function dishFromDb(row) {
 
 const ALLERGENS = ["גלוטן", "חלב", "ביצים", "אגוזים", "בוטנים", "דגים", "רכיכות", "סויה", "שומשום"];
 
+// exam_results.category stores whatever the menu uses. Older seeded menus use these fixed
+// English keys; menus built through the paste/AI import use free-text Hebrew names, which
+// need no translation and fall through unchanged.
+const CAT_LABELS = { starters: "ראשונות", mains: "עיקריות", desserts: "קינוחים", drinks: "שתייה" };
+
 // Service style / hospitality tone — phrased respectfully, no value judgment ("cheap" vs "expensive"),
 // just how formal vs. relaxed the team's approach to guests should feel.
 const SERVICE_STYLES = [
@@ -141,6 +146,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const [teamMembers, setTeamMembers] = useState([]);
   const [leaderboardByMember, setLeaderboardByMember] = useState({});
   const [progressByMember, setProgressByMember] = useState({}); // id -> [{source_item_id, mastery}]
+  const [examsByMember, setExamsByMember] = useState({}); // id -> [{category, score, passed, taken_at}]
   const [briefReadsToday, setBriefReadsToday] = useState(new Set());
 
   // Daily brief
@@ -224,6 +230,19 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           });
           setProgressByMember(map);
         }
+      }
+
+      // Exam history — one row per completed attempt. Separate from menu_progress because
+      // that only holds the current per-dish score; this is what shows whether someone
+      // passed, when, and whether they keep failing the same category.
+      const { data: examData } = await db.from("exam_results")
+        .select("team_member_id, category, score, passed, taken_at")
+        .eq("restaurant_id", restaurant.id)
+        .order("taken_at", { ascending: false });
+      if (alive && examData) {
+        const map = {};
+        examData.forEach((r) => { (map[r.team_member_id] ||= []).push(r); });
+        setExamsByMember(map);
       }
 
       const { data: readsData } = await db.from("daily_brief_reads")
@@ -761,6 +780,31 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                         )}
                         {untouched > 0 && (
                           <p className="text-[10px] text-[#8a8aa0] mb-2">עוד לא למד/ה {untouched} מנות</p>
+                        )}
+
+                        {(examsByMember[member.id] || []).length > 0 && (
+                          <div className="mb-2">
+                            <p className="text-[10px] font-bold text-[#8a8aa0] mb-1">מבחנים</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {/* Latest attempt per category — earlier ones stay in the table
+                                  for history, but the owner cares about where they stand now. */}
+                              {Object.values(
+                                (examsByMember[member.id] || []).reduce((acc, e) => {
+                                  if (!acc[e.category]) acc[e.category] = e; // list is newest-first
+                                  return acc;
+                                }, {})
+                              ).map((e) => (
+                                <span
+                                  key={e.category}
+                                  className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                                    e.passed ? "bg-[#1aa376]/15 text-[#22c08c]" : "bg-[#e0315a]/15 text-[#e0315a]"
+                                  }`}
+                                >
+                                  {CAT_LABELS[e.category] || e.category} {e.score}% {e.passed ? "✓" : "✗"}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
                         )}
 
                         <div className="flex gap-2">
