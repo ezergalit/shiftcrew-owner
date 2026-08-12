@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Home, BookOpen, FileText, Users, Settings, LogOut, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera } from "lucide-react";
 import CuisineSelector from "../components/CuisineSelector";
+import LearningPathSettings from "../components/LearningPathSettings";
 import { supabase } from "../lib/supabase";
 
 const db = supabase.schema("menu_app");
@@ -39,6 +40,10 @@ function dishFromDb(row) {
     category: row.category,
     price: row.price,
     description: row.description || "",
+    // Ingredients used to be dropped here. The AI import writes them and the waiter app
+    // builds questions from them, but the owner could neither see nor fix them, and the
+    // exam-config screen concluded the menu had none.
+    ingredients: row.ingredients || [],
     allergens: row.allergens || [],
     isSpecial: !!row.is_special
   };
@@ -278,6 +283,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       category: existingCategories[0] || "עיקריות",
       price: 0,
       description: "",
+      ingredients: [],
       allergens: [],
       isSpecial: false
     });
@@ -294,6 +300,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       category: (editingItem.category || "כללי").trim(),
       price: editingItem.price,
       description: editingItem.description || "",
+      ingredients: editingItem.ingredients || [],
       allergens: editingItem.allergens || [],
       is_special: !!editingItem.isSpecial
     };
@@ -418,7 +425,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           <div className="w-12 h-12 rounded-2xl bg-[#15302b] flex items-center justify-center mx-auto mb-3">
             <ChefHat size={24} className="text-[#2f9e8f]" />
           </div>
-          <h1 className="text-2xl font-black">בואו נהגדיר את המסעדה שלך</h1>
+          <h1 className="text-2xl font-black">בואו נגדיר את המסעדה שלך</h1>
           <p className="text-sm text-[#8a8aa0] mt-1">שלב {onboardingStep} מתוך 3</p>
         </div>
 
@@ -826,6 +833,10 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
         {tab === "settings" && (
           <div className="space-y-4">
+            {/* What the team is tested on and how the path is paced. Lives above the
+                account admin because it is the thing an owner comes here to change. */}
+            <LearningPathSettings restaurant={restaurant} items={items} />
+
             <div className="bg-[#16181c] rounded-lg p-4 border border-[#22252b] space-y-3">
               <p className="font-bold text-[#eef0f6] mb-1">משתמשי ניהול נוספים</p>
               <p className="text-xs text-[#8a8aa0] mb-2">כל משתמש שתוסיפו כאן יוכל להתחבר עם קוד הבעלים + הסיסמה האישית שלו, ולקבל גישה מלאה לניהול המסעדה.</p>
@@ -1328,6 +1339,13 @@ function DishForm({ item, onChange, onSave, onCancel, existingCategories }) {
         dir="rtl"
       />
 
+      {/* Ingredients drive most of the training questions, so they need to be editable
+          here — not just whatever the AI import happened to extract. */}
+      <IngredientEditor
+        value={item.ingredients || []}
+        onChange={(ingredients) => onChange({ ...item, ingredients })}
+      />
+
       <div className="space-y-2">
         <p className="text-xs font-bold text-[#8a8aa0]">אלרגנים:</p>
         <div className="grid grid-cols-3 gap-2">
@@ -1378,6 +1396,43 @@ function DishForm({ item, onChange, onSave, onCancel, existingCategories }) {
           בטל
         </button>
       </div>
+    </div>
+  );
+}
+
+// Chip editor for a dish's ingredient list. Comma or Enter commits, so pasting
+// "סלמון, אבוקדו, מלפפון" from a menu works in one go.
+function IngredientEditor({ value, onChange }) {
+  const [draft, setDraft] = useState("");
+  const commit = (raw) => {
+    const parts = raw.split(",").map((s) => s.trim()).filter(Boolean);
+    if (!parts.length) return;
+    onChange([...value, ...parts.filter((p) => !value.includes(p))]);
+    setDraft("");
+  };
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-bold text-[#8a8aa0]">מרכיבים:</p>
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {value.map((ing) => (
+            <button key={ing} onClick={() => onChange(value.filter((x) => x !== ing))}
+              className="bg-[#22252b] text-[#eef0f6] text-xs px-2 py-1 rounded-lg flex items-center gap-1">
+              {ing} <X size={11} className="text-[#8a8aa0]" />
+            </button>
+          ))}
+        </div>
+      )}
+      <input
+        type="text"
+        value={draft}
+        onChange={(e) => { const v = e.target.value; if (v.endsWith(",")) commit(v); else setDraft(v); }}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(draft); } }}
+        onBlur={() => commit(draft)}
+        placeholder="הוסיפו מרכיב ואנטר (או הדביקו רשימה מופרדת בפסיקים)"
+        className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-3 py-2 text-[#eef0f6] placeholder:text-[#8a8aa0] focus:outline-none focus:border-[#6d5efc] text-sm"
+        dir="rtl"
+      />
     </div>
   );
 }
