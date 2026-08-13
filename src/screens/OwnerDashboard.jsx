@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
-import { Home, BookOpen, FileText, Users, Settings, LogOut, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Activity } from "lucide-react";
+import { Home, BookOpen, FileText, Users, Settings, LogOut, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Activity, Star } from "lucide-react";
 import LearningStatus from "../components/LearningStatus";
+import SmartSuggestions from "../components/SmartSuggestions";
+import GuidedTour from "../components/GuidedTour";
 import BriefAssistant from "../components/BriefAssistant";
 import BriefReadBoard from "../components/BriefReadBoard";
 import CuisineSelector from "../components/CuisineSelector";
@@ -85,8 +87,33 @@ function dishFromDb(row) {
     menuPosition: row.menu_position,
     // Needed by the brief assistant to spot recently-added dishes.
     createdAt: row.created_at,
-    isSpecial: !!row.is_special
+    isSpecial: !!row.is_special,
+    // "חשוב לי שהצוות ידע את המנה הזו" — drives learning priority in the waiter app.
+    // Distinct from isSpecial, which is the daily-service "מנת היום" flag.
+    starred: !!row.starred
   };
+}
+
+// A dish inserted on its own — not as part of a bulk import or a rapid editing session —
+// is genuinely NEW to the team, so it gets a star (and learning priority) automatically.
+// "On its own" = at least this long since the previous dish was added; a menu import
+// writes dozens of rows in one moment and must not star the whole menu.
+const NEW_DISH_QUIET_HOURS = 48;
+
+// Difficulty profiles offered during onboarding (feature 7). "recommended" mirrors
+// DEFAULT_PATH in src/lib/examFacets.js — keep the two in sync. The choice only seeds
+// exam_config; everything stays adjustable later in LearningPathSettings.
+const DIFFICULTY_PROFILES = {
+  easy:        { label: "קליל",  desc: "סף מעבר 40%, המשחקים פתוחים מההתחלה",           pass_threshold: 40, gate_games: false },
+  recommended: { label: "מומלץ", desc: "סף מעבר 50%, קטגוריות נפתחות בהדרגה",            pass_threshold: 50, gate_games: true },
+  strict:      { label: "קפדני", desc: "סף מעבר 70% — לצוות שרוצים לדייק בו",             pass_threshold: 70, gate_games: true },
+};
+function isStandaloneNewDish(existingItems) {
+  const newest = existingItems.reduce((m, i) => {
+    const t = i.createdAt ? new Date(i.createdAt).getTime() : 0;
+    return t > m ? t : m;
+  }, 0);
+  return newest > 0 && Date.now() - newest > NEW_DISH_QUIET_HOURS * 3600 * 1000;
 }
 
 const ALLERGENS = ["גלוטן", "חלב", "ביצים", "אגוזים", "בוטנים", "דגים", "רכיכות", "סויה", "שומשום"];
@@ -221,6 +248,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // The guided builder only appears while today's brief is still empty; dismissing it
   // hands the owner the plain form for the rest of the session.
   const [briefAssistantOff, setBriefAssistantOff] = useState(false);
+  const [tourActive, setTourActive] = useState(false);
   const [savingBrief, setSavingBrief] = useState(false);
 
   // Additional manager users
@@ -235,6 +263,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // completed, so a refresh mid-signup resumes instead of starting over.
   // Resume point: whichever is further along, the saved row or a local draft left behind
   // by a write that didn't land. Taking the max means a failed save costs nothing.
+  // Feature 7: difficulty is chosen during onboarding — not in a settings screen the
+  // owner may never open. Maps to exam_config; "מומלץ" matches DEFAULT_PATH exactly.
+  const [onboardingDifficulty, setOnboardingDifficulty] = useState("recommended");
   const [onboardingStep, setOnboardingStep] = useState(() => {
     const draft = readOnboardingDraft(restaurant?.id);
     return Math.max(restaurant?.onboarding_step || 1, draft?.step || 1);
@@ -375,6 +406,34 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const existingCategories = [...new Set(items.map((i) => i.category).filter(Boolean))];
 
   // Handle new dish form
+  // The dish form renders at the top of the menu tab, but the tapped card can be a full
+  // screen below it — without scrolling up, the tap looks like it did nothing ("אני מנסה
+  // להיכנס לתוך המנה ולא מצליח"). The scroll is explicit, not left to layout accidents.
+  const openDishEditor = (item) => {
+    setEditingItem(item);
+    setShowAddForm(true);
+  };
+
+  // The dish form renders at the top of the menu tab while the tapped card can be a full
+  // screen below it — without scrolling, the tap reads as "clicked and nothing happened".
+  // An effect, not a rAF after setState: the rAF fired before React committed the form to
+  // the DOM and silently scrolled nothing. Keyed on the dish too, so tapping a second
+  // dish while the form is already open still snaps up.
+  // ⚠️ Stays ABOVE the onboarding early-return — hooks after early returns crash.
+  useEffect(() => {
+    // Exact container math instead of scrollIntoView: "start" overshot under the sticky
+    // header and "center" put a taller-than-viewport form's top off-screen entirely.
+    if (!showAddForm) return;
+    const form = document.getElementById("dish-form");
+    const scroller = form?.closest(".overflow-y-auto");
+    if (!form || !scroller) return;
+    scroller.scrollTop += form.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 12;
+    // On a desktop-sized window the PAGE can be scrolled too (h-screen only pins the
+    // app's own container) — reset it or the form still sits above the viewport. On a
+    // phone, where the app fills the screen, this is a no-op.
+    window.scrollTo({ top: 0 });
+  }, [showAddForm, editingItem?.id]);
+
   const handleAddDish = () => {
     setShowAddForm(true);
     setEditingItem({
@@ -403,7 +462,10 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       ingredients: editingItem.ingredients || [],
       allergens: editingItem.allergens || [],
       pitfalls: editingItem.pitfalls || [],
-      is_special: !!editingItem.isSpecial
+      is_special: !!editingItem.isSpecial,
+      // Inserts only — editing an existing dish must never re-star it ("לוודא שזו אכן
+      // מנה חדשה ולא מנה קיימת ששונתה"). A manual star from the form wins either way.
+      starred: !!editingItem.starred || (!editingItem.id && isStandaloneNewDish(items))
     };
 
     if (editingItem.id) {
@@ -428,6 +490,17 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     const { error } = await db.from("menu_items").delete().eq("id", id);
     if (error) { alert("מחיקה נכשלה: " + error.message); return; }
     setItems(items.filter((item) => item.id !== id));
+  };
+
+  // One tap on the card — no form round-trip. Optimistic, rolled back on failure.
+  const toggleStar = async (item) => {
+    const next = !item.starred;
+    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, starred: next } : i)));
+    const { error } = await db.from("menu_items").update({ starred: next }).eq("id", item.id);
+    if (error) {
+      console.error("star toggle failed:", error);
+      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, starred: !next } : i)));
+    }
   };
 
   // NOTE: these deliberately do NOT use `.select(...).single()` after the update.
@@ -472,6 +545,24 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   };
 
   const handleCompleteOnboarding = async () => {
+    // Feature 7: the difficulty the owner picked on the last onboarding screen becomes
+    // the exam-config starting point. Written only when no config exists yet — an owner
+    // who already tuned LearningPathSettings must never be silently overridden by a
+    // re-run of onboarding.
+    const profile = DIFFICULTY_PROFILES[onboardingDifficulty];
+    if (profile) {
+      const { data: existingCfg } = await db.from("exam_config")
+        .select("restaurant_id").eq("restaurant_id", restaurant.id).maybeSingle();
+      if (!existingCfg) {
+        const { error: cfgErr } = await db.from("exam_config").insert({
+          restaurant_id: restaurant.id,
+          pass_threshold: profile.pass_threshold,
+          gate_games: profile.gate_games,
+          updated_at: new Date().toISOString(),
+        });
+        if (cfgErr) console.error("could not save difficulty profile:", cfgErr);
+      }
+    }
     const patch = { ...toDbOnboardingPatch(onboardingForm), onboarding_completed: true, onboarding_step: 3 };
     const { error } = await db.from("restaurants").update(patch).eq("id", restaurant.id);
     if (error) {
@@ -499,6 +590,14 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     setMenuSetupActive(false);
     setTab("menu");
     if (count > 0) setShowMenuTip(true);
+    // First successful import = the moment the app fills with the owner's own data, which
+    // is the best moment to walk them through everything it can do (once; restartable
+    // from settings).
+    if (count > 0 && !localStorage.getItem(`menu-app-tour-done:${restaurant.id}`)) {
+      localStorage.setItem(`menu-app-tour-done:${restaurant.id}`, "1");
+      setTourActive(true);
+      setTab("home");
+    }
   };
 
   const handleSaveBrief = async () => {
@@ -651,12 +750,35 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           )}
 
           {onboardingStep === 3 && (
-            <div className="text-center py-8 space-y-4">
-              <div className="w-16 h-16 rounded-full bg-[#6d5efc]/20 flex items-center justify-center mx-auto">
-                <Check size={32} className="text-[#6d5efc]" />
+            <div className="py-6 space-y-5">
+              <div className="text-center space-y-3">
+                <div className="w-16 h-16 rounded-full bg-[#6d5efc]/20 flex items-center justify-center mx-auto">
+                  <Check size={32} className="text-[#6d5efc]" />
+                </div>
+                <h2 className="text-xl font-bold">כמעט מוכן — דבר אחרון</h2>
+                <p className="text-[#8a8aa0] text-sm">באיזו רמת קושי הצוות שלך ילמד את התפריט?</p>
               </div>
-              <h2 className="text-xl font-bold">כל מוכן!</h2>
-              <p className="text-[#8a8aa0] text-sm">המסעדה שלך מוכנה להתחיל. בואו נוסיף את התפריט שלך!</p>
+              <div className="space-y-2">
+                {Object.entries(DIFFICULTY_PROFILES).map(([key, p]) => (
+                  <button
+                    key={key}
+                    onClick={() => setOnboardingDifficulty(key)}
+                    className={`w-full text-right rounded-xl border p-3 transition ${
+                      onboardingDifficulty === key
+                        ? "bg-[#6d5efc]/15 border-[#6d5efc]"
+                        : "bg-[#16181c] border-[#22252b] hover:border-[#3a3d46]"
+                    }`}
+                  >
+                    <span className={`text-sm font-bold ${onboardingDifficulty === key ? "text-[#a79bff]" : "text-[#eef0f6]"}`}>
+                      {p.label}{key === "recommended" && <span className="text-[10px] font-bold text-[#22c08c] mr-2">ההמלצה שלנו</span>}
+                    </span>
+                    <span className="block text-[11px] text-[#8a8aa0] mt-0.5">{p.desc}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-[#6a6a7e] text-center leading-relaxed">
+                אפשר לשנות את זה בכל רגע בטאב ההגדרות.
+              </p>
             </div>
           )}
         </div>
@@ -738,6 +860,12 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
               </div>
             </div>
 
+            <SmartSuggestions
+              restaurant={restaurant}
+              items={items}
+              onStarred={(ids) => setItems((prev) => prev.map((i) => (ids.includes(i.id) ? { ...i, starred: true } : i)))}
+            />
+
             {!briefAssistantOff &&
               !(dailyBrief?.missing_items?.length || dailyBrief?.new_items?.length ||
                 dailyBrief?.oven_items?.length || dailyBrief?.notes) && (
@@ -798,17 +926,41 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
               <div key={cat} className="space-y-2">
                 <p className="text-xs font-bold text-[#8a8aa0] px-1">{cat}</p>
                 {items.filter((i) => i.category === cat).map((item) => (
-                  <div key={item.id} className="bg-[#16181c] rounded-lg p-3 border border-[#22252b]">
+                  <div key={item.id} className={`bg-[#16181c] rounded-lg p-3 border ${item.starred ? "border-[#f3a712]/50" : "border-[#22252b]"}`}>
                     <div className="flex justify-between items-start mb-1">
-                      <p className="font-bold text-[#eef0f6]">{item.name}</p>
-                      <p className="font-bold text-[#6d5efc]">₪{item.price}</p>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <button
+                          onClick={() => toggleStar(item)}
+                          title={item.starred ? "מנה מודגשת — הצוות מתרגל אותה בעדיפות. לחצו להסרת הדגש." : "הדגישו מנה שחשוב במיוחד שהצוות ידע — היא תקבל עדיפות בלימוד."}
+                          aria-label={item.starred ? "הסרת דגש מהמנה" : "הדגשת המנה"}
+                          className={`shrink-0 transition ${item.starred ? "text-[#f3a712]" : "text-[#3a3d46] hover:text-[#8a8aa0]"}`}
+                        >
+                          <Star size={16} fill={item.starred ? "currentColor" : "none"} />
+                        </button>
+                        <p className="font-bold text-[#eef0f6] truncate">{item.name}</p>
+                      </div>
+                      <p className="font-bold text-[#6d5efc] shrink-0">₪{item.price}</p>
                     </div>
+                    {/* Always visible — the description is what the team learns, and after a
+                        photo import it's exactly where a misread word hides. A missing one is
+                        called out instead of silently blank, and either state opens the editor. */}
+                    <button
+                      onClick={() => openDishEditor(item)}
+                      className="block w-full text-right mb-1.5"
+                      title="לחצו לעריכת התיאור"
+                    >
+                      {item.description ? (
+                        <p className="text-xs text-[#8a8aa0] leading-relaxed">{item.description}</p>
+                      ) : (
+                        <p className="text-xs text-[#6a6a7e] italic">אין תיאור — לחצו להוספה. בלי תיאור, הצוות לומד רק שם ומחיר.</p>
+                      )}
+                    </button>
                     {item.allergens?.length > 0 && (
                       <p className="text-xs text-[#ff7a59] mb-2">אלרגנים: {item.allergens.join(", ")}</p>
                     )}
                     <div className="flex gap-2">
                       <button
-                        onClick={() => { setEditingItem(item); setShowAddForm(true); }}
+                        onClick={() => openDishEditor(item)}
                         className="flex-1 bg-[#22252b] text-[#6d5efc] py-1 rounded text-xs hover:bg-[#2c2e35] transition"
                       >
                         <Edit2 size={14} className="inline mr-1" /> עריכה
@@ -999,6 +1151,13 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
         {tab === "settings" && (
           <div className="space-y-4">
+            <button
+              onClick={() => { setTourActive(true); setTab("home"); }}
+              className="w-full bg-[#16181c] border border-[#22252b] text-[#a79bff] font-bold py-2.5 rounded-lg text-xs hover:border-[#6d5efc]/50 transition"
+            >
+              🧭 סיור מודרך באפליקציה — מה יש בכל טאב
+            </button>
+
             {/* Fixing the menu comes before configuring what to test on it: what this
                 screen reports missing is exactly what limits the questions below. */}
             <MenuHealthReview items={items} categories={existingCategories} onChanged={loadMenuItems} />
@@ -1063,6 +1222,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           <NavButton icon={<Settings size={18} />} label="הגדרות" active={tab === "settings"} onClick={() => setTab("settings")} />
           <NavButton icon={<LogOut size={18} />} label="יציאה" onClick={onSignOut} />
         </div>
+      {tourActive && <GuidedTour onNavigate={setTab} onClose={() => setTourActive(false)} />}
       </div>
     </div>
   );
@@ -1533,7 +1693,11 @@ function MenuSetupTutorial({ restaurant, onDone }) {
           pitfalls: tracked.includes("pitfalls") ? d.pitfalls || [] : [],
           kashrut: tracked.includes("kashrut") ? d.kashrut || [] : [],
           menu_position: position++,
-          is_special: false
+          is_special: false,
+          // A whole-menu import is the team's baseline, not "new dishes" — nothing gets
+          // the automatic new-dish star here. Only stars the owner approved on the
+          // emphasis card (or toggled by hand in review) are written.
+          starred: !!d.starred
         }))
     );
     if (rows.length > 0) {
@@ -1692,6 +1856,9 @@ function MenuSetupTutorial({ restaurant, onDone }) {
         <>
           <div className="flex-1 px-6 py-4 overflow-y-auto space-y-4">
             <p className="text-xs text-[#8a8aa0]">בדקו שהכל נכון — אפשר לשנות שמות קטגוריה, למחוק, להוסיף, ולתקן כל מנה. זה לוקח רק רגע.</p>
+            <EmphasisSuggestion categories={categories} onApprove={(ids) => {
+              setCategories((prev) => prev.map((c) => ({ ...c, dishes: c.dishes.map((d) => (ids.includes(d.id) ? { ...d, starred: true } : d)) })));
+            }} />
             {categories.map((cat) => (
               <div key={cat.id} className="bg-[#16181c] rounded-lg p-3 border border-[#22252b] space-y-2">
                 <div className="flex items-center gap-2">
@@ -1770,7 +1937,7 @@ function MenuSetupTutorial({ restaurant, onDone }) {
 
 function DishForm({ item, onChange, onSave, onCancel, existingCategories }) {
   return (
-    <div className="bg-[#16181c] rounded-lg p-4 border border-[#22252b] space-y-3">
+    <div id="dish-form" className="bg-[#16181c] rounded-lg p-4 border border-[#22252b] space-y-3">
       <input
         type="text"
         value={item.name}
@@ -2045,9 +2212,70 @@ function PhotoTray({ photos, onAdd, onRemove, onBack, onSend, busy, error }) {
   );
 }
 
+// Feature 2 of the optimization round: the import already knows which dishes are the
+// complex ones — many ingredients, several warning flags — so instead of a settings
+// screen, the review step OFFERS to emphasise them and the owner approves with one tap.
+// Nothing is starred without that approval. Also where the star is explained for the
+// first time, per the user's decision ("חובה להסביר למנהל קודם מה המשמעות").
+function EmphasisSuggestion({ categories, onApprove }) {
+  const [state, setState] = useState("open"); // open | approved | dismissed
+  const scored = categories
+    .flatMap((c) => c.dishes)
+    .filter((d) => d.name?.trim() && !d.starred)
+    .map((d) => ({
+      d,
+      score:
+        (d.allergens?.length || 0) * 2 +
+        (d.pregnancy?.length || 0) * 2 +
+        (d.kashrut?.length || 0) +
+        ((d.ingredients?.length || 0) >= 5 ? 1 : 0),
+    }))
+    .filter((x) => x.score >= 2)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+  if (!scored.length || state === "dismissed") return null;
+  if (state === "approved") {
+    return (
+      <div className="bg-[#15302b] border border-[#2f9e8f]/40 rounded-lg p-3">
+        <p className="text-xs text-[#7ee0c0] font-bold flex items-center gap-1.5">
+          <Star size={13} className="shrink-0" fill="currentColor" /> המנות סומנו בכוכב — הצוות יתרגל אותן בעדיפות.
+        </p>
+      </div>
+    );
+  }
+  const names = scored.map((x) => x.d.name.trim());
+  return (
+    <div className="bg-[#2a2410] border border-[#7a5a1f] rounded-lg p-3 space-y-2">
+      <p className="text-xs text-[#f3c98b] leading-relaxed">
+        <Star size={13} className="inline ml-1 text-[#f3a712]" fill="currentColor" />
+        ראינו ש{names.length === 1 ? `המנה "${names[0]}" מורכבת יותר` : `המנות ${names.map((n) => `"${n}"`).join(", ")} מורכבות יותר`} — יותר
+        מרכיבים ואזהרות רגישות. <span className="font-bold">להדגיש אותן בלימוד?</span>
+      </p>
+      <p className="text-[10px] text-[#b09668] leading-relaxed">
+        מנה עם כוכב ⭐ היא מנה שחשוב במיוחד שהצוות ידע — היא מקבלת עדיפות בתרגול. אפשר תמיד להוסיף
+        ולהסיר כוכבים בטאב התפריט.
+      </p>
+      <div className="flex gap-2">
+        <button
+          onClick={() => { onApprove(scored.map((x) => x.d.id)); setState("approved"); }}
+          className="flex-1 bg-[#f3a712] text-black font-bold py-2 rounded-lg text-xs hover:bg-[#e09a0e] transition"
+        >
+          כן — הדגישו אותן
+        </button>
+        <button
+          onClick={() => setState("dismissed")}
+          className="flex-1 bg-[#22252b] text-[#8a8aa0] font-bold py-2 rounded-lg text-xs hover:bg-[#2c2e35] transition"
+        >
+          לא תודה
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // The proofreading step for photo imports. Reading a menu off a picture is where the
 // mistakes happen — a price read as 32 instead of 82, a line skipped in a second column —
-// and the owner is the only person who can catch them. Confirming an unchanged transcript
+// and the owner is the only one who can catch them. Confirming an unchanged transcript
 // is free; editing it re-parses from the corrected text.
 function TranscriptReview({ value, onChange, busy, error, onConfirm }) {
   const [draft, setDraft] = useState(value);
@@ -2114,15 +2342,42 @@ function TranscriptReview({ value, onChange, busy, error, onConfirm }) {
             </label>
             {edited && <span className="text-[10px] font-bold text-[#22c08c]">נערך</span>}
           </div>
-          <textarea
-            id="menu-transcript"
-            value={draft}
-            onChange={(e) => { setDraft(e.target.value); onChange(e.target.value); }}
-            rows={14}
-            dir="rtl"
-            spellCheck={false}
-            className="w-full bg-[#16181c] border-2 border-[#3a3d46] rounded-lg px-3 py-2.5 text-[#eef0f6] text-sm leading-relaxed focus:outline-none focus:border-[#6d5efc] focus:bg-[#0c0d10] resize-y font-mono cursor-text hover:border-[#4a4d57] transition-colors"
-          />
+          {/* [?] markers get a yellow highlight so the owner's eye lands on them without
+              re-reading the whole menu. A textarea can't color part of its own text, so a
+              backdrop renders the same text (transparent) with only the [?] tokens as
+              visible yellow boxes, and the textarea scroll is mirrored onto it. Metrics
+              (font, size, leading, padding, border width) must match the textarea exactly
+              or the highlights drift off the markers. */}
+          <div className="relative rounded-lg bg-[#16181c]">
+            <div
+              aria-hidden="true"
+              id="menu-transcript-backdrop"
+              dir="rtl"
+              className="absolute inset-0 overflow-hidden rounded-lg border-2 border-transparent px-3 py-2.5 text-sm leading-relaxed font-mono whitespace-pre-wrap break-words text-transparent pointer-events-none select-none"
+            >
+              {draft.split(/(\[\?\])/g).map((part, i) =>
+                part === "[?]" ? (
+                  <mark key={i} className="bg-[#f3a712]/45 text-transparent rounded-sm">[?]</mark>
+                ) : (
+                  <span key={i}>{part}</span>
+                ),
+              )}
+              {"\n"}
+            </div>
+            <textarea
+              id="menu-transcript"
+              value={draft}
+              onChange={(e) => { setDraft(e.target.value); onChange(e.target.value); }}
+              onScroll={(e) => {
+                const b = document.getElementById("menu-transcript-backdrop");
+                if (b) b.scrollTop = e.target.scrollTop;
+              }}
+              rows={14}
+              dir="rtl"
+              spellCheck={false}
+              className="relative w-full bg-transparent border-2 border-[#3a3d46] rounded-lg px-3 py-2.5 text-[#eef0f6] text-sm leading-relaxed focus:outline-none focus:border-[#6d5efc] resize-y font-mono cursor-text hover:border-[#4a4d57] transition-colors"
+            />
+          </div>
         </div>
         {error && <p className="text-xs font-bold text-[#e0315a] flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" /> {error}</p>}
         {busy && <p className="text-xs font-bold text-[#a79bff]">מפענח מחדש לפי התיקונים שלך…</p>}
