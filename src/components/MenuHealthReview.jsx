@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 import { FACET_META, RECOMMENDED_FACETS } from "../lib/examFacets";
 
 const db = supabase.schema("menu_app");
-const ALLERGENS = ["גלוטן", "חלב", "ביצים", "אגוזים", "בוטנים", "דגים", "רכיכות", "סויה", "שומשום"];
+const ALLERGENS = ["גלוטן", "חלב", "ביצים", "אגוזים", "בוטנים", "דגים", "רכיכות", "סויה", "שומשום", "דג נא"];
 
 // Reviewing a menu one dish at a time is how a 38-dish import never gets reviewed. This
 // groups dishes by what is actually missing and lets the owner fix a whole group in one

@@ -51,7 +51,7 @@ function dishFromDb(row) {
   };
 }
 
-const ALLERGENS = ["גלוטן", "חלב", "ביצים", "אגוזים", "בוטנים", "דגים", "רכיכות", "סויה", "שומשום"];
+const ALLERGENS = ["גלוטן", "חלב", "ביצים", "אגוזים", "בוטנים", "דגים", "רכיכות", "סויה", "שומשום", "דג נא"];
 
 // exam_results.category stores whatever the menu uses. Older seeded menus use these fixed
 // English keys; menus built through the paste/AI import use free-text Hebrew names, which
