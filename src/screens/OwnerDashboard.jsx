@@ -4,7 +4,7 @@ import CuisineSelector from "../components/CuisineSelector";
 import LearningPathSettings from "../components/LearningPathSettings";
 import ProgressChart from "../components/ProgressChart";
 import MenuHealthReview from "../components/MenuHealthReview";
-import { FLAG_GROUPS, effectiveTrackedFlags } from "../lib/dishFlags";
+import { FLAG_GROUPS, FLAG_GROUP_BY_KEY, effectiveTrackedFlags } from "../lib/dishFlags";
 import { supabase } from "../lib/supabase";
 
 const db = supabase.schema("menu_app");
@@ -70,6 +70,14 @@ function dishFromDb(row) {
 }
 
 const ALLERGENS = ["גלוטן", "חלב", "ביצים", "אגוזים", "בוטנים", "דגים", "רכיכות", "סויה", "שומשום"];
+// "מוקשים" — what a guest often asks to avoid by preference, not by safety. Separate from
+// ALLERGENS on purpose: folding a preference into the allergen list makes the allergen
+// list less trustworthy, and a waiter reads the two for different reasons. Free text, so
+// these are only a starting palette — any restaurant adds its own.
+// Single source of truth: src/lib/dishFlags.js. "דג נא" used to sit in this list, but a
+// raw-fish warning is for pregnancy, not for someone who dislikes coriander — it lives in
+// the `pregnancy` group now and reaches the dish through that column.
+const PITFALLS = FLAG_GROUP_BY_KEY.pitfalls.values;
 
 // exam_results.category stores whatever the menu uses. Older seeded menus use these fixed
 // English keys; menus built through the paste/AI import use free-text Hebrew names, which
@@ -333,6 +341,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       description: "",
       ingredients: [],
       allergens: [],
+      pitfalls: [],
       isSpecial: false
     });
   };
@@ -350,6 +359,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       description: editingItem.description || "",
       ingredients: editingItem.ingredients || [],
       allergens: editingItem.allergens || [],
+      pitfalls: editingItem.pitfalls || [],
       is_special: !!editingItem.isSpecial
     };
 
@@ -1138,7 +1148,7 @@ function MenuSetupTutorial({ restaurant, onDone }) {
     const parsed = parseMenuText(rawText);
     const dishCount = parsed.reduce((n, c) => n + c.dishes.length, 0);
     if (dishCount >= 3) {
-      setCategories(parsed.map((c) => ({ ...c, dishes: c.dishes.map((d) => ({ ingredients: [], allergens: [], ...d })) })));
+      setCategories(parsed.map((c) => ({ ...c, dishes: c.dishes.map((d) => ({ ingredients: [], allergens: [], pitfalls: [], ...d })) })));
       setPhase("review");
       return;
     }
@@ -1231,7 +1241,7 @@ function MenuSetupTutorial({ restaurant, onDone }) {
   const removeDish = (catId, dishId) =>
     setCategories(categories.map((c) => (c.id === catId ? { ...c, dishes: c.dishes.filter((d) => d.id !== dishId) } : c)));
   const addDish = (catId) =>
-    setCategories(categories.map((c) => (c.id === catId ? { ...c, dishes: [...c.dishes, { id: crypto.randomUUID(), name: "", price: 0, description: "", ingredients: [], allergens: [] }] } : c)));
+    setCategories(categories.map((c) => (c.id === catId ? { ...c, dishes: [...c.dishes, { id: crypto.randomUUID(), name: "", price: 0, description: "", ingredients: [], allergens: [], pitfalls: [] }] } : c)));
 
   const totalDishes = categories.reduce((n, c) => n + c.dishes.length, 0);
 
@@ -1565,6 +1575,33 @@ function DishForm({ item, onChange, onSave, onCancel, existingCategories }) {
               }`}
             >
               {allergen}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-xs font-bold text-[#8a8aa0]">מוקשים <span className="font-normal">(מה שאורחים מבקשים בלי — לא אלרגיה)</span>:</p>
+        <div className="grid grid-cols-3 gap-2">
+          {PITFALLS.map((pitfall) => (
+            <button
+              key={pitfall}
+              onClick={() => {
+                const current = item.pitfalls || [];
+                onChange({
+                  ...item,
+                  pitfalls: current.includes(pitfall)
+                    ? current.filter((p) => p !== pitfall)
+                    : [...current, pitfall],
+                });
+              }}
+              className={`text-xs py-1 rounded transition ${
+                (item.pitfalls || []).includes(pitfall)
+                  ? "bg-[#f3a712] text-[#0c0d10]"
+                  : "bg-[#22252b] text-[#8a8aa0] hover:bg-[#2c2e35]"
+              }`}
+            >
+              {pitfall}
             </button>
           ))}
         </div>

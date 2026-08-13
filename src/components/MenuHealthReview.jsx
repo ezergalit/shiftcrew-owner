@@ -2,9 +2,18 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, Loader2, ChevronDown, ChevronLeft, Wand2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { FACET_META, RECOMMENDED_FACETS } from "../lib/examFacets";
+import { FLAG_GROUP_BY_KEY } from "../lib/dishFlags";
 
 const db = supabase.schema("menu_app");
 const ALLERGENS = ["גלוטן", "חלב", "ביצים", "אגוזים", "בוטנים", "דגים", "רכיכות", "סויה", "שומשום"];
+// "מוקשים" — what a guest often asks to avoid by preference, not by safety. Separate from
+// ALLERGENS on purpose: folding a preference into the allergen list makes the allergen
+// list less trustworthy, and a waiter reads the two for different reasons. Free text, so
+// these are only a starting palette — any restaurant adds its own.
+// Single source of truth: src/lib/dishFlags.js. "דג נא" used to sit in this list, but a
+// raw-fish warning is for pregnancy, not for someone who dislikes coriander — it lives in
+// the `pregnancy` group now and reaches the dish through that column.
+const PITFALLS = FLAG_GROUP_BY_KEY.pitfalls.values;
 
 // Reviewing a menu one dish at a time is how a 38-dish import never gets reviewed. This
 // groups dishes by what is actually missing and lets the owner fix a whole group in one

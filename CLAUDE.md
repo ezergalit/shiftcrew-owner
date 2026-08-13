@@ -91,6 +91,14 @@ src/components/ProgressChart.jsx        — טאב "צוות": גרף שיפור
 - **`dishFromDb` חייב לכלול `ingredients`** — הוא לא כלל אותם עד 2026-08-12, ולכן
   הבעלים לא יכול היה לראות/לערוך מרכיבים ומסך ההגדרות חשב שאין בתפריט מרכיבים בכלל.
 
+## מוקשים + ה-Edge Function (2026-08-13)
+
+- `PITFALLS` (טופס המנה, `MenuHealthReview`) — **מוקשים ≠ אלרגיות**. `דג נא` הוצא
+  מרשימת האלרגנים. ר' CLAUDE.md הראשי, "מוקשים (pitfalls)", לכלל המלא.
+- ⭐ `supabase/functions/menu-ai-parse/index.ts` — **עותק מקומי, חדש**. עד 2026-08-13
+  הפונקציה נערכה רק דרך הדשבורד. **ערכו כאן ואז דפלוי** (MCP `deploy_edge_function`;
+  ל-CLI אין access token בסביבה הזו). הפרומפט חי בקובץ הזה.
+
 ## ⚠️ TEMP DEV BYPASS — קיים בקוד אבל כבר לא נחוץ
 
 `App.jsx` בודק `import.meta.env.VITE_DEV_BYPASS_AUTH === "true"` — אם כן, מדלג לגמרי על
