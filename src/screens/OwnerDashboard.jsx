@@ -1192,22 +1192,106 @@ function MenuSetupTutorial({ restaurant, onDone }) {
       }))
       .filter((c) => c.dishes.length > 0);
 
-  // One call parses; a second call happens only when the model had a genuine structural
-  // doubt and asked (group-level questions, never dish-by-dish). Runs on Claude Haiku —
-  // a whole menu costs about an agora.
+  const callParse = async (payload) => {
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/menu-ai-parse`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (data?.code === "missing_key") throw new Error("הפענוח החכם עוד לא הופעל — יש להגדיר מפתח AI ב-Supabase (Edge Functions → Secrets): ANTHROPIC_API_KEY או OPENROUTER_API_KEY.");
+      throw new Error(data?.error === "model returned invalid JSON" ? "הפענוח החזיר תשובה שבורה — נסו שוב." : data?.error || "שגיאה בפענוח");
+    }
+    return data;
+  };
+
+  // Split a proofread transcript into chunks of WHOLE categories (never mid-category).
+  //
+  // ⚠️ Why chunking exists: structuring an entire 4-page menu in one call means one
+  // giant JSON response, and on a real import that response came back malformed — a 502
+  // after 67s, which read as "stuck" in the UI. Small outputs are reliably valid, run in
+  // parallel, and a single broken chunk retries alone. Same finding, same fix, as the
+  // per-photo transcription split.
+  const splitTranscriptChunks = (text, maxLen = 2600) => {
+    const blocks = [];
+    let cur = [];
+    for (const ln of text.split("\n")) {
+      if (/^\s*##\s/.test(ln) && cur.length) { blocks.push(cur.join("\n")); cur = [ln]; }
+      else cur.push(ln);
+    }
+    if (cur.length) blocks.push(cur.join("\n"));
+    const chunks = [];
+    let acc = "";
+    for (const b of blocks) {
+      if (acc && acc.length + b.length > maxLen) { chunks.push(acc); acc = b; }
+      else acc = acc ? `${acc}\n${b}` : b;
+    }
+    if (acc.trim()) chunks.push(acc);
+    return chunks.length ? chunks : [text];
+  };
+
+  // Cross-chunk ordering: each chunk is internally ordered by the parser, but only the
+  // client sees all chunks, so the serving-order sort lives here. Stable sort — ties keep
+  // transcript order. Applied only when there was more than one chunk; a single-chunk
+  // paste keeps the parser's order untouched (which preserves the menu's own order).
+  const COURSE_RANK = { starters: 0, mains: 1, sides: 2, desserts: 3, drinks: 4, alcohol: 5, other: 6 };
+  const mergeParseResults = (results, sortByCourse) => {
+    const byName = new Map();
+    const order = [];
+    for (const r of results) {
+      for (const c of r.categories || []) {
+        const key = String(c.name || "").replace(/[׳״'"]/g, "").trim();
+        if (byName.has(key)) {
+          // The same category split across two photos/chunks — one category, no dupes.
+          const seen = byName.get(key);
+          const have = new Set(seen.dishes.map((d) => String(d.name || "").trim()));
+          seen.dishes = [...seen.dishes, ...(c.dishes || []).filter((d) => !have.has(String(d.name || "").trim()))];
+        } else {
+          byName.set(key, { ...c, dishes: [...(c.dishes || [])] });
+          order.push(key);
+        }
+      }
+    }
+    let categories = order.map((k) => byName.get(k));
+    if (sortByCourse) {
+      categories = categories
+        .map((c, i) => ({ c, i }))
+        .sort((a, b) => ((COURSE_RANK[a.c.course] ?? 6) - (COURSE_RANK[b.c.course] ?? 6)) || (a.i - b.i))
+        .map((x) => x.c);
+    }
+    return {
+      categories,
+      generalNotes: results.flatMap((r) => (Array.isArray(r.generalNotes) ? r.generalNotes : [])),
+      offers: results.flatMap((r) => (Array.isArray(r.offers) ? r.offers : [])),
+      questions: results.flatMap((r) => (Array.isArray(r.questions) ? r.questions : [])).slice(0, 3),
+    };
+  };
+
+  // Structuring runs on Claude Haiku — a whole menu costs about an agora. Text payloads
+  // go through the chunker above; a second round happens only when the model had a
+  // genuine structural doubt and asked (group-level questions, never dish-by-dish).
   const runAi = async (payload) => {
     setAiBusy(true);
     setAiErr("");
     try {
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/menu-ai-parse`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        if (data?.code === "missing_key") throw new Error("הפענוח החכם עוד לא הופעל — יש להגדיר מפתח AI ב-Supabase (Edge Functions → Secrets): ANTHROPIC_API_KEY או OPENROUTER_API_KEY.");
-        throw new Error(data?.error || "שגיאה בפענוח");
+      let data;
+      if (payload.text) {
+        const chunks = splitTranscriptChunks(payload.text);
+        const results = await Promise.all(
+          chunks.map(async (chunk) => {
+            const body = { ...payload, text: chunk };
+            try {
+              return await callParse(body);
+            } catch {
+              // JSON breakage is stochastic — one retry recovers almost all of it.
+              return await callParse(body);
+            }
+          }),
+        );
+        data = mergeParseResults(results, chunks.length > 1);
+      } else {
+        data = await callParse(payload);
       }
       const cats = normalizeAiCategories(data.categories);
       setGeneralNotes(Array.isArray(data.generalNotes) ? data.generalNotes : []);
