@@ -39,6 +39,21 @@ function toDbRestaurantPatch(form) {
 // Onboarding asks for a strict subset of the profile — no phone, no address. Reusing the
 // full patch builder here sends `phone: null` and `address: null` for fields the form
 // never had, wiping them for any restaurant that fills in its profile after the fact.
+// A local mirror of the onboarding answers, keyed per restaurant. The DB is still the
+// real store; this only covers the gap when a write fails or the tab closes mid-save, so
+// the owner never retypes a form they already filled in. Cleared once onboarding completes.
+const ONBOARDING_DRAFT_KEY = (id) => `menu-app-onboarding-draft-${id}`;
+
+function saveOnboardingDraft(id, draft) {
+  try { localStorage.setItem(ONBOARDING_DRAFT_KEY(id), JSON.stringify(draft)); } catch { /* private mode */ }
+}
+function readOnboardingDraft(id) {
+  try { return JSON.parse(localStorage.getItem(ONBOARDING_DRAFT_KEY(id)) || "null"); } catch { return null; }
+}
+function clearOnboardingDraft(id) {
+  try { localStorage.removeItem(ONBOARDING_DRAFT_KEY(id)); } catch { /* private mode */ }
+}
+
 function toDbOnboardingPatch(form) {
   return {
     name: form.name,
@@ -198,15 +213,24 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // Onboarding form (trimmed: only fields relevant to the menu itself — no address, no phone).
   // Seeded from the restaurant row rather than from blanks: every step is saved as it is
   // completed, so a refresh mid-signup resumes instead of starting over.
-  const [onboardingStep, setOnboardingStep] = useState(restaurant?.onboarding_step || 1); // 1: profile, 2: service style, 3: done
-  const [onboardingForm, setOnboardingForm] = useState({
-    name: restaurant?.name || "",
-    cuisineTypes: restaurant?.cuisine_types || [],
-    description: restaurant?.description || "",
-    serviceStyle: restaurant?.service_style || "",
-    serviceNotes: restaurant?.service_notes || ""
+  // Resume point: whichever is further along, the saved row or a local draft left behind
+  // by a write that didn't land. Taking the max means a failed save costs nothing.
+  const [onboardingStep, setOnboardingStep] = useState(() => {
+    const draft = readOnboardingDraft(restaurant?.id);
+    return Math.max(restaurant?.onboarding_step || 1, draft?.step || 1);
+  }); // 1: profile, 2: service style, 3: done
+  const [onboardingForm, setOnboardingForm] = useState(() => {
+    const draft = readOnboardingDraft(restaurant?.id)?.form;
+    return {
+      name: draft?.name ?? restaurant?.name ?? "",
+      cuisineTypes: draft?.cuisineTypes ?? restaurant?.cuisine_types ?? [],
+      description: draft?.description ?? restaurant?.description ?? "",
+      serviceStyle: draft?.serviceStyle ?? restaurant?.service_style ?? "",
+      serviceNotes: draft?.serviceNotes ?? restaurant?.service_notes ?? ""
+    };
   });
   const [savingStep, setSavingStep] = useState(false);
+  const [onboardingErr, setOnboardingErr] = useState("");
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -405,14 +429,25 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
   // Saves what's been filled so far and records the step, so closing the tab or pulling
   // to refresh resumes here instead of dropping the owner back to an empty step 1.
-  // A failed save is not fatal — moving on with the answers still in memory beats
-  // trapping someone on a screen they already filled in.
+  //
+  // The draft is also mirrored to localStorage, and that is not belt-and-braces: this
+  // exact screen once failed its write for days (a missing column grant) while still
+  // advancing the owner to the next step, so every refresh silently threw the answers
+  // away. A save that fails must not look like a save that worked — the owner is told,
+  // and the draft survives locally so the next attempt starts from their answers rather
+  // than from a blank form.
   const goToOnboardingStep = async (next) => {
     setSavingStep(true);
+    saveOnboardingDraft(restaurant.id, { form: onboardingForm, step: next });
     const patch = { ...toDbOnboardingPatch(onboardingForm), onboarding_step: next };
     const { error } = await db.from("restaurants").update(patch).eq("id", restaurant.id);
-    if (error) console.error("could not save onboarding progress:", error);
-    else onRestaurantUpdated?.({ ...restaurant, ...patch });
+    if (error) {
+      console.error("could not save onboarding progress:", error);
+      setOnboardingErr("לא הצלחנו לשמור כרגע — התשובות שלכם נשמרו במכשיר וננסה שוב בשלב הבא.");
+    } else {
+      setOnboardingErr("");
+      onRestaurantUpdated?.({ ...restaurant, ...patch });
+    }
     setOnboardingStep(next);
     setSavingStep(false);
   };
@@ -420,7 +455,14 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const handleCompleteOnboarding = async () => {
     const patch = { ...toDbOnboardingPatch(onboardingForm), onboarding_completed: true, onboarding_step: 3 };
     const { error } = await db.from("restaurants").update(patch).eq("id", restaurant.id);
-    if (error) { alert("שמירה נכשלה: " + error.message); return; }
+    if (error) {
+      // The answers are already mirrored locally, so say so — "שמירה נכשלה" on its own
+      // reads like the form has to be filled in again.
+      saveOnboardingDraft(restaurant.id, { form: onboardingForm, step: 3 });
+      alert("שמירה נכשלה: " + error.message + "\n\nהתשובות שלכם נשמרו במכשיר — נסו שוב עוד רגע.");
+      return;
+    }
+    clearOnboardingDraft(restaurant.id);
     const updated = { ...restaurant, ...patch };
     setDetails(fromDbRestaurant(updated));
     onRestaurantUpdated?.(updated);
@@ -603,6 +645,11 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
         <div className="px-6 pb-6 space-y-3 border-t border-[#22252b] pt-4">
           {onboardingStep < 3 && (
             <>
+              {onboardingErr && (
+                <p className="text-[11px] font-bold text-[#f3a712] flex items-start gap-1.5 leading-relaxed">
+                  <AlertTriangle size={13} className="shrink-0 mt-0.5" /> {onboardingErr}
+                </p>
+              )}
               <button
                 onClick={() => goToOnboardingStep(onboardingStep + 1)}
                 disabled={savingStep}
