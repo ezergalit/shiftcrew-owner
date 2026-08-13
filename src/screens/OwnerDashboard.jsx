@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
-import { Home, BookOpen, FileText, Users, Settings, LogOut, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera } from "lucide-react";
+import { Home, BookOpen, FileText, Users, Settings, LogOut, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Activity } from "lucide-react";
+import LearningStatus from "../components/LearningStatus";
+import BriefAssistant from "../components/BriefAssistant";
 import CuisineSelector from "../components/CuisineSelector";
 import LearningPathSettings from "../components/LearningPathSettings";
 import ProgressChart from "../components/ProgressChart";
@@ -80,6 +82,8 @@ function dishFromDb(row) {
     pitfalls: row.pitfalls || [],
     kashrut: row.kashrut || [],
     menuPosition: row.menu_position,
+    // Needed by the brief assistant to spot recently-added dishes.
+    createdAt: row.created_at,
     isSpecial: !!row.is_special
   };
 }
@@ -201,6 +205,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // Daily brief
   const [dailyBrief, setDailyBrief] = useState({ missing_items: [], new_items: [], oven_items: [], notes: "" });
   const [briefDraft, setBriefDraft] = useState({ missing: "", newItems: "", oven: "", notes: "" });
+  // The guided builder only appears while today's brief is still empty; dismissing it
+  // hands the owner the plain form for the rest of the session.
+  const [briefAssistantOff, setBriefAssistantOff] = useState(false);
   const [savingBrief, setSavingBrief] = useState(false);
 
   // Additional manager users
@@ -718,6 +725,18 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
               </div>
             </div>
 
+            {!briefAssistantOff &&
+              !(dailyBrief?.missing_items?.length || dailyBrief?.new_items?.length ||
+                dailyBrief?.oven_items?.length || dailyBrief?.notes) && (
+                <BriefAssistant
+                  items={items}
+                  draft={briefDraft}
+                  setDraft={setBriefDraft}
+                  onSave={async () => { await handleSaveBrief(); setBriefAssistantOff(true); }}
+                  saving={savingBrief}
+                  onDismiss={() => setBriefAssistantOff(true)}
+                />
+              )}
             <DailyBriefEditor draft={briefDraft} onChange={setBriefDraft} onSave={handleSaveBrief} saving={savingBrief} />
           </div>
         )}
@@ -848,6 +867,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             )}
           </div>
         )}
+
+        {/* Read-only board on its own tab, so it can't interfere with the menu editor. */}
+        {tab === "status" && <LearningStatus restaurant={restaurant} />}
 
         {tab === "team" && (
           <div className="space-y-3">
@@ -1017,11 +1039,12 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
       {/* Bottom Navigation */}
       <div className="border-t border-[#22252b] bg-[#16181c]">
-        <div className="grid grid-cols-6 gap-1 p-2">
+        <div className="grid grid-cols-7 gap-1 p-2">
           <NavButton icon={<Home size={18} />} label="בית" active={tab === "home"} onClick={() => setTab("home")} />
           <NavButton icon={<BookOpen size={18} />} label="תפריט" active={tab === "menu"} onClick={() => setTab("menu")} />
           <NavButton icon={<FileText size={18} />} label="פרטים" active={tab === "details"} onClick={() => setTab("details")} />
           <NavButton icon={<Users size={18} />} label="צוות" active={tab === "team"} onClick={() => setTab("team")} />
+          <NavButton icon={<Activity size={18} />} label="סטטוס" active={tab === "status"} onClick={() => setTab("status")} />
           <NavButton icon={<Settings size={18} />} label="הגדרות" active={tab === "settings"} onClick={() => setTab("settings")} />
           <NavButton icon={<LogOut size={18} />} label="יציאה" onClick={onSignOut} />
         </div>
