@@ -4,7 +4,12 @@ import { supabase } from "../lib/supabase";
 import { FACET_META, RECOMMENDED_FACETS } from "../lib/examFacets";
 
 const db = supabase.schema("menu_app");
-const ALLERGENS = ["גלוטן", "חלב", "ביצים", "אגוזים", "בוטנים", "דגים", "רכיכות", "סויה", "שומשום", "דג נא"];
+const ALLERGENS = ["גלוטן", "חלב", "ביצים", "אגוזים", "בוטנים", "דגים", "רכיכות", "סויה", "שומשום"];
+// "מוקשים" — what a guest often asks to avoid by preference, not by safety. Separate from
+// ALLERGENS on purpose: folding a preference into the allergen list makes the allergen
+// list less trustworthy, and a waiter reads the two for different reasons. Free text, so
+// these are only a starting palette — any restaurant adds its own.
+const PITFALLS = ["כוסברה", "חריף", "דג נא", "שום", "בצל", "ג'ינג'ר", "וסאבי", "מיונז", "אלכוהול", "טחינה"];
 
 // Reviewing a menu one dish at a time is how a 38-dish import never gets reviewed. This
 // groups dishes by what is actually missing and lets the owner fix a whole group in one
