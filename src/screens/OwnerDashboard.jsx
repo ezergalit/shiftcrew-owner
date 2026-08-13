@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Home, BookOpen, FileText, Users, Settings, LogOut, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Activity } from "lucide-react";
 import LearningStatus from "../components/LearningStatus";
 import BriefAssistant from "../components/BriefAssistant";
+import BriefReadBoard from "../components/BriefReadBoard";
 import CuisineSelector from "../components/CuisineSelector";
 import LearningPathSettings from "../components/LearningPathSettings";
 import ProgressChart from "../components/ProgressChart";
@@ -738,6 +739,8 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 />
               )}
             <DailyBriefEditor draft={briefDraft} onChange={setBriefDraft} onSave={handleSaveBrief} saving={savingBrief} />
+            {/* Who read it — directly under the editor, so writing and checking are one page. */}
+            <BriefReadBoard restaurant={restaurant} brief={dailyBrief} />
           </div>
         )}
 
