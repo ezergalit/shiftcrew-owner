@@ -1709,7 +1709,11 @@ function DishForm({ item, onChange, onSave, onCancel, existingCategories }) {
 // run came back with "## מעבר 1 — תמלול" as the first line, which then read as a menu
 // category called "Pass 1". The prompt forbids it; this makes sure of it, because a
 // stray heading here silently becomes a category the team is taught.
-const PROCESS_ARTIFACT_RE = /^\s*#{0,3}\s*(מעבר\s*\d|תמלול|הגהה|pass\s*\d|transcription|proofread)\b.*$/i;
+// Also catches an attached Hebrew prefix ("התמלול", "בתמלול") and the proofreader's
+// sign-off — a review run came back with "התמלול נבדק מול התמונה. כל המילים תקינים."
+// as a line of its own, which would read as a menu category.
+const PROCESS_ARTIFACT_RE =
+  /^\s*#{0,3}\s*[הבו]?(מעבר\s*\d|תמלול|הגהה|pass\s*\d|transcription|proofread)\b.*$|נבדק מול הת|כל המילים והמספרים/i;
 function stripProcessArtifacts(text) {
   return String(text)
     .split("\n")
@@ -1854,6 +1858,9 @@ function PhotoTray({ photos, onAdd, onRemove, onBack, onSend, busy, error }) {
 function TranscriptReview({ value, onChange, busy, error, onConfirm }) {
   const [draft, setDraft] = useState(value);
   const edited = draft.trim() !== value.trim();
+  // Counted from the live draft, so it drops as the owner clears the markers rather than
+  // reporting whatever the API said when the screen opened.
+  const uncertainCount = (draft.match(/\[\?\]/g) || []).length;
   // Summarised from the text in front of the owner, not from a later parse — at this
   // point nothing has been structured yet, and a count from elsewhere would be a lie.
   // "## " is how the transcription pass marks a group heading.
@@ -1867,10 +1874,25 @@ function TranscriptReview({ value, onChange, busy, error, onConfirm }) {
         <div>
           <p className="text-sm font-bold text-[#eef0f6] mb-1">זה מה שקראנו מהתפריט</p>
           <p className="text-xs text-[#8a8aa0] leading-relaxed">
-            עברו על זה ותקנו מה שצריך — במיוחד מחירים, כמויות ושמות לועזיים. מה שכתוב כאן
-            הוא מה שהצוות ילמד.
+            <span className="text-[#a79bff] font-bold">הטקסט למטה ניתן לעריכה</span> — לחצו עליו
+            ותקנו כל מה שנקרא לא נכון. מה שכתוב כאן הוא מה שהצוות ילמד.
           </p>
         </div>
+
+        {/* Reading a menu off a photo goes wrong in a specific way: it produces real
+            Hebrew words that aren't the ones on the page ("דגים טאים" for "דגים נאים").
+            A second AI pass hunts for those and marks whatever it still can't read, so
+            the owner's eye goes to the right places instead of re-reading everything. */}
+        {uncertainCount > 0 && (
+          <div className="bg-[#3a2a12] border border-[#7a5a1f] rounded-lg p-3 flex items-start gap-2">
+            <AlertTriangle size={15} className="text-[#f3a712] shrink-0 mt-0.5" />
+            <p className="text-[11px] text-[#f3c98b] leading-relaxed">
+              <span className="font-bold">{uncertainCount} מקומות לא נקראו בוודאות</span> ומסומנים
+              ב-<span className="font-mono bg-black/30 px-1 rounded">[?]</span>. חפשו אותם בטקסט
+              ותקנו — ומחקו את הסימן אחרי שתיקנתם.
+            </p>
+          </div>
+        )}
 
         {categoryNames.length > 0 && (
           <div className="bg-[#0c0d10] border border-[#22252b] rounded-lg p-3">
@@ -1891,24 +1913,39 @@ function TranscriptReview({ value, onChange, busy, error, onConfirm }) {
           </div>
         )}
 
-        <textarea
-          value={draft}
-          onChange={(e) => { setDraft(e.target.value); onChange(e.target.value); }}
-          rows={14}
-          dir="rtl"
-          className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-3 py-2 text-[#eef0f6] text-sm leading-relaxed focus:outline-none focus:border-[#6d5efc] resize-none font-mono"
-        />
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label htmlFor="menu-transcript" className="text-[11px] font-bold text-[#c4c4d4] flex items-center gap-1.5">
+              <Edit2 size={12} /> הטקסט של התפריט — ערכו כאן
+            </label>
+            {edited && <span className="text-[10px] font-bold text-[#22c08c]">נערך</span>}
+          </div>
+          <textarea
+            id="menu-transcript"
+            value={draft}
+            onChange={(e) => { setDraft(e.target.value); onChange(e.target.value); }}
+            rows={14}
+            dir="rtl"
+            spellCheck={false}
+            className="w-full bg-[#16181c] border-2 border-[#3a3d46] rounded-lg px-3 py-2.5 text-[#eef0f6] text-sm leading-relaxed focus:outline-none focus:border-[#6d5efc] focus:bg-[#0c0d10] resize-y font-mono cursor-text hover:border-[#4a4d57] transition-colors"
+          />
+        </div>
         {error && <p className="text-xs font-bold text-[#e0315a] flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" /> {error}</p>}
         {busy && <p className="text-xs font-bold text-[#a79bff]">מפענח מחדש לפי התיקונים שלך…</p>}
       </div>
-      <div className="px-6 pb-6 border-t border-[#22252b] pt-4">
+      <div className="px-6 pb-6 border-t border-[#22252b] pt-4 space-y-2">
         <button
           onClick={() => onConfirm(draft)}
           disabled={busy || !draft.trim()}
           className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-lg hover:bg-[#5b4ef0] transition disabled:opacity-40"
         >
-          {busy ? "מפענח..." : edited ? "פענוח מחדש לפי התיקונים" : "הכל נכון — המשך"}
+          {busy ? "מפענח..." : edited ? "שמרו את התיקונים והמשיכו" : "הכל נכון — המשך"}
         </button>
+        {!edited && (
+          <p className="text-[10px] text-[#6a6a7e] text-center leading-relaxed">
+            משהו לא נכון? לחצו על הטקסט למעלה, תקנו, והכפתור ישתנה.
+          </p>
+        )}
       </div>
     </>
   );
