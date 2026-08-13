@@ -1268,6 +1268,51 @@ function MenuSetupTutorial({ restaurant, onDone }) {
     };
   };
 
+  // Deterministic fallback for a marked transcript. The transcription pass writes a
+  // format WE designed — "## " heading, "~ " subtitle, "> " description, "name price"
+  // dish lines — so when the AI structuring call fails, the client can still split the
+  // text into categories and dishes by the markers alone and move on to review.
+  //
+  // ⚠️ This exists because the photo flow used to dead-end: transcription succeeded, the
+  // structure call 502'd, and the owner was stuck on the confirm button (a refresh +
+  // paste "worked" only because the paste path never used the AI). The AI pass is still
+  // preferred — it fills allergen/pregnancy/pitfall flags; this fallback leaves them
+  // empty and says so, which MenuHealthReview then surfaces as gaps to fix.
+  const parseMarkedTranscript = (text) => {
+    const cats = [];
+    let cur = null;
+    let lastDish = null;
+    for (const raw of text.split("\n")) {
+      const line = raw.trim();
+      if (!line || /^---/.test(line)) continue;
+      if (/^#{1,3}\s/.test(line)) {
+        cur = { name: line.replace(/^#{1,3}\s*/, ""), course: "other", subtitle: null, dishes: [] };
+        cats.push(cur);
+        lastDish = null;
+        continue;
+      }
+      if (/^~\s?/.test(line)) {
+        if (cur && !cur.subtitle) cur.subtitle = line.replace(/^~\s*/, "");
+        continue;
+      }
+      if (/^>\s?/.test(line)) {
+        if (lastDish) lastDish.description = lastDish.description ? `${lastDish.description} ${line.replace(/^>\s*/, "")}` : line.replace(/^>\s*/, "");
+        continue;
+      }
+      const bare = line.replace(/^\?\?\s*/, "");
+      const m = bare.match(/^(.*?)[\s.]*(\d{1,4})\s*$/);
+      const name = (m ? m[1] : bare).trim();
+      if (!name) continue;
+      if (!cur) {
+        cur = { name: "כללי", course: "other", subtitle: null, dishes: [] };
+        cats.push(cur);
+      }
+      lastDish = { name, price: m ? Number(m[2]) : null, description: "", ingredients: [], allergens: [], pregnancy: [], pitfalls: [], kashrut: [] };
+      cur.dishes.push(lastDish);
+    }
+    return cats.filter((c) => c.dishes.length);
+  };
+
   // Structuring runs on Claude Haiku — a whole menu costs about an agora. Text payloads
   // go through the chunker above; a second round happens only when the model had a
   // genuine structural doubt and asked (group-level questions, never dish-by-dish).
@@ -1304,7 +1349,20 @@ function MenuSetupTutorial({ restaurant, onDone }) {
         setPhase("review");
       }
     } catch (e) {
-      setAiErr(e.message);
+      // The confirm button must never be a dead end: if the transcript carries our own
+      // structure markers, split by them and continue to review instead of stopping.
+      const fallback = payload.text ? parseMarkedTranscript(payload.text) : [];
+      if (fallback.length) {
+        setCategories(normalizeAiCategories(fallback));
+        setGeneralNotes([]);
+        setAiQuestions([]);
+        setAiErr("");
+        setPhase("review");
+        // The owner still needs to know the smart pass didn't run.
+        setTimeout(() => setAiErr("⚠️ הזיהוי החכם של אלרגנים ורגישויות לא הצליח הפעם — התפריט חולק לפי המבנה בלבד. סמנו אלרגנים ידנית, או נסו לייבא שוב מאוחר יותר."), 0);
+      } else {
+        setAiErr(e.message);
+      }
     } finally {
       setAiBusy(false);
     }
@@ -1312,7 +1370,17 @@ function MenuSetupTutorial({ restaurant, onDone }) {
 
   // Cheap-first: the free price-based parser handles classic menus; the AI only runs
   // when it comes back thin (e.g. a menu with no prices at all, like a sushi spec sheet).
+  //
+  // ⚠️ Except marked transcripts. A pasted text that carries our transcription markers
+  // (## heading, ~ subtitle, > description) is a photo transcript being re-imported —
+  // the price parser doesn't know the markers, so a "~ ניחוחות של פסטה..." subtitle
+  // line leaked into the menu as a dish. Marked text goes down the smart path, which
+  // understands the markers and falls back to parseMarkedTranscript if the AI fails.
   const handleParse = async () => {
+    if (/^\s*(?:#{1,3}|~|>)\s/m.test(rawText)) {
+      await runAi({ text: rawText });
+      return;
+    }
     const parsed = parseMenuText(rawText);
     const dishCount = parsed.reduce((n, c) => n + c.dishes.length, 0);
     if (dishCount >= 3) {
