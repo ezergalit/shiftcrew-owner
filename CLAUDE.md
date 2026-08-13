@@ -113,6 +113,23 @@ src/components/ProgressChart.jsx        — טאב "צוות": גרף שיפור
   2576px/0.92, קריאה-לכל-תמונה במקביל (504 אחרת), Opus 5 בלי temperature,
   `content.find(type=text)` ולא `content[0]`.
 
+## סבב אופטימיזציית המנהל (2026-08-13, לילה) — קבצים חדשים
+
+```
+src/components/SmartSuggestions.jsx — כרטיסי הצעה בטאב הבית (מנה חלשה/קטגוריה נכשלת ⇒ כוכב באישור)
+src/components/GuidedTour.jsx       — סיור מודרך בכל הטאבים; אוטומטי אחרי ייבוא ראשון, ידני מהגדרות
+```
+
+ב-`OwnerDashboard.jsx`: `starred` (טוגל ⭐ + auto-star ל-insert בודד אחרי 48h שקט —
+`isStandaloneNewDish`; ייבוא שלם לעולם לא מסמן) · `EmphasisSuggestion` בסקירת הייבוא ·
+`DIFFICULTY_PROFILES` בשלב 3 של האונבורדינג (נכתב ל-exam_config רק כשאין) · תיאור גלוי
+על כרטיס מנה · backdrop צהוב ל-[?] בבדיקת התמלול (הפונט/padding חייבים להיות זהים
+לטקסטארה) · `openDishEditor` + useEffect שגולל את `#dish-form` לראש (container **וגם**
+`window.scrollTo(0,0)` — בחלון דסקטופ הדף עצמו נגלל; ⚠️ ה-useEffect מעל ה-early return
+של האונבורדינג).
+
+⚠️ צריכת `starred` במנוע המלצרים (priority/deck) — עדיין לא מחוברת; שייכת לסשן המלצרים.
+
 ## ⚠️ TEMP DEV BYPASS — קיים בקוד אבל כבר לא נחוץ
 
 `App.jsx` בודק `import.meta.env.VITE_DEV_BYPASS_AUTH === "true"` — אם כן, מדלג לגמרי על
