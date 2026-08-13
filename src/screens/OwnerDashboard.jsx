@@ -263,19 +263,18 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     let alive = true;
     (async () => {
       const { data: menuData, error: menuErr } = await db.from("menu_items")
-        // The printed menu's own order, with created_at only as a tiebreaker for dishes
-      // added later by hand. This is the order the team learns in.
-      .select("*").eq("restaurant_id", restaurant.id)
-      .order("menu_position", { ascending: true, nullsFirst: false })
-      .order("created_at");
+        .select("*").eq("restaurant_id", restaurant.id)
+        .order("menu_position", { ascending: true, nullsFirst: false })
+        .order("created_at");
       if (alive && !menuErr) setItems((menuData || []).map(dishFromDb));
 
+      // Team members have no menu_position — they are people, not dishes. Ordering them
+      // by it made this request 400 on every dashboard load, which silently emptied the
+      // team tab.
       const { data: teamData, error: teamErr } = await db.from("team_members")
-        // The printed menu's own order, with created_at only as a tiebreaker for dishes
-      // added later by hand. This is the order the team learns in.
-      .select("*").eq("restaurant_id", restaurant.id)
-      .order("menu_position", { ascending: true, nullsFirst: false })
-      .order("created_at");
+        .select("*").eq("restaurant_id", restaurant.id)
+        .order("created_at");
+      if (teamErr) console.error("could not load team members:", teamErr);
       if (alive && !teamErr) setTeamMembers(teamData || []);
 
       const { data: lbData } = await db.from("leaderboard")
