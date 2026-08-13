@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { Home, BookOpen, FileText, Users, Settings, LogOut, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Activity, Star } from "lucide-react";
+import { Home, BookOpen, Users, Settings, LogOut, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Star } from "lucide-react";
 import LearningStatus from "../components/LearningStatus";
+import CommandsTab from "../components/CommandsTab";
 import SmartSuggestions from "../components/SmartSuggestions";
 import GuidedTour from "../components/GuidedTour";
 import BriefAssistant from "../components/BriefAssistant";
@@ -219,7 +220,10 @@ async function downscaleImage(file, maxDim = 2576) {
 }
 
 export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpdated }) {
-  const [tab, setTab] = useState("home"); // home | menu | details | team | settings
+  const [tab, setTab] = useState("home"); // home | menu | team | settings
+  // Inside the team tab: "today" = who learned today (the old status board),
+  // "progress" = per-waiter standing, exams and improvement graphs.
+  const [teamView, setTeamView] = useState("today");
   const [onboarding, setOnboarding] = useState(false); // true if first time setup needed
   const [menuSetupActive, setMenuSetupActive] = useState(false);
   const [showMenuTip, setShowMenuTip] = useState(false);
@@ -285,14 +289,31 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
   const today = new Date().toISOString().slice(0, 10);
 
-  // Check if first time setup + keep `details` in sync with the canonical restaurant object
+  // Keep `details` in sync with the canonical restaurant object.
+  //
+  // Operator model (2026-08-13): the operator opens the account and hands over the code,
+  // so the owner's first login must NOT land on a 3-step profile questionnaire — it lands
+  // straight in the menu tutorial. The old onboarding screens are retired from the entry
+  // path (details stay editable in the פרטים tab, difficulty in הגדרות); the flag is
+  // completed silently in the background so nothing re-triggers it.
   useEffect(() => {
     if (!restaurant) return;
     setDetails(fromDbRestaurant(restaurant));
     if (!restaurant.onboarding_completed) {
-      setOnboarding(true);
+      db.from("restaurants")
+        .update({ onboarding_completed: true, onboarding_step: 3 })
+        .eq("id", restaurant.id)
+        .then(({ error }) => { if (error) console.error("onboarding auto-complete failed:", error); });
+      onRestaurantUpdated?.({ ...restaurant, onboarding_completed: true, onboarding_step: 3 });
     }
   }, [restaurant]);
+
+  // First look at an empty menu = open the tutorial. Separate from the flag above so an
+  // existing restaurant that deleted its dishes isn't dragged back in.
+  useEffect(() => {
+    if (restaurant && !restaurant.onboarding_completed && items.length === 0) setMenuSetupActive(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restaurant?.id]);
 
   // Re-fetch just the menu (used after the paste-a-menu tutorial bulk-inserts dishes
   // directly via Supabase, bypassing the `items` state entirely — without this, the
@@ -886,6 +907,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
         {tab === "menu" && (
           <div className="space-y-3">
+            {/* The owner's plain-language remote control lives at the top of the menu tab —
+                bulk edits, paste-to-add dishes, and basic questions, always preview+approve. */}
+            <CommandsTab restaurant={restaurant} items={items} onApplied={loadMenuItems} />
             {showMenuTip && (
               <div className="bg-[#6d5efc]/10 border border-[#6d5efc]/40 rounded-lg p-3 flex items-start justify-between gap-2">
                 <p className="text-xs text-[#a79bff] leading-relaxed">התפריט יובא בהצלחה! מכאן תוכלו תמיד להוסיף, לערוך או למחוק מנות עם הכפתור "הוסף מנה".</p>
@@ -979,65 +1003,6 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           </div>
         )}
 
-        {tab === "details" && (
-          <div className="space-y-4">
-            {!editingDetails ? (
-              <div className="bg-[#16181c] rounded-lg p-4 border border-[#22252b] space-y-3">
-                <div>
-                  <p className="text-xs font-bold text-[#8a8aa0]">שם המסעדה</p>
-                  <p className="text-[#eef0f6] font-bold">{details?.name || "לא מוגדר"}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-[#8a8aa0] mb-1.5">סוג המטבח</p>
-                  {details?.cuisineTypes?.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {details.cuisineTypes.map((c) => (
-                        <span key={c} className="bg-[#6d5efc]/15 border border-[#6d5efc]/40 text-[#a79bff] text-xs font-bold px-2.5 py-1 rounded-full">
-                          {c}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[#eef0f6]">לא מוגדר</p>
-                  )}
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-[#8a8aa0]">תיאור</p>
-                  <p className="text-[#eef0f6]">{details?.description || "לא מוגדר"}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-[#8a8aa0]">סגנון האירוח</p>
-                  <p className="text-[#eef0f6]">{SERVICE_STYLES.find((s) => s.id === details?.serviceStyle)?.title || "לא מוגדר"}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-[#8a8aa0]">טלפון</p>
-                  <p className="text-[#eef0f6]">{details?.phone || "לא מוגדר"}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-[#8a8aa0]">כתובת</p>
-                  <p className="text-[#eef0f6]">{details?.address || "לא מוגדר"}</p>
-                </div>
-                <button
-                  onClick={() => { setEditingDetails(true); setDetailsForm(details || {}); }}
-                  className="w-full bg-[#6d5efc] text-white font-bold py-2 rounded-lg text-sm hover:bg-[#5b4ef0] transition"
-                >
-                  <Edit2 size={14} className="inline mr-1" /> עריכה
-                </button>
-              </div>
-            ) : (
-              <DetailsForm
-                form={detailsForm}
-                onChange={setDetailsForm}
-                onSave={handleSaveDetails}
-                onCancel={() => setEditingDetails(false)}
-              />
-            )}
-          </div>
-        )}
-
-        {/* Read-only board on its own tab, so it can't interfere with the menu editor. */}
-        {tab === "status" && <LearningStatus restaurant={restaurant} />}
-
         {tab === "team" && (
           <div className="space-y-3">
             <div className="bg-[#16181c] rounded-lg p-4 border border-[#22252b]">
@@ -1046,8 +1011,24 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
               <p className="text-xs text-[#8a8aa0]">שתפו את הקוד הזה עם הצוות שלכם להצטרפות</p>
             </div>
 
+            {/* One team tab, two lenses on the same people: "who showed up and learned
+                today" (the old status tab) and "where each waiter stands overall". */}
+            <div className="flex gap-1.5 bg-[#16181c] border border-[#22252b] rounded-xl p-1">
+              {[["today", "מי למד היום"], ["progress", "התקדמות ומבחנים"]].map(([v, label]) => (
+                <button key={v} onClick={() => setTeamView(v)}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${
+                    teamView === v ? "bg-[#6d5efc] text-white" : "text-[#8a8aa0]"
+                  }`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {teamView === "today" && <LearningStatus restaurant={restaurant} />}
+
+            {teamView === "progress" && (
             <div>
-              <p className="text-xs font-bold text-[#8a8aa0] mb-3">פעילות היום ({teamMembers.length} חברי צוות)</p>
+              <p className="text-xs font-bold text-[#8a8aa0] mb-3">התקדמות הצוות ({teamMembers.length} חברי צוות)</p>
               <div className="space-y-2">
                 {teamMembers.length === 0 ? (
                   <p className="text-sm text-[#8a8aa0]">עדיין אין חברי צוות. שתפו את הקוד להצטרפות!</p>
@@ -1146,6 +1127,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 )}
               </div>
             </div>
+            )}
           </div>
         )}
 
@@ -1157,6 +1139,47 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             >
               🧭 סיור מודרך באפליקציה — מה יש בכל טאב
             </button>
+
+            {/* Restaurant details moved here from their own tab — they're set once and
+                rarely touched, which is exactly what settings is for. */}
+            {!editingDetails ? (
+              <div className="bg-[#16181c] rounded-lg p-4 border border-[#22252b] space-y-3">
+                <p className="font-bold text-[#eef0f6]">פרטי המסעדה</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs font-bold text-[#8a8aa0]">שם</p>
+                    <p className="text-sm text-[#eef0f6] font-bold">{details?.name || "לא מוגדר"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-[#8a8aa0]">סגנון האירוח</p>
+                    <p className="text-sm text-[#eef0f6]">{SERVICE_STYLES.find((s) => s.id === details?.serviceStyle)?.title || "לא מוגדר"}</p>
+                  </div>
+                </div>
+                {details?.cuisineTypes?.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {details.cuisineTypes.map((c) => (
+                      <span key={c} className="bg-[#6d5efc]/15 border border-[#6d5efc]/40 text-[#a79bff] text-xs font-bold px-2.5 py-1 rounded-full">
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {details?.description && <p className="text-xs text-[#8a8aa0] leading-relaxed">{details.description}</p>}
+                <button
+                  onClick={() => { setEditingDetails(true); setDetailsForm(details || {}); }}
+                  className="w-full bg-[#22252b] text-[#a79bff] font-bold py-2 rounded-lg text-sm hover:bg-[#2c2e35] transition"
+                >
+                  <Edit2 size={14} className="inline mr-1" /> עריכת הפרטים
+                </button>
+              </div>
+            ) : (
+              <DetailsForm
+                form={detailsForm}
+                onChange={setDetailsForm}
+                onSave={handleSaveDetails}
+                onCancel={() => setEditingDetails(false)}
+              />
+            )}
 
             {/* Fixing the menu comes before configuring what to test on it: what this
                 screen reports missing is exactly what limits the questions below. */}
@@ -1213,12 +1236,10 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
       {/* Bottom Navigation */}
       <div className="border-t border-[#22252b] bg-[#16181c]">
-        <div className="grid grid-cols-7 gap-1 p-2">
+        <div className="grid grid-cols-5 gap-1 p-2">
           <NavButton icon={<Home size={18} />} label="בית" active={tab === "home"} onClick={() => setTab("home")} />
           <NavButton icon={<BookOpen size={18} />} label="תפריט" active={tab === "menu"} onClick={() => setTab("menu")} />
-          <NavButton icon={<FileText size={18} />} label="פרטים" active={tab === "details"} onClick={() => setTab("details")} />
           <NavButton icon={<Users size={18} />} label="צוות" active={tab === "team"} onClick={() => setTab("team")} />
-          <NavButton icon={<Activity size={18} />} label="סטטוס" active={tab === "status"} onClick={() => setTab("status")} />
           <NavButton icon={<Settings size={18} />} label="הגדרות" active={tab === "settings"} onClick={() => setTab("settings")} />
           <NavButton icon={<LogOut size={18} />} label="יציאה" onClick={onSignOut} />
         </div>
@@ -1856,6 +1877,26 @@ function MenuSetupTutorial({ restaurant, onDone }) {
         <>
           <div className="flex-1 px-6 py-4 overflow-y-auto space-y-4">
             <p className="text-xs text-[#8a8aa0]">בדקו שהכל נכון — אפשר לשנות שמות קטגוריה, למחוק, להוסיף, ולתקן כל מנה. זה לוקח רק רגע.</p>
+            <CategoryComposer
+              categories={categories}
+              onMerge={(ids, mergedName) => {
+                setCategories((prev) => {
+                  const selected = prev.filter((c) => ids.includes(c.id));
+                  if (selected.length < 2) return prev;
+                  const merged = {
+                    id: selected[0].id,
+                    name: mergedName || selected[0].name || "כללי",
+                    dishes: selected.flatMap((c) => c.dishes),
+                  };
+                  let placed = false;
+                  return prev.flatMap((c) => {
+                    if (!ids.includes(c.id)) return [c];
+                    if (!placed) { placed = true; return [merged]; }
+                    return [];
+                  });
+                });
+              }}
+            />
             <EmphasisSuggestion categories={categories} onApprove={(ids) => {
               setCategories((prev) => prev.map((c) => ({ ...c, dishes: c.dishes.map((d) => (ids.includes(d.id) ? { ...d, starred: true } : d)) })));
             }} />
@@ -1930,6 +1971,61 @@ function MenuSetupTutorial({ restaurant, onDone }) {
             </button>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+// "Like Lego" — the owner's words. Drink-heavy menus import as many tiny categories
+// (every wine style its own heading); other owners want exactly that split. So neither is
+// forced: select 2+ chips, name the result, merge. Splitting is the reverse — rename a
+// category below or move dishes between them. Merging keeps the dishes' original order.
+function CategoryComposer({ categories, onMerge }) {
+  const [selected, setSelected] = useState([]);
+  const [name, setName] = useState("");
+  if (categories.length < 2) return null;
+  const toggle = (id) =>
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const first = categories.find((c) => c.id === selected[0]);
+  return (
+    <div className="bg-[#16181c] border border-[#6d5efc]/30 rounded-xl p-3 space-y-2">
+      <p className="text-xs font-bold text-[#eef0f6]">איך לחלק את התפריט? אתם קובעים — כמו לגו.</p>
+      <p className="text-[11px] text-[#8a8aa0] leading-relaxed">
+        התפריט התפצל ליותר מדי קטגוריות — למשל כל סוג יין בנפרד? סמנו כמה קטגוריות ואחדו אותן לאחת. מעדיפים פיצול? השאירו כמו שזה, או שנו שמות למטה.
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {categories.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => toggle(c.id)}
+            className={`text-[11px] font-bold px-2.5 py-1.5 rounded-full border transition ${
+              selected.includes(c.id)
+                ? "bg-[#6d5efc]/20 border-[#6d5efc] text-[#a79bff]"
+                : "bg-[#0c0d10] border-[#22252b] text-[#8a8aa0] hover:border-[#3a3d45]"
+            }`}
+          >
+            {c.name || "ללא שם"} · {c.dishes.length}
+          </button>
+        ))}
+      </div>
+      {selected.length >= 2 && (
+        <div className="flex gap-2 items-center pt-1">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={`שם לקטגוריה המאוחדת (ברירת מחדל: ${first?.name || "כללי"})`}
+            dir="rtl"
+            className="flex-1 bg-[#0c0d10] border border-[#22252b] rounded-lg px-3 py-2 text-xs text-[#eef0f6] placeholder:text-[#6a6a7e] focus:outline-none focus:border-[#6d5efc]"
+          />
+          <button
+            type="button"
+            onClick={() => { onMerge(selected, name.trim()); setSelected([]); setName(""); }}
+            className="bg-[#6d5efc] text-white text-xs font-bold px-3 py-2 rounded-lg shrink-0"
+          >
+            איחוד {selected.length} קטגוריות
+          </button>
+        </div>
       )}
     </div>
   );

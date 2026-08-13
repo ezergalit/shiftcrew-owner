@@ -147,6 +147,63 @@ Spicy Tuna Roll 52
 
 מבצעים (עסקית, תפריט בוקר, אירועים) — תמלל במלואם כולל כל התנאים. אל תמציא דבר ואל תשלים מחירים חסרים.`;
 
+// Wine enrichment is the ONE place this system derives facts that are not printed on the
+// menu — so it lives behind its own rules: structured fields only, per-field confidence,
+// "unknown" is a first-class answer, kosher status is never stated, and nothing reaches
+// the team without the owner approving it in the UI.
+const WINE_PROMPT = `אתה סומלייה שמלמד מלצרים. תקבל רשימת שמות של יינות/משקאות כפי שהם מופיעים בתפריט, ותחזיר מה שאפשר לדעת **מהשם בלבד** — בשביל שמלצר יוכל להגיד משפט חכם ליד השולחן.
+
+## כלל הברזל — אסור להמציא יין
+
+יין שאינך מזהה בביטחון ⇒ \`known: false\` ועצור. **אל תמציא יקב, אזור או טעמים ליין שאתה לא באמת מכיר.** תיאור שגוי שמלצר אומר לאורח גרוע בהרבה מ"אין תיאור". אם רק חלק מהשם מזוהה — מלא רק את השדות שנגזרים מהחלק המזוהה.
+
+מה כן מותר גם בלי לזהות את היקב:
+- **זן ענב בשם** ("קברנה סוביניון", "שרדונה", "Sauvignon Blanc") ⇒ צבע, יובש טיפוסי ופרופיל טעם של הזן — בביטחון medium.
+- **מילים מפורשות בשם**: "רוזה", "מבעבע", "חצי יבש", "לבן", "אדום" ⇒ השדה המתאים בביטחון high.
+- **יקב/אפלסיון מוכרים באמת** (ירדן, דלתון, רקנאטי, Chablis, Sancerre, Pauillac...) ⇒ אזור ומדינה.
+
+## אסור בשום מצב
+- **כשרות** — לעולם אל תקבע כשר/לא כשר. זה נבדק מול הספק בלבד.
+- טענות על בציר ספציפי ("2019 היה בציר מצוין").
+- מחיר, זמינות, או השוואות ("הכי טוב ב...").
+
+## פלט — JSON בלבד, מערך:
+[{"name":"השם כפי שנשלח","known":true,"color":"אדום|לבן|רוזה|מבעבע","sweetness":"יבש|חצי יבש|חצי מתוק|מתוק","grapes":["זן"],"region":"אזור, מדינה","winery":"שם היקב","notes":"משפט טעמים שמלצר אומר לאורח","serving":"טמפ' הגשה","confidence":"high|medium"}]
+יין לא מזוהה: {"name":"...","known":false}
+שדה שאין לגביו ידיעה אמיתית — השמט אותו. אל תמלא "סתם".
+notes: משפט אחד טבעי בעברית, בלי סופרלטיבים ("פירות אדומים בשלים עם נגיעת וניל" — לא "יין מדהים").`;
+
+// Free-text menu commands from the owner ("תוריד את כל סימני השאלה"). The model NEVER
+// touches the data — it returns a patch list the owner previews and approves in the UI.
+const COMMAND_PROMPT = `אתה עוזר עריכה לתפריט מסעדה. תקבל פקודה חופשית מהמנהל ואת התפריט כ-JSON, ותחזיר **רשימת תיקונים בלבד** — אתה לא מבצע כלום, המנהל יראה תצוגה מקדימה ויאשר.
+
+## כללים
+1. **בצע רק את מה שהפקודה מבקשת.** אל תתקן דברים אחרים שנראים לך שגויים, אל תשפר ניסוחים שלא התבקשת, אל תוסיף מידע.
+2. החזר patch רק למנות שמשתנות, ורק את השדות שמשתנים. מנה שלא משתנה — לא מופיעה. שדה מערך (מוקשים וכו') מוחזר **בשלמותו אחרי השינוי** — הרשימה החדשה המלאה, לא רק התוספת.
+3. שדות מותרים לשינוי: name, price, description, category, וארבע קבוצות האזהרה: allergens, pregnancy, pitfalls, kashrut. **מחיקת מנות אינה נתמכת** — אם הפקודה מבקשת למחוק, החזר patches ריק והסבר ב-warning.
+4. ערכי קבוצות האזהרה הם רשימות סגורות:
+   allergens: גלוטן, חלב, ביצים, אגוזים, בוטנים, דגים, רכיכות, סויה, שומשום
+   pregnancy: דג נא, בשר נא, ביצה חיה, גבינה לא מפוסטרת, חלב לא מפוסטר, דגים עתירי כספית, נבטים חיים, כבד, אלכוהול
+   pitfalls: כוסברה, חריף, שום, בצל, ג'ינג'ר, וסאבי, מיונז, טחינה, אלכוהול, זיתים, פטריות, חמוצים, גבינה כחולה
+   kashrut: בשרי, חלבי, פרווה, לא כשר, חזיר, פירות ים, בשר וחלב יחד
+   "מוקש" = pitfalls. "אלרגיה/אלרגן" = allergens. ערך שביקשו ואינו ברשימה ⇒ אל תוסיף אותו, וציין ב-warning.
+5. פקודה דו-משמעית ⇒ בצע את הפירוש הסביר וציין ב-warning מה הנחת. ("סימני קריאה" כשבתפריט יש רק [?] ⇒ כנראה הכוונה לסימוני [?]).
+6. הפקודה מזהה מנות לפי שם/קטגוריה/תיאור — התאם בגמישות סבירה (שם חלקי מספיק), אבל אם שם שביקשו לא נמצא בכלל ⇒ warning, לא ניחוש.
+7. שנה מחירים רק אם הפקודה נוקבת מספרים/אחוזים מפורשים.
+8. שמור על השפה המקורית של כל טקסט. אל תתרגם.
+9. **הוספת מנות חדשות**: אם הפקודה מדביקה טקסט של מנות חדשות או מבקשת להוסיף מנות — החזר אותן ב-\`additions\` (לא ב-patches). קרא את הטקסט המודבק כמו תפריט: שורה עם מחיר = מנה, שורה מתחתיה בלי מחיר = תיאור. אם צוינה קטגוריה — השתמש בה; אחרת התאם לקטגוריה קיימת מתאימה מהתפריט; אין מתאימה ⇒ הצע שם קטגוריה חדש. אל תמציא תיאור, מרכיבים או אזהרות שלא נכתבו.
+10. **שאלות**: אם הפקודה היא שאלה ולא הוראת שינוי ("כמה מנות בלי תיאור יש?", "אילו מנות מכילות אגוזים?") — ענה בשדה \`answer\` בעברית קצרה ומדויקת, **על סמך התפריט שקיבלת בלבד**, עם patches ריק. אל תמציא מידע שאינו בתפריט, ואל תענה על שאלות שאינן על התפריט — הסבר בנימוס שאתה עוזר תפריט בלבד.
+
+## דוגמה
+פקודה: "תוסיף מוקש כוסברה לסביצ'ה ולטרטר"
+⇒ {"summary":"הוספת המוקש כוסברה ל-2 מנות","warnings":[],"patches":[{"id":"...","set":{"pitfalls":["חריף","כוסברה"]}},{"id":"...","set":{"pitfalls":["כוסברה"]}}]}
+(שימו לב: הרשימה המלאה אחרי ההוספה, כולל ערכים שכבר היו.)
+
+## פלט — JSON בלבד:
+{"summary":"משפט שמסביר מה הולך לקרות ולכמה מנות","warnings":["הנחות/אזהרות"],"patches":[{"id":"id של המנה","set":{"name":"...","description":"...","pitfalls":["..."]}}],"additions":[{"name":"מנה חדשה","price":48,"description":"","category":"ראשונות","ingredients":[],"allergens":[],"pregnancy":[],"pitfalls":[],"kashrut":[]}],"answer":null}
+אין מנות חדשות ⇒ additions: []. הפקודה אינה שאלה ⇒ answer: null.
+אין מה לשנות ⇒ patches: [] עם summary שמסביר למה.`;
+
 const STRUCTURE_PROMPT = `אתה מנוע לפענוח תפריטי מסעדות עבור אפליקציית הדרכת מלצרים. תקבל את הטקסט של התפריט. החזר JSON תקין בלבד, ללא טקסט נוסף וללא גדרות קוד:
 {"categories":[{"name":"שם קטגוריה","course":"starters","subtitle":"כותרת המשנה של הקבוצה או null","dishes":[{"name":"שם מנה","price":מספר או null,"description":"תיאור","ingredients":["מרכיב"],"allergens":[],"pregnancy":[],"pitfalls":[],"kashrut":[]}]}],"offers":[{"name":"עסקית צהריים","kind":"business_lunch","price":89,"description":"","includes":["ראשונה"],"rules":["עד 17:00"]}],"generalNotes":["הערה"],"questions":[{"id":"q1","question":"שאלה","options":["א","ב"]}]}
 
@@ -432,6 +489,106 @@ Deno.serve(async (req: Request) => {
         corrections,
         unreadable,
         uncertain: (transcript.match(/\[\?\]/g) || []).length,
+        model: tier,
+      });
+    }
+
+    // ---- wine names -> teachable facts (owner approves before anything is saved) ------
+    if (mode === "enrich_wines") {
+      const wines = Array.isArray(body.wines)
+        ? body.wines.map((w: unknown) => String(w || "").trim()).filter(Boolean).slice(0, 80)
+        : [];
+      if (!wines.length) return json({ error: "wines required" }, 400);
+      // Opus by default — the user's explicit call: better to pay than to teach a waiter
+      // a wrong fact. Still one call per whole list, and the client's memory table makes
+      // repeats free.
+      const tier: Tier = asTier(body.model, "opus");
+      const raw = await run(tier, WINE_PROMPT, "היינות:\n" + wines.map((w, i) => `${i + 1}. ${w}`).join("\n"), [], 8000);
+      // The reply is an ARRAY, sometimes wrapped in fences or a leading sentence —
+      // parseLooseJson only hunts for {...}, so slice the outermost [...] explicitly.
+      let arr: unknown[] | null = null;
+      const cleanedW = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+      const sW = cleanedW.indexOf("["), eW = cleanedW.lastIndexOf("]");
+      if (sW !== -1 && eW > sW) {
+        const slice = cleanedW.slice(sW, eW + 1);
+        try { arr = JSON.parse(slice); } catch {
+          try { arr = JSON.parse(slice.replace(/,(\s*[\]}])/g, "$1")); } catch { /* fall through */ }
+        }
+      }
+      if (!arr) {
+        const parsed = parseLooseJson(raw);
+        arr = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.wines) ? parsed.wines : null;
+      }
+      if (!arr) return json({ error: "model returned invalid JSON", raw: raw.slice(0, 500) }, 502);
+      const COLORS = new Set(["אדום", "לבן", "רוזה", "מבעבע"]);
+      const SWEET = new Set(["יבש", "חצי יבש", "חצי מתוק", "מתוק"]);
+      const out = arr
+        .filter((w: Record<string, unknown>) => typeof w?.name === "string")
+        .map((w: Record<string, unknown>) => ({
+          name: String(w.name),
+          known: w.known === true,
+          color: COLORS.has(String(w.color)) ? String(w.color) : null,
+          sweetness: SWEET.has(String(w.sweetness)) ? String(w.sweetness) : null,
+          grapes: cleanStrings(w.grapes),
+          region: typeof w.region === "string" && w.region.trim() ? w.region.trim() : null,
+          winery: typeof w.winery === "string" && w.winery.trim() ? w.winery.trim() : null,
+          // Kosher never passes through, whatever the model said.
+          notes: typeof w.notes === "string" ? w.notes.replace(/כשר[ה]?\s*(למהדרין)?/g, "").trim() : null,
+          serving: typeof w.serving === "string" && w.serving.trim() ? w.serving.trim() : null,
+          confidence: w.confidence === "high" ? "high" : "medium",
+        }));
+      return json({ wines: out, model: tier });
+    }
+
+    // ---- free-text owner command -> patch list (preview only, never executed here) ----
+    if (mode === "menu_command") {
+      const command = String(body.command || "").trim();
+      const menu = Array.isArray(body.menu) ? body.menu.slice(0, 400) : [];
+      if (!command || !menu.length) return json({ error: "command and menu required" }, 400);
+      const ids = new Set(menu.map((d: Record<string, unknown>) => String(d.id)));
+      const tier: Tier = asTier(body.model, "haiku");
+      const userText = `הפקודה של המנהל: ${command}\n\nהתפריט:\n${JSON.stringify(menu)}`;
+      const raw = await run(tier, COMMAND_PROMPT, userText, [], 16000);
+      const parsed = parseLooseJson(raw);
+      if (!parsed) return json({ error: "model returned invalid JSON", raw: raw.slice(0, 500) }, 502);
+      const TEXT_FIELDS = new Set(["name", "description", "category"]);
+      const patches = (Array.isArray(parsed.patches) ? parsed.patches : [])
+        .filter((p: Record<string, unknown>) => ids.has(String(p?.id)) && p?.set && typeof p.set === "object")
+        .map((p: Record<string, unknown>) => {
+          const set: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(p.set as Record<string, unknown>)) {
+            if (k === "price") { const n = Number(v); if (Number.isFinite(n) && n >= 0) set[k] = n; }
+            else if (TEXT_FIELDS.has(k) && typeof v === "string") set[k] = v;
+            // The four warning groups are closed Hebrew lists — anything else is dropped,
+            // so a model slip can't write a value the waiter app doesn't understand.
+            else if (k in FLAG_VALUES) set[k] = cleanFlags(v, k);
+          }
+          return { id: String(p.id), set };
+        })
+        .filter((p: { set: Record<string, unknown> }) => Object.keys(p.set).length > 0)
+        .slice(0, 400);
+      // New dishes pasted into the command box. Same closed-list cleaning as patches —
+      // an addition is still only a PROPOSAL until the owner approves it in the preview.
+      const additions = (Array.isArray(parsed.additions) ? parsed.additions : [])
+        .filter((d: Record<string, unknown>) => typeof d?.name === "string" && String(d.name).trim())
+        .slice(0, 100)
+        .map((d: Record<string, unknown>) => ({
+          name: String(d.name).trim(),
+          price: Number.isFinite(Number(d.price)) && Number(d.price) >= 0 ? Number(d.price) : null,
+          description: typeof d.description === "string" ? d.description : "",
+          category: typeof d.category === "string" && d.category.trim() ? d.category.trim() : "כללי",
+          ingredients: cleanStrings(d.ingredients),
+          allergens: cleanFlags(d.allergens, "allergens"),
+          pregnancy: cleanFlags(d.pregnancy, "pregnancy"),
+          pitfalls: cleanFlags(d.pitfalls, "pitfalls"),
+          kashrut: cleanFlags(d.kashrut, "kashrut"),
+        }));
+      return json({
+        summary: typeof parsed.summary === "string" ? parsed.summary : `${patches.length} מנות ישתנו`,
+        warnings: cleanStrings(parsed.warnings),
+        patches,
+        additions,
+        answer: typeof parsed.answer === "string" && parsed.answer.trim() ? parsed.answer.trim() : null,
         model: tier,
       });
     }

@@ -135,7 +135,13 @@ export default function OwnerLogin({ onGranted }) {
       <form onSubmit={submit} className="flex-1 px-6 pt-4 flex flex-col">
         <div className="bg-[#16181c] border border-[#22252b] rounded-3xl shadow-[0_2px_14px_rgba(30,25,70,0.05)] p-5 space-y-4">
           <div className="flex gap-2 bg-[#1c1e22] rounded-2xl p-1">
-            {[["enter", "הכנסה"], ["create", "יצירה"]].map(([m, label]) => (
+            {/* Operator model: restaurants don't sign themselves up — the operator opens
+                the account and hands over the code. The create tab stays in the code for
+                the operator (open the page with ?signup=1); owners only ever see הכנסה. */}
+            {(new URLSearchParams(window.location.search).has("signup")
+              ? [["enter", "הכנסה"], ["create", "יצירה"]]
+              : [["enter", "הכנסה"]]
+            ).map(([m, label]) => (
               <button key={m} type="button" onClick={() => { setMode(m); setErr(""); }}
                 className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors ${
                   mode === m ? "bg-[#6d5efc] text-white shadow-sm" : "text-[#8a8aa0]"
