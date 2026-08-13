@@ -1,0 +1,361 @@
+{
+  "density": 0.6,
+  "shuffled": true,
+  "page_count": 2,
+  "pages": [
+    {
+      "file": "page01.png",
+      "true_page": 1,
+      "items": [
+        {
+          "type": "category",
+          "name": "Greek Oven Breads"
+        },
+        {
+          "type": "dish",
+          "name": "בייגל קולורי יווני",
+          "category": "Greek Oven Breads"
+        },
+        {
+          "type": "dish",
+          "name": "פיתות גירוס יווניות בגריל",
+          "category": "Greek Oven Breads"
+        },
+        {
+          "type": "dish",
+          "name": "פינרלי",
+          "category": "Greek Oven Breads"
+        },
+        {
+          "type": "category",
+          "name": "המאזטים של גיא"
+        },
+        {
+          "type": "dish",
+          "name": "צזיקי קלאסי",
+          "category": "המאזטים של גיא"
+        },
+        {
+          "type": "dish",
+          "name": "סקורדליה",
+          "category": "המאזטים של גיא"
+        },
+        {
+          "type": "dish",
+          "name": "טארמה",
+          "category": "המאזטים של גיא"
+        },
+        {
+          "type": "dish",
+          "name": "גבינת פטה מיוון",
+          "category": "המאזטים של גיא"
+        },
+        {
+          "type": "dish",
+          "name": "מלנציאנה",
+          "category": "המאזטים של גיא"
+        },
+        {
+          "type": "dish",
+          "name": "סלט ביצים יווני",
+          "category": "המאזטים של גיא"
+        },
+        {
+          "type": "dish",
+          "name": "טירוקפטרי",
+          "category": "המאזטים של גיא"
+        },
+        {
+          "type": "dish",
+          "name": "קרם פטה",
+          "category": "המאזטים של גיא"
+        },
+        {
+          "type": "dish",
+          "name": "פאנזרו סלאטה",
+          "category": "המאזטים של גיא"
+        },
+        {
+          "type": "dish",
+          "name": "צלחת חריפים",
+          "category": "המאזטים של גיא"
+        },
+        {
+          "type": "dish",
+          "name": "זיתים מיוון",
+          "category": "המאזטים של גיא"
+        },
+        {
+          "type": "dish",
+          "name": "טחינה הר ברכה",
+          "category": "המאזטים של גיא"
+        },
+        {
+          "type": "dish",
+          "name": "Greek Truffle Cream",
+          "category": "המאזטים של גיא"
+        },
+        {
+          "type": "dish",
+          "name": "פלפל שושקה",
+          "category": "המאזטים של גיא"
+        },
+        {
+          "type": "dish",
+          "name": "אנשובי במלח",
+          "category": "המאזטים של גיא"
+        },
+        {
+          "type": "dish",
+          "name": "סרדינים כבושים",
+          "category": "המאזטים של גיא"
+        },
+        {
+          "type": "category",
+          "name": "סלטי גינה מירקות מובחרים"
+        },
+        {
+          "type": "dish",
+          "name": "קלאסיקה יוונית",
+          "category": "סלטי גינה מירקות מובחרים"
+        },
+        {
+          "type": "dish",
+          "name": "The Greek Caesar Salad",
+          "category": "סלטי גינה מירקות מובחרים"
+        },
+        {
+          "type": "dish",
+          "name": "Helios",
+          "category": "סלטי גינה מירקות מובחרים"
+        },
+        {
+          "type": "dish",
+          "name": "סלט סלקים כריתי",
+          "category": "סלטי גינה מירקות מובחרים"
+        },
+        {
+          "type": "dish",
+          "name": "סלט חלומי קפריסאי",
+          "category": "סלטי גינה מירקות מובחרים"
+        },
+        {
+          "type": "category",
+          "name": "Hot Starters"
+        },
+        {
+          "type": "dish",
+          "name": "פפריס טיגניאטיס",
+          "category": "Hot Starters"
+        },
+        {
+          "type": "dish",
+          "name": "קריספי זוקיני",
+          "category": "Hot Starters"
+        },
+        {
+          "type": "dish",
+          "name": "קראנץ׳ כרובית",
+          "category": "Hot Starters"
+        },
+        {
+          "type": "dish",
+          "name": "דולמאדס",
+          "category": "Hot Starters"
+        },
+        {
+          "type": "dish",
+          "name": "מסבחה סלוניקי",
+          "category": "Hot Starters"
+        },
+        {
+          "type": "dish",
+          "name": "סגנאקי חלומי",
+          "category": "Hot Starters"
+        },
+        {
+          "type": "dish",
+          "name": "קפטדס",
+          "category": "Hot Starters"
+        },
+        {
+          "type": "dish",
+          "name": "סיגר לוקוס",
+          "category": "Hot Starters"
+        },
+        {
+          "type": "dish",
+          "name": "פטה של האלים",
+          "category": "Hot Starters"
+        },
+        {
+          "type": "dish",
+          "name": "פטאטס טיגניאטיס",
+          "category": "Hot Starters"
+        }
+      ]
+    },
+    {
+      "file": "page02.png",
+      "true_page": 2,
+      "items": [
+        {
+          "type": "category",
+          "name": "Greek Pasta Experience"
+        },
+        {
+          "type": "dish",
+          "name": "Mykonos Tuna",
+          "category": "Greek Pasta Experience"
+        },
+        {
+          "type": "dish",
+          "name": "Truffle Olympus",
+          "category": "Greek Pasta Experience"
+        },
+        {
+          "type": "dish",
+          "name": "Greek Pomodoro",
+          "category": "Greek Pasta Experience"
+        },
+        {
+          "type": "dish",
+          "name": "Santorini Puttanesca",
+          "category": "Greek Pasta Experience"
+        },
+        {
+          "type": "dish",
+          "name": "Spanakopita Pasta",
+          "category": "Greek Pasta Experience"
+        },
+        {
+          "type": "dish",
+          "name": "Greek Cheese Clouds",
+          "category": "Greek Pasta Experience"
+        },
+        {
+          "type": "category",
+          "name": "From the Sea"
+        },
+        {
+          "type": "dish",
+          "name": "ברבוניאס",
+          "category": "From the Sea"
+        },
+        {
+          "type": "dish",
+          "name": "לברק שלם",
+          "category": "From the Sea"
+        },
+        {
+          "type": "dish",
+          "name": "פילה דניס – אש הים האגאי",
+          "category": "From the Sea"
+        },
+        {
+          "type": "dish",
+          "name": "Souvlaki Mare –מוסר ים",
+          "category": "From the Sea"
+        },
+        {
+          "type": "dish",
+          "name": "Sea Bass Provençal Greek Style",
+          "category": "From the Sea"
+        },
+        {
+          "type": "dish",
+          "name": "גירוס דייגים יווני",
+          "category": "From the Sea"
+        },
+        {
+          "type": "dish",
+          "name": "Greek Style Fish & Chips",
+          "category": "From the Sea"
+        },
+        {
+          "type": "dish",
+          "name": "קבב דגים יווני",
+          "category": "From the Sea"
+        },
+        {
+          "type": "dish",
+          "name": "בוצ׳ר דייגים",
+          "category": "From the Sea"
+        },
+        {
+          "type": "category",
+          "name": "דגים נאים"
+        },
+        {
+          "type": "dish",
+          "name": "סנטוריני סביצ׳ה",
+          "category": "דגים נאים"
+        },
+        {
+          "type": "dish",
+          "name": "מיקונוס רוסט טונה",
+          "category": "דגים נאים"
+        },
+        {
+          "type": "dish",
+          "name": "סלמון אתונה",
+          "category": "דגים נאים"
+        },
+        {
+          "type": "dish",
+          "name": "קרודו קורפו סטייל",
+          "category": "דגים נאים"
+        },
+        {
+          "type": "category",
+          "name": "Sweet Greek Finale"
+        },
+        {
+          "type": "dish",
+          "name": "גינת הלימונים בלסבוס",
+          "category": "Sweet Greek Finale"
+        },
+        {
+          "type": "dish",
+          "name": "מיליפיי ורדים",
+          "category": "Sweet Greek Finale"
+        },
+        {
+          "type": "dish",
+          "name": "Greek Summer Pavlova",
+          "category": "Sweet Greek Finale"
+        },
+        {
+          "type": "dish",
+          "name": "טירמיסו האגאי",
+          "category": "Sweet Greek Finale"
+        },
+        {
+          "type": "dish",
+          "name": "דובאי בול",
+          "category": "Sweet Greek Finale"
+        },
+        {
+          "type": "dish",
+          "name": "סופלה שוקולד פיראוס",
+          "category": "Sweet Greek Finale"
+        },
+        {
+          "type": "dish",
+          "name": "לוקומדס חלבה",
+          "category": "Sweet Greek Finale"
+        },
+        {
+          "type": "dish",
+          "name": "קיימאקי",
+          "category": "Sweet Greek Finale"
+        },
+        {
+          "type": "dish",
+          "name": "חגיגת קינוחים",
+          "category": "Sweet Greek Finale"
+        }
+      ]
+    }
+  ]
+}

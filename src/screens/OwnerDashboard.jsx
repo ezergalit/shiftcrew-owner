@@ -157,8 +157,20 @@ function parseMenuText(raw) {
 }
 
 // Downscale a menu photo client-side before sending it to the AI parser — phone photos
-// are huge, and the model reads a 1568px-wide image just as well as a 4000px one.
-async function downscaleImage(file, maxDim = 1568) {
+// are huge and slow to upload.
+//
+// ⚠️ 2576, not 1568. The old cap was 1568px at quality 0.85, on the theory that the model
+// reads a small image as well as a big one. That is true for a photo of a dish and false
+// for a page of dense Hebrew menu text: at 1568px on the long edge, body text on a full
+// page lands around 8–10px tall, which is below what the model can resolve. It does not
+// report that it cannot read the page — it invents plausible menu text instead. The
+// giveaway in the field was every dish coming back priced 88, with names like
+// "סלמוני פיסטיה" that are phonetically menu-ish and absent from the page.
+//
+// 2576px on the long edge is the current high-resolution vision limit, and quality 0.92
+// keeps JPEG artifacts off the letter strokes. Both numbers are load-bearing for OCR
+// accuracy — do not lower them to save upload bytes.
+async function downscaleImage(file, maxDim = 2576) {
   const dataUrl = await new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(r.result);
@@ -176,7 +188,7 @@ async function downscaleImage(file, maxDim = 1568) {
   canvas.width = Math.round(img.width * scale);
   canvas.height = Math.round(img.height * scale);
   canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-  return { media_type: "image/jpeg", data: canvas.toDataURL("image/jpeg", 0.85).split(",")[1] };
+  return { media_type: "image/jpeg", data: canvas.toDataURL("image/jpeg", 0.92).split(",")[1] };
 }
 
 export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpdated }) {
@@ -1255,25 +1267,52 @@ function MenuSetupTutorial({ restaurant, onDone }) {
   // Photos go through their own pass first: picture -> plain text. Reading a menu off a
   // photo is where the mistakes are, so the owner proofreads that text before it becomes
   // dishes. (Text pasted directly skips straight to structuring — nothing to misread.)
+  //
+  // ⚠️ One request PER PHOTO, in parallel — not one request with every photo. Measured on
+  // the real Salon Yevani menu: the whole menu in one call runs ~150s of generation and
+  // hits the edge-function gateway timeout (504); per-page calls each finish in ~60-80s,
+  // run concurrently, and a single bad page fails alone instead of sinking the import.
+  // Page order doesn't matter here — the structure step re-orders categories by course.
   const transcribePhotos = async () => {
     if (!photos.length) return;
     setAiBusy(true);
     setAiErr("");
     try {
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/menu-ai-parse`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: "transcribe",
-          images: photos.map(({ media_type, data }) => ({ media_type, data }))
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        if (data?.code === "missing_key") throw new Error("הפענוח החכם עוד לא הופעל — יש להגדיר מפתח AI ב-Supabase (Edge Functions → Secrets): ANTHROPIC_API_KEY או OPENROUTER_API_KEY.");
-        throw new Error(data?.error || "שגיאה בקריאת התמונות");
+      const results = await Promise.all(
+        photos.map(async ({ media_type, data }) => {
+          const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/menu-ai-parse`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: "transcribe", images: [{ media_type, data }] }),
+          });
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            if (body?.code === "missing_key") throw new Error("הפענוח החכם עוד לא הופעל — יש להגדיר מפתח AI ב-Supabase (Edge Functions → Secrets): ANTHROPIC_API_KEY או OPENROUTER_API_KEY.");
+            return { failed: true };
+          }
+          return body;
+        }),
+      );
+
+      // A page the model says it could not read must stop the import, not pass through.
+      // Its alternative to admitting that is inventing a menu that looks entirely real,
+      // and the owner has no way to tell the difference from the transcript alone.
+      const badPages = results
+        .map((r, i) => (r.failed || r.unreadable?.length || !(r.transcript || "").trim() ? i + 1 : null))
+        .filter(Boolean);
+      if (badPages.length) {
+        throw new Error(
+          photos.length > 1
+            ? `לא הצלחנו לקרוא את התמונות ${badPages.join(", ")}. צלמו אותן שוב — קרוב יותר, ישר מלמעלה ובתאורה טובה. עדיף לצלם חצי עמוד בכל פעם מאשר עמוד שלם.`
+            : "התמונה לא ברורה מספיק לקריאה. צלמו שוב קרוב יותר, ישר מלמעלה ובתאורה טובה — ואם התפריט צפוף, צלמו אותו בחלקים.",
+        );
       }
-      const t = stripProcessArtifacts(data.transcript || "");
+
+      const t = stripProcessArtifacts(
+        results
+          .map((r, i) => (results.length > 1 ? `--- תמונה ${i + 1} ---\n${r.transcript}` : r.transcript))
+          .join("\n"),
+      );
       if (!t) throw new Error("לא הצלחנו לקרוא טקסט מהתמונות. נסו לצלם מקרוב יותר ובתאורה טובה.");
       setTranscript(t);
       setPhase("transcript");
