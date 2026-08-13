@@ -4,10 +4,11 @@ import CuisineSelector from "../components/CuisineSelector";
 import LearningPathSettings from "../components/LearningPathSettings";
 import ProgressChart from "../components/ProgressChart";
 import MenuHealthReview from "../components/MenuHealthReview";
+import { FLAG_GROUPS, effectiveTrackedFlags } from "../lib/dishFlags";
 import { supabase } from "../lib/supabase";
 
 const db = supabase.schema("menu_app");
-export const RESTAURANT_COLUMNS = "id, name, owner_code, team_code, created_at, phone, address, description, cuisine_types, important_allergens, service_style, service_notes, onboarding_completed";
+export const RESTAURANT_COLUMNS = "id, name, owner_code, team_code, created_at, phone, address, description, cuisine_types, important_allergens, service_style, service_notes, onboarding_completed, onboarding_step, tracked_flags";
 
 function fromDbRestaurant(r) {
   return {
@@ -35,6 +36,19 @@ function toDbRestaurantPatch(form) {
   };
 }
 
+// Onboarding asks for a strict subset of the profile — no phone, no address. Reusing the
+// full patch builder here sends `phone: null` and `address: null` for fields the form
+// never had, wiping them for any restaurant that fills in its profile after the fact.
+function toDbOnboardingPatch(form) {
+  return {
+    name: form.name,
+    description: form.description || null,
+    cuisine_types: form.cuisineTypes || [],
+    service_style: form.serviceStyle || null,
+    service_notes: form.serviceNotes || null
+  };
+}
+
 function dishFromDb(row) {
   return {
     id: row.id,
@@ -47,6 +61,10 @@ function dishFromDb(row) {
     // exam-config screen concluded the menu had none.
     ingredients: row.ingredients || [],
     allergens: row.allergens || [],
+    pregnancy: row.pregnancy || [],
+    pitfalls: row.pitfalls || [],
+    kashrut: row.kashrut || [],
+    menuPosition: row.menu_position,
     isSpecial: !!row.is_special
   };
 }
@@ -169,15 +187,18 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const [addingManager, setAddingManager] = useState(false);
   const [managerErr, setManagerErr] = useState("");
 
-  // Onboarding form (trimmed: only fields relevant to the menu itself — no address, no phone)
-  const [onboardingStep, setOnboardingStep] = useState(1); // 1: restaurant profile, 2: service style, 3: done
+  // Onboarding form (trimmed: only fields relevant to the menu itself — no address, no phone).
+  // Seeded from the restaurant row rather than from blanks: every step is saved as it is
+  // completed, so a refresh mid-signup resumes instead of starting over.
+  const [onboardingStep, setOnboardingStep] = useState(restaurant?.onboarding_step || 1); // 1: profile, 2: service style, 3: done
   const [onboardingForm, setOnboardingForm] = useState({
     name: restaurant?.name || "",
-    cuisineTypes: [],
-    description: "",
-    serviceStyle: "",
-    serviceNotes: ""
+    cuisineTypes: restaurant?.cuisine_types || [],
+    description: restaurant?.description || "",
+    serviceStyle: restaurant?.service_style || "",
+    serviceNotes: restaurant?.service_notes || ""
   });
+  const [savingStep, setSavingStep] = useState(false);
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -196,7 +217,11 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const loadMenuItems = async () => {
     if (!restaurant?.id) return;
     const { data, error } = await db.from("menu_items")
-      .select("*").eq("restaurant_id", restaurant.id).order("created_at");
+      // The printed menu's own order, with created_at only as a tiebreaker for dishes
+      // added later by hand. This is the order the team learns in.
+      .select("*").eq("restaurant_id", restaurant.id)
+      .order("menu_position", { ascending: true, nullsFirst: false })
+      .order("created_at");
     if (!error) setItems((data || []).map(dishFromDb));
   };
 
@@ -206,11 +231,19 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     let alive = true;
     (async () => {
       const { data: menuData, error: menuErr } = await db.from("menu_items")
-        .select("*").eq("restaurant_id", restaurant.id).order("created_at");
+        // The printed menu's own order, with created_at only as a tiebreaker for dishes
+      // added later by hand. This is the order the team learns in.
+      .select("*").eq("restaurant_id", restaurant.id)
+      .order("menu_position", { ascending: true, nullsFirst: false })
+      .order("created_at");
       if (alive && !menuErr) setItems((menuData || []).map(dishFromDb));
 
       const { data: teamData, error: teamErr } = await db.from("team_members")
-        .select("*").eq("restaurant_id", restaurant.id).order("created_at");
+        // The printed menu's own order, with created_at only as a tiebreaker for dishes
+      // added later by hand. This is the order the team learns in.
+      .select("*").eq("restaurant_id", restaurant.id)
+      .order("menu_position", { ascending: true, nullsFirst: false })
+      .order("created_at");
       if (alive && !teamErr) setTeamMembers(teamData || []);
 
       const { data: lbData } = await db.from("leaderboard")
@@ -360,8 +393,22 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     onRestaurantUpdated?.(updated);
   };
 
+  // Saves what's been filled so far and records the step, so closing the tab or pulling
+  // to refresh resumes here instead of dropping the owner back to an empty step 1.
+  // A failed save is not fatal — moving on with the answers still in memory beats
+  // trapping someone on a screen they already filled in.
+  const goToOnboardingStep = async (next) => {
+    setSavingStep(true);
+    const patch = { ...toDbOnboardingPatch(onboardingForm), onboarding_step: next };
+    const { error } = await db.from("restaurants").update(patch).eq("id", restaurant.id);
+    if (error) console.error("could not save onboarding progress:", error);
+    else onRestaurantUpdated?.({ ...restaurant, ...patch });
+    setOnboardingStep(next);
+    setSavingStep(false);
+  };
+
   const handleCompleteOnboarding = async () => {
-    const patch = { ...toDbRestaurantPatch(onboardingForm), onboarding_completed: true };
+    const patch = { ...toDbOnboardingPatch(onboardingForm), onboarding_completed: true, onboarding_step: 3 };
     const { error } = await db.from("restaurants").update(patch).eq("id", restaurant.id);
     if (error) { alert("שמירה נכשלה: " + error.message); return; }
     const updated = { ...restaurant, ...patch };
@@ -547,15 +594,17 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           {onboardingStep < 3 && (
             <>
               <button
-                onClick={() => setOnboardingStep(onboardingStep + 1)}
-                className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-lg hover:bg-[#5b4ef0] transition"
+                onClick={() => goToOnboardingStep(onboardingStep + 1)}
+                disabled={savingStep}
+                className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-lg hover:bg-[#5b4ef0] transition disabled:opacity-40"
               >
-                הבא
+                {savingStep ? "שומר..." : "הבא"}
               </button>
               {onboardingStep > 1 && (
                 <button
-                  onClick={() => setOnboardingStep(onboardingStep - 1)}
-                  className="w-full bg-[#22252b] text-[#8a8aa0] font-bold py-3 rounded-lg hover:bg-[#2c2e35] transition"
+                  onClick={() => goToOnboardingStep(onboardingStep - 1)}
+                  disabled={savingStep}
+                  className="w-full bg-[#22252b] text-[#8a8aa0] font-bold py-3 rounded-lg hover:bg-[#2c2e35] transition disabled:opacity-40"
                 >
                   חזרה
                 </button>
@@ -1004,29 +1053,47 @@ function DailyBriefEditor({ draft, onChange, onSave, saving }) {
 }
 
 function MenuSetupTutorial({ restaurant, onDone }) {
-  const [phase, setPhase] = useState("paste"); // paste | questions | review
+  // Which warning groups matter is asked before the menu arrives — the parser needs to
+  // know what to look for, and a group added afterwards means re-reading every dish.
+  const [phase, setPhase] = useState(
+    restaurant?.tracked_flags?.length ? "paste" : "flags"
+  ); // flags | paste | photos | transcript | questions | review
+  const [trackedFlags, setTrackedFlags] = useState(() => effectiveTrackedFlags(restaurant?.tracked_flags));
   const [rawText, setRawText] = useState("");
   const [categories, setCategories] = useState([]);
   const [generalNotes, setGeneralNotes] = useState([]);
   const [aiQuestions, setAiQuestions] = useState([]);
   const [answers, setAnswers] = useState({});
-  const [pendingImage, setPendingImage] = useState(null); // kept so the Q&A round-trip re-sends the same photo
+  // Menus rarely fit in one photo — a folded card is two sides, a big menu is several
+  // pages. They are collected and sent together so the parser sees one whole menu, in
+  // order, instead of guessing how disconnected fragments relate.
+  const [photos, setPhotos] = useState([]);
+  // What the model read off the photos. Shown for the owner to proofread before anything
+  // is saved — they are the only one who can tell a misread price from a real one.
+  const [transcript, setTranscript] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiErr, setAiErr] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Order is data: `position` (flat, across the whole menu) and category order both come
+  // from the parser, which is told to preserve the printed menu's own sequence. The team
+  // then learns the menu in the order the restaurant actually wrote it.
   const normalizeAiCategories = (cats) =>
     (cats || [])
       .map((c) => ({
         id: crypto.randomUUID(),
         name: c.name || "כללי",
-        dishes: (c.dishes || []).map((d) => ({
+        dishes: (c.dishes || []).map((d, i) => ({
           id: crypto.randomUUID(),
+          position: Number.isFinite(d.position) ? d.position : i,
           name: d.name || "",
           price: d.price ?? "",
           description: d.description || "",
           ingredients: Array.isArray(d.ingredients) ? d.ingredients : [],
-          allergens: Array.isArray(d.allergens) ? d.allergens : []
+          allergens: Array.isArray(d.allergens) ? d.allergens : [],
+          pregnancy: Array.isArray(d.pregnancy) ? d.pregnancy : [],
+          pitfalls: Array.isArray(d.pitfalls) ? d.pitfalls : [],
+          kashrut: Array.isArray(d.kashrut) ? d.kashrut : []
         }))
       }))
       .filter((c) => c.dishes.length > 0);
@@ -1050,13 +1117,12 @@ function MenuSetupTutorial({ restaurant, onDone }) {
       }
       const cats = normalizeAiCategories(data.categories);
       setGeneralNotes(Array.isArray(data.generalNotes) ? data.generalNotes : []);
+      setCategories(cats.length ? cats : [{ id: crypto.randomUUID(), name: "עיקריות", dishes: [] }]);
       if (data.questions?.length > 0 && !payload.qa) {
-        setCategories(cats); // best-effort parse so far; final one comes after the answers
         setAiQuestions(data.questions);
         setAnswers({});
         setPhase("questions");
       } else {
-        setCategories(cats.length ? cats : [{ id: crypto.randomUUID(), name: "עיקריות", dishes: [] }]);
         setPhase("review");
       }
     } catch (e) {
@@ -1076,29 +1142,79 @@ function MenuSetupTutorial({ restaurant, onDone }) {
       setPhase("review");
       return;
     }
-    setPendingImage(null);
     await runAi({ text: rawText });
   };
 
-  const handlePhoto = async (e) => {
-    const file = e.target.files?.[0];
+  const saveTrackedFlags = async () => {
+    setAiBusy(true);
+    const { error } = await db.from("restaurants")
+      .update({ tracked_flags: trackedFlags }).eq("id", restaurant.id);
+    if (error) console.error("could not save tracked flags:", error);
+    setAiBusy(false);
+    setPhase("paste");
+  };
+
+  // Picking photos only stages them. Nothing is sent until the owner confirms the set is
+  // the whole menu — sending on selection made a two-page menu impossible to import.
+  const addPhotos = async (e) => {
+    const files = [...(e.target.files || [])];
     e.target.value = "";
-    if (!file) return;
+    if (!files.length) return;
     setAiErr("");
     try {
-      const img = await downscaleImage(file);
-      setPendingImage(img);
-      await runAi({ image: img, text: rawText.trim() || undefined });
+      const added = await Promise.all(files.map((f) => downscaleImage(f)));
+      setPhotos((prev) => [...prev, ...added.map((img, i) => ({ ...img, id: crypto.randomUUID(), label: files[i].name }))]);
+      setPhase("photos");
     } catch (err) {
       setAiErr(err.message);
     }
+  };
+
+  // Photos go through their own pass first: picture -> plain text. Reading a menu off a
+  // photo is where the mistakes are, so the owner proofreads that text before it becomes
+  // dishes. (Text pasted directly skips straight to structuring — nothing to misread.)
+  const transcribePhotos = async () => {
+    if (!photos.length) return;
+    setAiBusy(true);
+    setAiErr("");
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/menu-ai-parse`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "transcribe",
+          images: photos.map(({ media_type, data }) => ({ media_type, data }))
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data?.code === "missing_key") throw new Error("הפענוח החכם עוד לא הופעל — יש להגדיר מפתח AI ב-Supabase (Edge Functions → Secrets): ANTHROPIC_API_KEY או OPENROUTER_API_KEY.");
+        throw new Error(data?.error || "שגיאה בקריאת התמונות");
+      }
+      const t = stripProcessArtifacts(data.transcript || "");
+      if (!t) throw new Error("לא הצלחנו לקרוא טקסט מהתמונות. נסו לצלם מקרוב יותר ובתאורה טובה.");
+      setTranscript(t);
+      setPhase("transcript");
+    } catch (err) {
+      setAiErr(err.message);
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  // The approved transcript is the source of truth from here on — the owner has read it,
+  // so it beats the photo. Structuring always runs on this text, edited or not.
+  const confirmTranscript = async (edited) => {
+    const finalText = (edited || transcript).trim();
+    setRawText(finalText);
+    await runAi({ text: finalText });
   };
 
   const handleAnswers = async () => {
     const qa = aiQuestions
       .map((q) => ({ question: q.question, answer: (answers[q.id] || "").trim() }))
       .filter((x) => x.answer);
-    await runAi({ text: rawText.trim() || undefined, image: pendingImage || undefined, qa });
+    await runAi({ text: rawText.trim() || undefined, qa });
   };
 
   const handleSkip = () => {
@@ -1121,6 +1237,11 @@ function MenuSetupTutorial({ restaurant, onDone }) {
 
   const handleSaveAll = async () => {
     setSaving(true);
+    // menu_position is the dish's place in the printed menu, counted straight through
+    // every category. A bulk insert gives all 38 dishes the same created_at, so without
+    // this the menu's own order is lost and the learning path falls back to arbitrary.
+    let position = 0;
+    const tracked = effectiveTrackedFlags(restaurant?.tracked_flags);
     const rows = categories.flatMap((cat) =>
       cat.dishes
         .filter((d) => d.name.trim())
@@ -1131,13 +1252,33 @@ function MenuSetupTutorial({ restaurant, onDone }) {
           price: Number(d.price) || 0,
           description: d.description || "",
           ingredients: d.ingredients || [],
-          allergens: d.allergens || [],
+          // Four separate warning groups — an allergy, a pregnancy risk and a "no
+          // coriander please" are different facts and a waiter must be able to tell
+          // them apart. Only the groups this restaurant tracks are written.
+          allergens: tracked.includes("allergens") ? d.allergens || [] : [],
+          pregnancy: tracked.includes("pregnancy") ? d.pregnancy || [] : [],
+          pitfalls: tracked.includes("pitfalls") ? d.pitfalls || [] : [],
+          kashrut: tracked.includes("kashrut") ? d.kashrut || [] : [],
+          menu_position: position++,
           is_special: false
         }))
     );
     if (rows.length > 0) {
       const { error } = await db.from("menu_items").insert(rows);
       if (error) { alert("שמירה נכשלה: " + error.message); setSaving(false); return; }
+
+      // Seed the learning order from the menu's own order. Only written when the owner
+      // hasn't arranged it themselves — their arrangement always outranks the import.
+      const catOrder = categories.map((c) => (c.name || "כללי").trim()).filter(Boolean);
+      const { data: cfg } = await db.from("exam_config")
+        .select("category_order").eq("restaurant_id", restaurant.id).maybeSingle();
+      if (!cfg?.category_order?.length) {
+        const { error: cfgErr } = await db.from("exam_config").upsert(
+          { restaurant_id: restaurant.id, category_order: catOrder, updated_at: new Date().toISOString() },
+          { onConflict: "restaurant_id" }
+        );
+        if (cfgErr) console.error("could not seed learning order:", cfgErr);
+      }
     }
     // Menu-wide notes the parser found (e.g. "טריאקי וסויה — גלוטן") belong in the
     // service notes the waiter app already shows in its welcome briefing.
@@ -1157,11 +1298,22 @@ function MenuSetupTutorial({ restaurant, onDone }) {
         </div>
         <h1 className="text-2xl font-black">בואו נייבא את התפריט שלכם</h1>
         <p className="text-sm text-[#8a8aa0] mt-1">
-          {phase === "paste" ? "שלב 1 מתוך 2" : phase === "questions" ? "רגע של הבהרה" : "שלב 2 מתוך 2"}
+          {phase === "paste" ? "שלב 1 מתוך 2"
+            : phase === "photos" ? "התמונות של התפריט"
+            : phase === "transcript" ? "בדיקת הקריאה"
+            : phase === "questions" ? "רגע של הבהרה"
+            : "שלב 2 מתוך 2"}
         </p>
       </div>
 
-      {phase === "paste" ? (
+      {phase === "flags" ? (
+        <FlagGroupPicker
+          value={trackedFlags}
+          onChange={setTrackedFlags}
+          busy={aiBusy}
+          onContinue={saveTrackedFlags}
+        />
+      ) : phase === "paste" ? (
         <>
           <div className="flex-1 px-6 py-6 overflow-y-auto space-y-4">
             <p className="text-sm text-[#8a8aa0] leading-relaxed">
@@ -1188,13 +1340,31 @@ function MenuSetupTutorial({ restaurant, onDone }) {
             </button>
             <label className={`w-full bg-[#22252b] text-[#eef0f6] font-bold py-3 rounded-lg hover:bg-[#2c2e35] transition flex items-center justify-center gap-2 cursor-pointer ${aiBusy ? "opacity-40 pointer-events-none" : ""}`}>
               <Camera size={16} /> צילום של התפריט
-              <input type="file" accept="image/*" onChange={handlePhoto} className="hidden" />
+              <input type="file" accept="image/*" multiple onChange={addPhotos} className="hidden" />
             </label>
             <button onClick={handleSkip} disabled={aiBusy} className="w-full bg-[#22252b] text-[#8a8aa0] font-bold py-3 rounded-lg hover:bg-[#2c2e35] transition disabled:opacity-40">
               אמלא ידנית בעצמי
             </button>
           </div>
         </>
+      ) : phase === "photos" ? (
+        <PhotoTray
+          photos={photos}
+          onAdd={addPhotos}
+          onRemove={(id) => setPhotos((prev) => prev.filter((p) => p.id !== id))}
+          onBack={() => { setPhotos([]); setPhase("paste"); }}
+          onSend={transcribePhotos}
+          busy={aiBusy}
+          error={aiErr}
+        />
+      ) : phase === "transcript" ? (
+        <TranscriptReview
+          value={transcript}
+          onChange={setTranscript}
+          busy={aiBusy}
+          error={aiErr}
+          onConfirm={confirmTranscript}
+        />
       ) : phase === "questions" ? (
         <>
           <div className="flex-1 px-6 py-6 overflow-y-auto space-y-4">
@@ -1425,6 +1595,216 @@ function DishForm({ item, onChange, onSave, onCancel, existingCategories }) {
         </button>
       </div>
     </div>
+  );
+}
+
+// The transcription prompt walks the model through two passes (read, then proofread
+// against the image). Occasionally it writes those step names into the output — a real
+// run came back with "## מעבר 1 — תמלול" as the first line, which then read as a menu
+// category called "Pass 1". The prompt forbids it; this makes sure of it, because a
+// stray heading here silently becomes a category the team is taught.
+const PROCESS_ARTIFACT_RE = /^\s*#{0,3}\s*(מעבר\s*\d|תמלול|הגהה|pass\s*\d|transcription|proofread)\b.*$/i;
+function stripProcessArtifacts(text) {
+  return String(text)
+    .split("\n")
+    .filter((line) => !PROCESS_ARTIFACT_RE.test(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+// Asked once, before the menu is imported: which kinds of warning does this restaurant
+// need its team to know? A kosher restaurant tracks kashrut; a bar probably doesn't; a
+// place with no raw dishes has nothing to say about pregnancy. Asking beats assuming —
+// tracking a group that doesn't apply just fills the menu with empty fields, and missing
+// one that does leaves a waiter unable to answer a real question at the table.
+function FlagGroupPicker({ value, onChange, onContinue, busy }) {
+  const toggle = (key) =>
+    onChange(value.includes(key) ? value.filter((k) => k !== key) : [...value, key]);
+  return (
+    <>
+      <div className="flex-1 px-6 py-6 overflow-y-auto space-y-4">
+        <div>
+          <p className="text-sm font-bold text-[#eef0f6] mb-1">על מה הצוות צריך לדעת לענות?</p>
+          <p className="text-xs text-[#8a8aa0] leading-relaxed">
+            נסמן את זה על כל מנה בזמן הייבוא. אפשר לשנות אחר כך בהגדרות.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          {FLAG_GROUPS.map((g) => {
+            const on = value.includes(g.key);
+            return (
+              <button
+                key={g.key}
+                type="button"
+                onClick={() => toggle(g.key)}
+                className={`w-full text-right p-3 rounded-lg border transition ${
+                  on ? "bg-[#1a1735] border-[#6d5efc]" : "bg-[#16181c] border-[#22252b] hover:border-[#3a3d46]"
+                }`}
+              >
+                <div className="flex items-start gap-2.5">
+                  <span className={`mt-0.5 w-4 h-4 rounded shrink-0 flex items-center justify-center text-[10px] font-black ${
+                    on ? "bg-[#6d5efc] text-white" : "border border-[#3a3d46] text-transparent"
+                  }`}>✓</span>
+                  <span className="flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-[#eef0f6]">{g.label}</span>
+                      {g.severity === "critical" && (
+                        <span className="text-[9px] font-bold bg-[#3a1620] text-[#ff8fa6] px-1.5 py-0.5 rounded">בטיחות</span>
+                      )}
+                      {g.recommended && (
+                        <span className="text-[9px] font-bold text-[#a79bff]">מומלץ</span>
+                      )}
+                    </span>
+                    <span className="block text-[11px] text-[#8a8aa0] mt-0.5 leading-relaxed">{g.description}</span>
+                    <span className="block text-[10px] text-[#6a6a7e] mt-1">
+                      {g.values.slice(0, 5).join(" · ")}{g.values.length > 5 ? " ·  ועוד" : ""}
+                    </span>
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="px-6 pb-6 border-t border-[#22252b] pt-4">
+        <button
+          onClick={onContinue}
+          disabled={busy || value.length === 0}
+          className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-lg hover:bg-[#5b4ef0] transition disabled:opacity-40"
+        >
+          {busy ? "שומר..." : value.length ? "המשך לייבוא התפריט" : "בחרו לפחות אחד"}
+        </button>
+      </div>
+    </>
+  );
+}
+
+// Staging area for menu photos. A menu is usually more than one picture — a folded card
+// has two sides, a large menu runs several pages — and they have to arrive together so
+// the parser reads one menu in order rather than guessing how fragments relate. Nothing
+// is sent until the owner says the set is complete.
+function PhotoTray({ photos, onAdd, onRemove, onBack, onSend, busy, error }) {
+  return (
+    <>
+      <div className="flex-1 px-6 py-6 overflow-y-auto space-y-4">
+        <div>
+          <p className="text-sm font-bold text-[#eef0f6] mb-1">זה כל התפריט?</p>
+          <p className="text-xs text-[#8a8aa0] leading-relaxed">
+            אם התפריט מתפרס על כמה עמודים או שני צדדים — הוסיפו את כל התמונות לפני השליחה,
+            לפי הסדר שבו הן מופיעות בתפריט. ככה נדע גם באיזה סדר ללמד.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          {photos.map((p, i) => (
+            <div key={p.id} className="relative rounded-lg overflow-hidden border border-[#22252b] bg-[#0c0d10]">
+              <img src={`data:${p.media_type};base64,${p.data}`} alt={`עמוד ${i + 1}`} className="w-full h-28 object-cover" />
+              <span className="absolute top-1 right-1 bg-black/70 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                {i + 1}
+              </span>
+              <button
+                onClick={() => onRemove(p.id)}
+                disabled={busy}
+                aria-label={`הסרת עמוד ${i + 1}`}
+                className="absolute top-1 left-1 bg-black/70 text-white w-5 h-5 rounded flex items-center justify-center text-xs font-bold hover:bg-[#e0315a] disabled:opacity-40"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <label className={`h-28 rounded-lg border border-dashed border-[#3a3d46] flex flex-col items-center justify-center gap-1 cursor-pointer text-[#8a8aa0] hover:border-[#6d5efc] hover:text-[#a79bff] transition ${busy ? "opacity-40 pointer-events-none" : ""}`}>
+            <Camera size={18} />
+            <span className="text-[10px] font-bold">הוספת תמונה</span>
+            <input type="file" accept="image/*" multiple onChange={onAdd} className="hidden" />
+          </label>
+        </div>
+
+        {error && <p className="text-xs font-bold text-[#e0315a] flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" /> {error}</p>}
+        {busy && <p className="text-xs font-bold text-[#a79bff]">קורא את התפריט מהתמונות… זה לוקח כמה שניות</p>}
+      </div>
+
+      <div className="px-6 pb-6 space-y-3 border-t border-[#22252b] pt-4">
+        <button
+          onClick={onSend}
+          disabled={busy || photos.length === 0}
+          className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-lg hover:bg-[#5b4ef0] transition disabled:opacity-40"
+        >
+          {busy ? "קורא..." : `שליחה — ${photos.length} ${photos.length === 1 ? "תמונה" : "תמונות"}`}
+        </button>
+        <button onClick={onBack} disabled={busy} className="w-full bg-[#22252b] text-[#8a8aa0] font-bold py-3 rounded-lg hover:bg-[#2c2e35] transition disabled:opacity-40">
+          ביטול
+        </button>
+      </div>
+    </>
+  );
+}
+
+// The proofreading step for photo imports. Reading a menu off a picture is where the
+// mistakes happen — a price read as 32 instead of 82, a line skipped in a second column —
+// and the owner is the only person who can catch them. Confirming an unchanged transcript
+// is free; editing it re-parses from the corrected text.
+function TranscriptReview({ value, onChange, busy, error, onConfirm }) {
+  const [draft, setDraft] = useState(value);
+  const edited = draft.trim() !== value.trim();
+  // Summarised from the text in front of the owner, not from a later parse — at this
+  // point nothing has been structured yet, and a count from elsewhere would be a lie.
+  // "## " is how the transcription pass marks a group heading.
+  const categoryNames = draft
+    .split("\n")
+    .filter((l) => /^\s*#{1,3}\s+\S/.test(l))
+    .map((l) => l.replace(/^\s*#{1,3}\s*/, "").trim());
+  return (
+    <>
+      <div className="flex-1 px-6 py-6 overflow-y-auto space-y-4">
+        <div>
+          <p className="text-sm font-bold text-[#eef0f6] mb-1">זה מה שקראנו מהתפריט</p>
+          <p className="text-xs text-[#8a8aa0] leading-relaxed">
+            עברו על זה ותקנו מה שצריך — במיוחד מחירים, כמויות ושמות לועזיים. מה שכתוב כאן
+            הוא מה שהצוות ילמד.
+          </p>
+        </div>
+
+        {categoryNames.length > 0 && (
+          <div className="bg-[#0c0d10] border border-[#22252b] rounded-lg p-3">
+            <p className="text-[11px] text-[#8a8aa0] leading-relaxed">
+              זוהו {categoryNames.length} קבוצות בתפריט, בסדר הזה:
+            </p>
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {categoryNames.map((c, i) => (
+                <span key={c + i} className="bg-[#22252b] text-[#c4c4d4] text-[10px] font-bold px-2 py-1 rounded">
+                  {i + 1}. {c}
+                </span>
+              ))}
+            </div>
+            <p className="text-[10px] text-[#6a6a7e] mt-2">
+              שורה שמתחילה ב-<span className="font-mono">##</span> היא כותרת של קבוצה, לא מנה. זה גם
+              הסדר שבו הצוות ילמד — אפשר לשנות אותו אחר כך בהגדרות.
+            </p>
+          </div>
+        )}
+
+        <textarea
+          value={draft}
+          onChange={(e) => { setDraft(e.target.value); onChange(e.target.value); }}
+          rows={14}
+          dir="rtl"
+          className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-3 py-2 text-[#eef0f6] text-sm leading-relaxed focus:outline-none focus:border-[#6d5efc] resize-none font-mono"
+        />
+        {error && <p className="text-xs font-bold text-[#e0315a] flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" /> {error}</p>}
+        {busy && <p className="text-xs font-bold text-[#a79bff]">מפענח מחדש לפי התיקונים שלך…</p>}
+      </div>
+      <div className="px-6 pb-6 border-t border-[#22252b] pt-4">
+        <button
+          onClick={() => onConfirm(draft)}
+          disabled={busy || !draft.trim()}
+          className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-lg hover:bg-[#5b4ef0] transition disabled:opacity-40"
+        >
+          {busy ? "מפענח..." : edited ? "פענוח מחדש לפי התיקונים" : "הכל נכון — המשך"}
+        </button>
+      </div>
+    </>
   );
 }
 

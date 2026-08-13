@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { X, Plus, Search } from "lucide-react";
-import { searchCuisines } from "../lib/cuisineTypes";
+import { searchCuisines, CUISINE_TYPES } from "../lib/cuisineTypes";
 
 // Reusable search + autocomplete + multi-select chips for cuisine/restaurant types.
 // Used in onboarding (step 1) and in the restaurant Details tab.
@@ -109,8 +109,12 @@ export default function CuisineSelector({ selected = [], onChange, placeholder =
   );
 }
 
+// True when the typed text already exists as an option — either in the standard list or
+// among what's already picked. Used to hide "add as a custom type": offering to invent
+// "ביסטרו" while the real "ביסטרו" sits right above it produces duplicate, near-identical
+// tags across restaurants, which is exactly what the shared list is meant to prevent.
 function CUISINE_MATCH(query, selected) {
   const q = (query || "").trim();
   if (!q) return true;
-  return selected.includes(q);
+  return selected.includes(q) || CUISINE_TYPES.includes(q);
 }

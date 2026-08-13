@@ -5,6 +5,24 @@ import { supabase } from "../lib/supabase";
 const SESSION_KEY = "menu-app-owner-session";
 const db = supabase.schema("menu_app");
 
+// One rule, stated up front and enforced before submit: at least 8 characters, and not
+// one of the handful of passwords everybody tries first. Browsers warn on those two
+// things, and a warning that appears *after* the account exists is too late to act on.
+// Deliberately no symbol/case requirements — they push people toward "Password1!" and a
+// sticky note, and this guards a menu, not a bank.
+const COMMON_PASSWORDS = new Set([
+  "12345678", "123456789", "1234567890", "password", "password1", "qwertyui",
+  "qwerty123", "11111111", "00000000", "abcd1234", "aa123456", "iloveyou",
+  "sunshine", "princess", "football", "baseball", "welcome1", "admin123",
+]);
+
+export function passwordProblem(pw) {
+  if (pw.length < 8) return "הסיסמא צריכה להיות באורך 8 תווים לפחות.";
+  if (COMMON_PASSWORDS.has(pw.toLowerCase())) return "הסיסמא הזו נפוצה מדי — בחרו משהו אחר.";
+  if (/^(.)\1+$/.test(pw)) return "הסיסמא לא יכולה להיות אותו תו שחוזר על עצמו.";
+  return null;
+}
+
 function toSession(restaurant) {
   return {
     restaurantId: restaurant.id,
@@ -19,6 +37,9 @@ export default function OwnerLogin({ onGranted }) {
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  // Only gates account creation. Signing in never re-checks the rule — accounts made
+  // before it exists must still be able to log in.
+  const pwProblem = mode === "create" ? passwordProblem(password) : null;
   const [name, setName] = useState("");
   const [newCode, setNewCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -71,8 +92,9 @@ export default function OwnerLogin({ onGranted }) {
           setBusy(false);
           return;
         }
-        if (password.length < 4) {
-          setErr("סיסמא חייבת להיות לפחות 4 תווים.");
+        const pwProblem = passwordProblem(password);
+        if (pwProblem) {
+          setErr(pwProblem);
           setBusy(false);
           return;
         }
@@ -171,17 +193,22 @@ export default function OwnerLogin({ onGranted }) {
                 <p className="text-[12px] font-bold text-[#8a8aa0] mb-1.5 px-1">סיסמא של בעלים</p>
                 <div className="relative">
                   <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••" autoComplete="off"
+                    placeholder="לפחות 8 תווים" autoComplete="new-password"
                     className="w-full bg-[#0c0d10] border border-[#22252b] rounded-2xl px-3.5 py-3 text-sm font-bold text-[#eef0f6] text-center placeholder:text-[#b4b4c4] focus:outline-none focus:border-[#6d5efc]" />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-3 top-3 text-[#8a8aa0]">
                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
+                {/* Stated before they type, and again the moment it's wrong — a rule you
+                    only learn from a rejection is a rule you learn too late. */}
+                <p className={`text-[11px] mt-1.5 px-1 leading-relaxed ${password && pwProblem ? "text-[#e0315a] font-bold" : "text-[#8a8aa0]"}`}>
+                  {password && pwProblem ? pwProblem : "8 תווים לפחות. אין דרישה לאותיות גדולות או סימנים."}
+                </p>
               </div>
               {err && <p className="text-xs font-bold text-[#e0315a] flex items-center gap-1.5"><AlertTriangle size={14} /> {err}</p>}
-              <button type="submit" disabled={!name.trim() || !password.trim() || !newCode.trim() || busy}
+              <button type="submit" disabled={!name.trim() || !!pwProblem || !newCode.trim() || busy}
                 className={`w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 transition-colors ${
-                  name.trim() && password.trim() && newCode.trim() && !busy ? "bg-[#6d5efc] text-white active:bg-[#5b4ef0] shadow-[0_6px_18px_rgba(109,94,252,0.35)]" : "bg-[#22252b] text-[#b4b4c4] cursor-not-allowed"
+                  name.trim() && !pwProblem && newCode.trim() && !busy ? "bg-[#6d5efc] text-white active:bg-[#5b4ef0] shadow-[0_6px_18px_rgba(109,94,252,0.35)]" : "bg-[#22252b] text-[#b4b4c4] cursor-not-allowed"
                 }`}>
                 {busy ? <><Loader2 size={18} className="animate-spin" /> יוצר</> : "יצירה"}
               </button>
