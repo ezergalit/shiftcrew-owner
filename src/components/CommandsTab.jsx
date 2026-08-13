@@ -31,6 +31,23 @@ export default function CommandsTab({ restaurant, items, onApplied }) {
   const [preview, setPreview] = useState(null);   // {summary, warnings, patches, additions, answer}
   const [winePreview, setWinePreview] = useState(null); // [{item, facts, fromMemory}]
   const [applied, setApplied] = useState("");
+  const [requestSent, setRequestSent] = useState(false);
+
+  // A change the helper can't do (deletions, restructures, "משהו גדול") goes to the
+  // operator as a queued request — the owner gets "נטפל בזה", not a dead end.
+  const sendToOperator = async () => {
+    if (!command.trim()) return;
+    setBusy(true); setErr("");
+    try {
+      const { error } = await db.from("operator_requests").insert({
+        restaurant_id: restaurant.id,
+        request: command.trim(),
+      });
+      if (error) throw new Error("שליחת הבקשה נכשלה: " + error.message);
+      setRequestSent(true); setPreview(null); setCommand("");
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
 
   const byId = useMemo(() => new Map(items.map((i) => [String(i.id), i])), [items]);
   const wineCandidates = useMemo(
@@ -100,14 +117,27 @@ export default function CommandsTab({ restaurant, items, onApplied }) {
       const missing = wineCandidates.filter((d) => !memory.has(normWine(d.name)));
       let aiByName = new Map();
       if (missing.length) {
-        const res = await fetch(FN_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode: "enrich_wines", wines: missing.map((d) => d.name) }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || "שגיאה בהעשרת היינות");
-        aiByName = new Map((data.wines || []).map((w) => [w.name, w]));
+        // One call for a 100-wine list overflows the model's output budget (the exact
+        // failure the structure step already taught us). Same cure: small chunks, run
+        // in parallel, one retry per chunk, merge. A failed chunk after retry fails the
+        // whole run loudly — silently skipping wines would look like "not recognized".
+        const CHUNK = 15;
+        const chunks = [];
+        for (let i = 0; i < missing.length; i += CHUNK) chunks.push(missing.slice(i, i + CHUNK));
+        const enrichChunk = async (c) => {
+          const res = await fetch(FN_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: "enrich_wines", wines: c.map((d) => d.name) }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data?.error || "שגיאה בהעשרת היינות");
+          return data.wines || [];
+        };
+        const results = await Promise.all(
+          chunks.map((c) => enrichChunk(c).catch(() => enrichChunk(c))),
+        );
+        aiByName = new Map(results.flat().map((w) => [w.name, w]));
       }
       const rows = wineCandidates.map((item) => {
         const mem = memory.get(normWine(item.name));
@@ -189,6 +219,13 @@ export default function CommandsTab({ restaurant, items, onApplied }) {
         >
           {busy && !winePreview ? <><Loader2 size={15} className="animate-spin" /> חושב…</> : "הצג לי מה ישתנה"}
         </button>
+        <button
+          onClick={sendToOperator}
+          disabled={busy || !command.trim()}
+          className="w-full text-[11px] font-bold text-[#8a8aa0] hover:text-[#a79bff] transition disabled:opacity-40"
+        >
+          שינוי גדול או משהו שהעוזר לא יודע לעשות? שלחו את זה למפעיל ←
+        </button>
       </div>
 
       {preview?.answer && (
@@ -245,7 +282,13 @@ export default function CommandsTab({ restaurant, items, onApplied }) {
               </button>
             </div>
           ) : (
-            <button onClick={() => setPreview(null)} className="w-full bg-[#22252b] text-[#8a8aa0] font-bold py-2.5 rounded-lg text-sm">סגור</button>
+            <div className="space-y-2">
+              {/* The helper said "can't do that" — offer the operator instead of a dead end. */}
+              <button onClick={sendToOperator} disabled={busy} className="w-full bg-[#6d5efc]/15 border border-[#6d5efc]/50 text-[#a79bff] font-bold py-2.5 rounded-lg text-sm hover:bg-[#6d5efc]/25 transition disabled:opacity-40">
+                שלחו את הבקשה למפעיל — נטפל בה ונעדכן אתכם
+              </button>
+              <button onClick={() => setPreview(null)} className="w-full bg-[#22252b] text-[#8a8aa0] font-bold py-2.5 rounded-lg text-sm">סגור</button>
+            </div>
           )}
         </div>
       )}
@@ -288,6 +331,12 @@ export default function CommandsTab({ restaurant, items, onApplied }) {
         </div>
       )}
 
+      {requestSent && (
+        <div className="bg-[#16181c] rounded-2xl p-4 border border-[#22c08c]/40 space-y-1">
+          <p className="text-sm font-bold text-[#22c08c] flex items-center gap-1.5"><Check size={15} /> הבקשה נשלחה למפעיל</p>
+          <p className="text-xs text-[#8a8aa0] leading-relaxed">נטפל בה בהקדם והתפריט יתעדכן אצלכם אוטומטית — אין צורך לעשות כלום.</p>
+        </div>
+      )}
       {applied && <p className="text-xs font-bold text-[#22c08c] flex items-center gap-1.5"><Check size={14} /> {applied}</p>}
       {err && <p className="text-xs font-bold text-[#e0315a] flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" /> {err}</p>}
     </div>
