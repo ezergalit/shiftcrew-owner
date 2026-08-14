@@ -3,6 +3,7 @@ import { ChefHat, Loader2 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import OwnerLogin from "./auth/OwnerLogin";
 import OwnerDashboard, { RESTAURANT_COLUMNS } from "./screens/OwnerDashboard";
+import OperatorPanel from "./screens/OperatorPanel";
 
 const SESSION_KEY = "menu-app-owner-session";
 const db = supabase.schema("menu_app");
@@ -13,6 +14,15 @@ const db = supabase.schema("menu_app");
 const DEV_BYPASS_AUTH = import.meta.env.VITE_DEV_BYPASS_AUTH === "true";
 
 export default function App() {
+  // Operator-only control board (?operator=1) — pending owner requests per restaurant,
+  // each copyable as a ready-made Claude Code message. Never linked from the owner UI.
+  if (new URLSearchParams(window.location.search).has("operator")) {
+    return <OperatorPanel />;
+  }
+  return <OwnerApp />;
+}
+
+function OwnerApp() {
   const [phase, setPhase] = useState("loading"); // loading | login | app
   const [restaurant, setRestaurant] = useState(null);
 

@@ -3,6 +3,7 @@ import { Home, BookOpen, Users, Settings, LogOut, Plus, Edit2, Trash2, Check, Al
 import LearningStatus from "../components/LearningStatus";
 import CommandsTab from "../components/CommandsTab";
 import SmartSuggestions from "../components/SmartSuggestions";
+import { categoryVisual } from "../lib/categoryVisual";
 import GuidedTour from "../components/GuidedTour";
 import BriefAssistant from "../components/BriefAssistant";
 import BriefReadBoard from "../components/BriefReadBoard";
@@ -946,13 +947,36 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
               <p className="text-sm text-[#8a8aa0] text-center py-6">עדיין אין מנות בתפריט. הוסיפו מנה או ייבאו את התפריט בבת אחת.</p>
             )}
 
-            {existingCategories.map((cat) => (
+            {existingCategories.map((cat) => {
+              const vis = categoryVisual(cat);
+              return (
               <div key={cat} className="space-y-2">
-                <p className="text-xs font-bold text-[#8a8aa0] px-1">{cat}</p>
+                <div className="flex items-center gap-2 px-1">
+                  <span
+                    className="w-6 h-6 rounded-lg flex items-center justify-center text-[13px] shrink-0"
+                    style={{ background: `linear-gradient(135deg, ${vis.from}, ${vis.to}55)` }}
+                    aria-hidden
+                  >
+                    {vis.emoji}
+                  </span>
+                  <p className="text-xs font-bold text-[#8a8aa0]">{cat}</p>
+                </div>
                 {items.filter((i) => i.category === cat).map((item) => (
                   <div key={item.id} className={`bg-[#16181c] rounded-lg p-3 border ${item.starred ? "border-[#f3a712]/50" : "border-[#22252b]"}`}>
                     <div className="flex justify-between items-start mb-1">
-                      <div className="flex items-center gap-1.5 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {/* Real photo wins; until one exists, the category visual stands in. */}
+                        {item.image_url ? (
+                          <img src={item.image_url} alt="" className="w-9 h-9 rounded-lg object-cover shrink-0" />
+                        ) : (
+                          <span
+                            className="w-9 h-9 rounded-lg flex items-center justify-center text-lg shrink-0"
+                            style={{ background: `linear-gradient(135deg, ${vis.from}, ${vis.to}44)` }}
+                            aria-hidden
+                          >
+                            {vis.emoji}
+                          </span>
+                        )}
                         <button
                           onClick={() => toggleStar(item)}
                           title={item.starred ? "מנה מודגשת — הצוות מתרגל אותה בעדיפות. לחצו להסרת הדגש." : "הדגישו מנה שחשוב במיוחד שהצוות ידע — היא תקבל עדיפות בלימוד."}
@@ -999,7 +1023,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                   </div>
                 ))}
               </div>
-            ))}
+            );})}
           </div>
         )}
 
