@@ -61,10 +61,13 @@ export default function CommandsTab({ restaurant, items, onApplied }) {
     try {
       const menu = items.map(({ id, name, price, description, category, allergens, pregnancy, pitfalls, kashrut }) =>
         ({ id, name, price, description, category, allergens, pregnancy, pitfalls, kashrut }));
+      // Measured on a real 245-dish menu: Haiku patched 8/23 of a bulk command, Sonnet
+      // 22/23. Big menus escalate; small menus stay fast and cheap.
+      const model = items.length > 120 ? "sonnet" : "haiku";
       const res = await fetch(FN_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "menu_command", command: command.trim(), menu }),
+        body: JSON.stringify({ mode: "menu_command", command: command.trim(), menu, model }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "שגיאה בהרצת הפקודה");
@@ -217,15 +220,13 @@ export default function CommandsTab({ restaurant, items, onApplied }) {
           disabled={busy || !command.trim() || !items.length}
           className="w-full bg-[#6d5efc] text-white font-bold py-2.5 rounded-lg text-sm hover:bg-[#5b4ef0] transition disabled:opacity-40 flex items-center justify-center gap-2"
         >
-          {busy && !winePreview ? <><Loader2 size={15} className="animate-spin" /> חושב…</> : "הצג לי מה ישתנה"}
+          {busy && !winePreview
+            ? <><Loader2 size={15} className="animate-spin" /> {items.length > 120 ? "בודק את כל התפריט… בתפריט גדול זה יכול לקחת עד דקה" : "בודק את התפריט…"}</>
+            : "הצג לי מה ישתנה"}
         </button>
-        <button
-          onClick={sendToOperator}
-          disabled={busy || !command.trim()}
-          className="w-full text-[11px] font-bold text-[#8a8aa0] hover:text-[#a79bff] transition disabled:opacity-40"
-        >
-          שינוי גדול או משהו שהעוזר לא יודע לעשות? שלחו את זה למפעיל ←
-        </button>
+        {/* No always-visible operator link here — it sat right under the run button and
+            got clicked instead of it. The operator path appears only where it belongs:
+            when the helper says "can't do that", or when the run itself failed. */}
       </div>
 
       {preview?.answer && (
@@ -338,7 +339,16 @@ export default function CommandsTab({ restaurant, items, onApplied }) {
         </div>
       )}
       {applied && <p className="text-xs font-bold text-[#22c08c] flex items-center gap-1.5"><Check size={14} /> {applied}</p>}
-      {err && <p className="text-xs font-bold text-[#e0315a] flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" /> {err}</p>}
+      {err && (
+        <div className="space-y-2">
+          <p className="text-xs font-bold text-[#e0315a] flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" /> {err}</p>
+          {command.trim() && (
+            <button onClick={sendToOperator} disabled={busy} className="w-full bg-[#6d5efc]/15 border border-[#6d5efc]/50 text-[#a79bff] font-bold py-2 rounded-lg text-xs hover:bg-[#6d5efc]/25 transition disabled:opacity-40">
+              לא הצליח? שלחו את הבקשה למפעיל — נטפל בה ונעדכן אתכם
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
