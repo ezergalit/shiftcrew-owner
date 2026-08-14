@@ -78,6 +78,10 @@ export const facetsForMenu = (items) =>
 export const DEFAULT_PATH = {
   pass_threshold: 50,
   gate_games: true,
+  // Minutes of study per day. Mirrors exam_config.daily_goal_minutes and the waiter app's
+  // DEFAULT_DAILY_MINUTES — if you change one, change both or a restaurant that never
+  // opened the setting will see a different goal than the one this screen claims.
+  daily_goal_minutes: 10,
   baseline_enabled: true,
   baseline_minutes: 7,
 };

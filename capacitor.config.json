@@ -1,0 +1,12 @@
+{
+  "appId": "il.co.shiftcrew.owner",
+  "appName": "ShiftCrew ניהול",
+  "webDir": "dist",
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#0c0d10"
+  },
+  "android": {
+    "backgroundColor": "#0c0d10"
+  }
+}

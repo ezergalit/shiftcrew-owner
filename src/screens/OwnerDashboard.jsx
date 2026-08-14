@@ -11,6 +11,7 @@ import CuisineSelector from "../components/CuisineSelector";
 import LearningPathSettings from "../components/LearningPathSettings";
 import ProgressChart from "../components/ProgressChart";
 import MenuHealthReview from "../components/MenuHealthReview";
+import AccountSecurity from "../components/AccountSecurity";
 import { FLAG_GROUPS, FLAG_GROUP_BY_KEY, effectiveTrackedFlags } from "../lib/dishFlags";
 import { supabase } from "../lib/supabase";
 
@@ -675,7 +676,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   if (onboarding) {
     return (
       <div className="h-screen max-w-md mx-auto bg-[#0c0d10] text-[#eef0f6] flex flex-col" dir="rtl">
-        <div className="px-6 pt-8 pb-4 text-center border-b border-[#22252b]">
+        <div className="px-6 pt-[max(2rem,env(safe-area-inset-top))] pb-4 text-center border-b border-[#22252b]">
           <div className="w-12 h-12 rounded-2xl bg-[#15302b] flex items-center justify-center mx-auto mb-3">
             <ChefHat size={24} className="text-[#2f9e8f]" />
           </div>
@@ -848,7 +849,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   return (
     <div className="h-screen max-w-md mx-auto bg-[#0c0d10] text-[#eef0f6] flex flex-col" dir="rtl">
       {/* Header */}
-      <div className="px-4 py-4 border-b border-[#22252b]">
+      <div className="px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-4 border-b border-[#22252b]">
         <h1 className="text-xl font-black">{restaurant?.name || "המסעדה שלי"}</h1>
         <p className="text-xs text-[#8a8aa0]">
           קוד בעלים: {restaurant?.owner_code}
@@ -1254,13 +1255,20 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 </button>
               </div>
             </div>
+
+            {/* Password change + account deletion (the latter is a store requirement:
+                Google Play UserData policy and App Store 5.1.1(v) both block apps
+                that offer accounts without an in-app way to delete them). */}
+            <AccountSecurity ownerCode={restaurant?.owner_code} onDeleted={onSignOut} />
           </div>
         )}
       </div>
 
       {/* Bottom Navigation */}
       <div className="border-t border-[#22252b] bg-[#16181c]">
-        <div className="grid grid-cols-5 gap-1 p-2">
+        {/* pb keeps the tabs clear of the iPhone home indicator once packaged with
+            Capacitor. On the web the inset is 0 and this stays the plain p-2. */}
+        <div className="grid grid-cols-5 gap-1 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           <NavButton icon={<Home size={18} />} label="בית" active={tab === "home"} onClick={() => setTab("home")} />
           <NavButton icon={<BookOpen size={18} />} label="תפריט" active={tab === "menu"} onClick={() => setTab("menu")} />
           <NavButton icon={<Users size={18} />} label="צוות" active={tab === "team"} onClick={() => setTab("team")} />
@@ -1774,7 +1782,7 @@ function MenuSetupTutorial({ restaurant, onDone }) {
 
   return (
     <div className="h-screen max-w-md mx-auto bg-[#0c0d10] text-[#eef0f6] flex flex-col" dir="rtl">
-      <div className="px-6 pt-8 pb-4 text-center border-b border-[#22252b]">
+      <div className="px-6 pt-[max(2rem,env(safe-area-inset-top))] pb-4 text-center border-b border-[#22252b]">
         <div className="w-12 h-12 rounded-2xl bg-[#15302b] flex items-center justify-center mx-auto mb-3">
           <ClipboardPaste size={22} className="text-[#2f9e8f]" />
         </div>

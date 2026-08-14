@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChefHat, Loader2, AlertTriangle, Eye, EyeOff } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { setSessionToken } from "../lib/appSession";
 
 const SESSION_KEY = "menu-app-owner-session";
 const db = supabase.schema("menu_app");
@@ -44,6 +45,23 @@ export default function OwnerLogin({ onGranted }) {
   const [newCode, setNewCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // null | "ask" | "sent" — the tiny forgot-password flow under the login button.
+  const [forgot, setForgot] = useState(null);
+
+  const sendForgot = async () => {
+    if (!code.trim()) { setErr("הקלידו את קוד הבעלים ואז לחצו שוב על \"שכחתי סיסמה\"."); return; }
+    setBusy(true);
+    try {
+      // Always reports success server-side, so this screen can't be used to
+      // probe which owner codes exist. The request lands in the operator queue.
+      await db.rpc("forgot_password_request", { p_owner_code: code.trim() });
+      setForgot("sent");
+      setErr("");
+    } catch (e2) {
+      console.error("forgot password:", e2);
+      setErr("משהו השתבש. נסה/י שוב.");
+    } finally { setBusy(false); }
+  };
 
   const submit = async (e) => {
     e?.preventDefault();
@@ -57,7 +75,9 @@ export default function OwnerLogin({ onGranted }) {
           setBusy(false);
           return;
         }
-        const { data, error } = await db.rpc("verify_owner_login", {
+        // owner_login_v2 = the same credential checks as verify_owner_login,
+        // plus a server-minted session token that RLS resolves on every request.
+        const { data, error } = await db.rpc("owner_login_v2", {
           p_owner_code: code.trim(),
           p_password: password
         });
@@ -67,12 +87,13 @@ export default function OwnerLogin({ onGranted }) {
           setBusy(false);
           return;
         }
-        const restaurant = data?.[0];
+        const restaurant = data?.restaurant;
         if (!restaurant) {
           setErr("קוד או סיסמא שגויים.");
           setBusy(false);
           return;
         }
+        setSessionToken(data.token);
         localStorage.setItem(SESSION_KEY, JSON.stringify(toSession(restaurant)));
         onGranted(restaurant);
       } catch (e2) {
@@ -111,6 +132,13 @@ export default function OwnerLogin({ onGranted }) {
         if (!restaurant) {
           throw new Error("No data returned from create");
         }
+        // The account exists but has no session yet — log in with the fresh
+        // credentials to mint the token every subsequent request depends on.
+        const { data: login } = await db.rpc("owner_login_v2", {
+          p_owner_code: restaurant.owner_code,
+          p_password: password
+        });
+        if (login?.token) setSessionToken(login.token);
         localStorage.setItem(SESSION_KEY, JSON.stringify(toSession(restaurant)));
         onGranted(restaurant);
       } catch (e2) {
@@ -177,6 +205,16 @@ export default function OwnerLogin({ onGranted }) {
                 }`}>
                 {busy ? <><Loader2 size={18} className="animate-spin" /> בדוק</> : "הכנסה"}
               </button>
+              {forgot === "sent" ? (
+                <p className="text-[11px] text-[#22c08c] font-bold text-center leading-relaxed">
+                  הבקשה נשלחה למפעיל — ניצור קשר עם סיסמה זמנית.
+                </p>
+              ) : (
+                <button type="button" onClick={sendForgot} disabled={busy}
+                  className="w-full text-center text-[11px] text-[#8a8aa0] font-bold underline underline-offset-2">
+                  שכחתי סיסמה
+                </button>
+              )}
             </>
           ) : (
             <>

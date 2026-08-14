@@ -4,6 +4,7 @@ import { supabase } from "./lib/supabase";
 import OwnerLogin from "./auth/OwnerLogin";
 import OwnerDashboard, { RESTAURANT_COLUMNS } from "./screens/OwnerDashboard";
 import OperatorPanel from "./screens/OperatorPanel";
+import { setSessionToken } from "./lib/appSession";
 
 const SESSION_KEY = "menu-app-owner-session";
 const db = supabase.schema("menu_app");
@@ -69,7 +70,7 @@ function OwnerApp() {
     <OwnerDashboard
       restaurant={restaurant}
       onRestaurantUpdated={(patch) => setRestaurant((prev) => ({ ...prev, ...patch }))}
-      onSignOut={() => { localStorage.removeItem(SESSION_KEY); setRestaurant(null); setPhase("login"); }}
+      onSignOut={() => { localStorage.removeItem(SESSION_KEY); setSessionToken(null); setRestaurant(null); setPhase("login"); }}
     />
   );
 }

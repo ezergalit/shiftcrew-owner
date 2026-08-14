@@ -283,6 +283,21 @@ db.from("team_members").select("*").eq("restaurant_id", id)
   0 שינויים (במקום מבוי סתום). ר' סעיף "תור בקשות למפעיל" ב-CLAUDE.md הראשי —
   כולל שאילתת הבדיקה שחובה להריץ בתחילת כל סשן.
 
+## 📱 2026-08-14 — Capacitor + session tokens (ר' CLAUDE.md הראשי לתמונה המלאה)
+
+- `capacitor.config.json` + `ios/` + `android/` (appId `il.co.shiftcrew.owner`).
+  אחרי כל `npm run build` ⇒ `npx cap sync`.
+- `index.html`: נוסף `viewport-fit=cover` — בלעדיו כל ה-safe-area שכבר היה בקוד
+  חושב ל-0. ה-bottom nav וה-headers ב-`OwnerDashboard.jsx` קיבלו padding-insets.
+- **Auth**: `OwnerLogin` עבר ל-`owner_login_v2` (טוקן נשמר דרך `lib/appSession.js`,
+  נשלח כ-`x-app-session` ע"י ה-fetch המוזרק ב-`lib/supabase.js`). נוסף "שכחתי סיסמה"
+  (⇒ `forgot_password_request` ⇒ תור המפעיל). יצירת חשבון עושה login v2 מיד אחרי.
+- **`components/AccountSecurity.jsx`** בטאב הגדרות: החלפת סיסמה
+  (`change_owner_password`) + מחיקת חשבון (`delete_restaurant_account`, הקלדת
+  "מחיקה" + סיסמה). נבדק חי מקצה לקצה. דרישת חנויות.
+- **`migrations/02_rls_session_cutover.sql`** — ⚠️ להפעיל רק אחרי דיפלוי שתי
+  האפליקציות. `public/privacy.html` — מדיניות פרטיות ציבורית.
+
 ## 🔧 2026-08-14 (המשך) — "המנהל עושה בעצמו" תוקן
 
 הדיווח "זה לא עובד" ⇒ שחזור מלא בפרודקשן הראה שהמנגנון עבד, אבל שלוש בעיות אמיתיות:

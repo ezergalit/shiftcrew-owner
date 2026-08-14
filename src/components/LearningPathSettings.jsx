@@ -48,6 +48,7 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
       setPath({
         pass_threshold: data?.pass_threshold ?? DEFAULT_PATH.pass_threshold,
         gate_games: data?.gate_games ?? DEFAULT_PATH.gate_games,
+        daily_goal_minutes: data?.daily_goal_minutes ?? DEFAULT_PATH.daily_goal_minutes,
         baseline_enabled: data?.baseline_enabled ?? DEFAULT_PATH.baseline_enabled,
         baseline_minutes: data?.baseline_minutes ?? DEFAULT_PATH.baseline_minutes,
       });
@@ -91,6 +92,7 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
     JSON.stringify(ranked) === JSON.stringify(supported) &&
     path.pass_threshold === DEFAULT_PATH.pass_threshold &&
     path.gate_games === DEFAULT_PATH.gate_games &&
+    path.daily_goal_minutes === DEFAULT_PATH.daily_goal_minutes &&
     path.baseline_enabled === DEFAULT_PATH.baseline_enabled &&
     path.baseline_minutes === DEFAULT_PATH.baseline_minutes;
 
@@ -224,16 +226,40 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
       <Card>
         <p className="font-bold text-[#eef0f6] mb-3">איך המסלול מתקדם</p>
 
+        {/* The daily goal the waiter sees as a ring on their home screen. Minutes, not
+            dishes: time is the thing a waiter can actually commit to before a shift, and
+            it is the restaurant's call — a busy kitchen wants 10, a new opening more. */}
         <Setting
-          title="פתיחה מדורגת"
+          title="יעד לימוד יומי"
+          desc={`הצוות רואה טבעת התקדמות בבית — ${path.daily_goal_minutes} דקות לימוד ביום. מומלץ 10-15.`}
+        >
+          <div className="flex gap-1.5">
+            {[5, 10, 15, 20].map((v) => (
+              <button key={v} onClick={() => { setPath({ ...path, daily_goal_minutes: v }); setSavedAt(null); }}
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold ${
+                  path.daily_goal_minutes === v ? "bg-[#6d5efc] text-white" : "bg-[#22252b] text-[#8a8aa0]"}`}>
+                {v}{v === 10 && " ★"}
+              </button>
+            ))}
+          </div>
+        </Setting>
+
+        {/* ⚠️ This toggle no longer gates ACCESS — the staged chain was removed (see the
+            waiter app's learningPath.js). It controls SCOPE: whether practice draws only
+            from categories the waiter has passed, or from the whole menu. The old copy
+            promised locking that no longer happens. */}
+        <Setting
+          title="תרגול לפי מה שנלמד"
           desc={path.gate_games
-            ? "מלצר לומד חלק אחד, נבחן עליו, ורק אז נפתח החלק הבא ומשחקים נוספים. זו ההמלצה שלנו."
-            : "כל התפריט וכל המשחקים פתוחים מהרגע הראשון."}
+            ? "התרגול נבנה רק מהחלקים שהמלצר כבר עבר עליהם מבחן. כל מבחן שעובר מרחיב את התרגול. זו ההמלצה שלנו."
+            : "התרגול מושך מכל התפריט מההתחלה, גם מחלקים שהמלצר עוד לא נבחן עליהם."}
         >
           <Toggle on={path.gate_games} onClick={() => { setPath({ ...path, gate_games: !path.gate_games }); setSavedAt(null); }} />
         </Setting>
 
-        {path.gate_games && (
+        {/* Applies whether or not practice is scoped: it is the only real gate left, and
+            it just means "study a little before being examined". */}
+        {(
           <Setting title="כמה צריך לדעת כדי להיבחן" desc={`מלצר נבחן על חלק בתפריט אחרי שהגיע ל-${path.pass_threshold}% ידע בו.`}>
             <div className="flex gap-1.5">
               {[30, 50, 70].map((v) => (
