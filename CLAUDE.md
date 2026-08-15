@@ -308,3 +308,12 @@ db.from("team_members").select("*").eq("restaurant_id", id)
    ("תוריד את כל ה-[?]") עם haiku תיקנה 8/23; sonnet 22/23 (~100 שניות). אל תחזירו
    ל-haiku בתפריטים גדולים.
 3. **חיווי המתנה** — בתפריט גדול הריצה לוקחת עד דקה; הכפתור אומר את זה עכשיו.
+
+## 🔄 2026-08-15 (ערב) — סנכרון בין המכונות הושלם + רי-ברנדינג CrewMenu
+
+- המק החדש משך את `3870e6d` (אייקוני המותג, אינדיגו) מ-origin/main. קונפליקט יחיד
+  ב-`index.html` נפתר: favicon החדש + title החדש ("CrewMenu — ניהול") נשמרו יחד.
+- **רי-ברנדינג**: appId → `il.co.crewmenu.owner`, שם תצוגה "CrewMenu ניהול". השם
+  הקובע מעתה: **CrewMenu**.
+- `Info.plist`: נוסף `ITSAppUsesNonExemptEncryption=false`.
+- ⚠️ ה-RLS session-token cutover חי בפרודקשן — לא נוגעים ב-policies של `menu_app`.
