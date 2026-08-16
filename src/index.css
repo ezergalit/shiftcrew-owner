@@ -18,3 +18,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; o
 
 .safe-top    { padding-top:    env(safe-area-inset-top,    20px); }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 16px); }
+
+/* Same rule as the waiter app: scrolling must never chain out of the middle
+   pane and drag the fixed header/nav. Pairs with ios.scrollEnabled=false. */
+.overflow-y-auto, .overflow-auto {
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
