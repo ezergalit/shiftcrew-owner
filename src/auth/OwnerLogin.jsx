@@ -156,7 +156,7 @@ export default function OwnerLogin({ onGranted }) {
         </div>
         <h1 className="text-3xl font-black leading-tight">CrewMenu</h1>
         <p className="text-sm text-[#8a8aa0] font-semibold mt-2 leading-relaxed">
-          מנהל תפריט + מאמן AI
+          ניהול תפריט והדרכת צוות
         </p>
       </div>
 
