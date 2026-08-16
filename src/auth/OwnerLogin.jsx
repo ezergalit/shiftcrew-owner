@@ -30,7 +30,11 @@ function toSession(restaurant) {
     restaurantId: restaurant.id,
     restaurantName: restaurant.name,
     ownerCode: restaurant.owner_code,
-    teamCode: restaurant.team_code
+    teamCode: restaurant.team_code,
+    // NULL = the primary restaurant password matched; a name = a secondary
+    // manager (owner_users). Account-destroying actions are primary-only,
+    // so the session must remember which one this login was.
+    loggedInAsName: restaurant.logged_in_as_name ?? null
   };
 }
 

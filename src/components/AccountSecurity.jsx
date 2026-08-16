@@ -10,7 +10,7 @@ const db = supabase.schema("menu_app");
 // UserData policy, App Store 5.1.1(v)) — without it the apps cannot ship.
 // Both actions re-check the owner password server-side; holding a session is
 // deliberately not enough to destroy an account.
-export default function AccountSecurity({ ownerCode, onDeleted }) {
+export default function AccountSecurity({ ownerCode, secondaryName, onDeleted }) {
   const [pwCurrent, setPwCurrent] = useState("");
   const [pwNew, setPwNew] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
@@ -59,6 +59,22 @@ export default function AccountSecurity({ ownerCode, onDeleted }) {
       setDelErr("משהו השתבש. נסו שוב.");
     } finally { setDelBusy(false); }
   };
+
+  // A secondary manager (added via add_owner_user) gets an explanation instead of
+  // the account controls: deletion is refused server-side anyway (not_primary in
+  // delete_restaurant_account), and the password form only changes the primary
+  // password, which they don't hold. Showing dead controls would just confuse.
+  if (secondaryName) {
+    return (
+      <div className="bg-[#16181c] rounded-lg p-4 border border-[#22252b]">
+        <p className="font-bold text-[#eef0f6] flex items-center gap-2"><KeyRound size={15} /> אבטחת חשבון</p>
+        <p className="text-xs text-[#8a8aa0] leading-relaxed mt-2">
+          מחובר/ת כמנהל/ת ({secondaryName}). החלפת סיסמת המסעדה ומחיקת החשבון שמורות
+          לבעל/ת החשבון הראשי/ת בלבד.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <>

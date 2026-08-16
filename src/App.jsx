@@ -55,7 +55,9 @@ function OwnerApp() {
         const { data, error } = await db.from("restaurants")
           .select(RESTAURANT_COLUMNS).eq("id", session.restaurantId).maybeSingle();
         if (error || !data) { localStorage.removeItem(SESSION_KEY); if (alive) setPhase("login"); return; }
-        if (alive) { setRestaurant(data); setPhase("app"); }
+        // logged_in_as_name is session state, not a restaurants column — carry it
+        // over from the cached session so a restored secondary manager stays flagged.
+        if (alive) { setRestaurant({ ...data, logged_in_as_name: session.loggedInAsName ?? null }); setPhase("app"); }
       } catch {
         localStorage.removeItem(SESSION_KEY);
         if (alive) setPhase("login");

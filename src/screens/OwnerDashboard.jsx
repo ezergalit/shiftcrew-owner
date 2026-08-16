@@ -255,6 +255,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // hands the owner the plain form for the rest of the session.
   const [briefAssistantOff, setBriefAssistantOff] = useState(false);
   const [tourActive, setTourActive] = useState(false);
+  // First-load gate: the wizard/tour decision must not run against the initial
+  // empty items state (see the effect below).
+  const [menuLoaded, setMenuLoaded] = useState(false);
   const [savingBrief, setSavingBrief] = useState(false);
 
   // Additional manager users
@@ -310,12 +313,26 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     }
   }, [restaurant]);
 
-  // First look at an empty menu = open the tutorial. Separate from the flag above so an
-  // existing restaurant that deleted its dishes isn't dragged back in.
+  // First look at an empty menu = open the tutorial; an operator-built menu skips the
+  // import wizard and goes straight to the guided tour instead. Both decisions wait for
+  // menuLoaded — deciding on the initial empty `items` state opened the import wizard
+  // over a full menu (race caught live on the DEMO26 restaurant, 2026-08-16).
   useEffect(() => {
-    if (restaurant && !restaurant.onboarding_completed && items.length === 0) setMenuSetupActive(true);
+    if (!menuLoaded || !restaurant) return;
+    if (!restaurant.onboarding_completed && items.length === 0) {
+      setMenuSetupActive(true);
+      return;
+    }
+    // Operator-built restaurants: the owner's first login lands on a menu they never
+    // imported themselves, so the import-triggered tour (handleMenuSetupDone) never
+    // fires for them. Same once-per-device flag guards both paths from double-running.
+    if (items.length > 0 && !localStorage.getItem(`menu-app-tour-done:${restaurant.id}`)) {
+      localStorage.setItem(`menu-app-tour-done:${restaurant.id}`, "1");
+      setTourActive(true);
+      setTab("home");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restaurant?.id]);
+  }, [menuLoaded, restaurant?.id]);
 
   // Re-fetch just the menu (used after the paste-a-menu tutorial bulk-inserts dishes
   // directly via Supabase, bypassing the `items` state entirely — without this, the
@@ -341,6 +358,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
         .order("menu_position", { ascending: true, nullsFirst: false })
         .order("created_at");
       if (alive && !menuErr) setItems((menuData || []).map(dishFromDb));
+      if (alive && !menuErr) setMenuLoaded(true);
 
       // Team members have no menu_position — they are people, not dishes. Ordering them
       // by it made this request 400 on every dashboard load, which silently emptied the
@@ -1259,7 +1277,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             {/* Password change + account deletion (the latter is a store requirement:
                 Google Play UserData policy and App Store 5.1.1(v) both block apps
                 that offer accounts without an in-app way to delete them). */}
-            <AccountSecurity ownerCode={restaurant?.owner_code} onDeleted={onSignOut} />
+            <AccountSecurity ownerCode={restaurant?.owner_code} secondaryName={restaurant?.logged_in_as_name || null} onDeleted={onSignOut} />
           </div>
         )}
       </div>
