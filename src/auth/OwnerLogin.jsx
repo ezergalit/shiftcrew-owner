@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ChefHat, Loader2, AlertTriangle, Eye, EyeOff } from "lucide-react";
+import { Loader2, AlertTriangle, Eye, EyeOff } from "lucide-react";
+import BrandMark from "../components/BrandMark";
 import { supabase } from "../lib/supabase";
 import { setSessionToken } from "../lib/appSession";
 
@@ -151,8 +152,8 @@ export default function OwnerLogin({ onGranted }) {
   return (
     <div className="h-full max-w-md mx-auto flex flex-col bg-[#0c0d10] text-[#eef0f6]" dir="rtl">
       <div className="px-7 pt-[max(3.5rem,env(safe-area-inset-top))] pb-2 text-center">
-        <div className="w-16 h-16 rounded-3xl text-white flex items-center justify-center mx-auto mb-4 bg-[#15302b]">
-          <ChefHat size={32} />
+        <div className="w-16 h-16 rounded-3xl bg-[#0F5C46] flex items-center justify-center mx-auto mb-4">
+          <BrandMark size={40} />
         </div>
         <h1 className="text-3xl font-black leading-tight">CrewMenu</h1>
         <p className="text-sm text-[#8a8aa0] font-semibold mt-2 leading-relaxed">

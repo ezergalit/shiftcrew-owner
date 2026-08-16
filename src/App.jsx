@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ChefHat, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import BrandMark from "./components/BrandMark";
 import { supabase } from "./lib/supabase";
 import OwnerLogin from "./auth/OwnerLogin";
 import OwnerDashboard, { RESTAURANT_COLUMNS } from "./screens/OwnerDashboard";
@@ -78,8 +79,8 @@ function OwnerApp() {
 function Splash() {
   return (
     <div className="min-h-screen bg-[#0c0d10] text-gray-100 max-w-md mx-auto flex flex-col items-center justify-center gap-4" dir="rtl">
-      <div className="w-16 h-16 rounded-3xl bg-[#15302b] flex items-center justify-center">
-        <ChefHat size={34} className="text-[#2f9e8f]" />
+      <div className="w-16 h-16 rounded-3xl bg-[#0F5C46] flex items-center justify-center">
+        <BrandMark size={40} />
       </div>
       <Loader2 size={22} className="animate-spin text-gray-500" />
     </div>
