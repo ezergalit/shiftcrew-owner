@@ -3,7 +3,7 @@
   "appName": "CrewMenu ניהול",
   "webDir": "dist",
   "ios": {
-    "contentInset": "always",
+    "contentInset": "never",
     "backgroundColor": "#0c0d10",
     "scrollEnabled": false
   },
