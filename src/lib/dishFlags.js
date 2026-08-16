@@ -20,7 +20,7 @@ export const FLAG_GROUPS = [
     severity: "critical",
     column: "allergens",
     recommended: true,
-    values: ["גלוטן", "חלב", "ביצים", "אגוזים", "בוטנים", "דגים", "רכיכות", "סויה", "שומשום"],
+    values: ["גלוטן", "לקטוז", "ביצים", "אגוזים", "בוטנים", "רכיכות", "סויה", "שומשום"],
   },
   {
     key: "pregnancy",

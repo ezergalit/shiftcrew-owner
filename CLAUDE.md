@@ -110,6 +110,15 @@ src/components/ProgressChart.jsx        — טאב "צוות": גרף שיפור
   התיאור, שהיה שקר.
   בעקבות זה גם הוצא סף המבחן מתוך `{path.gate_games && ...}` — הוא חל בשני המצבים.
 
+## 🔤 לקסיקון האלרגיות (2026-08-16, החלטת משתמש) — v24 פרוס
+
+"דגים" הוסר מערכי האלרגיה (דג נא ⇒ pregnancy בלבד) ו"חלב" ⇒ "לקטוז". החלטת מוצר
+של המשתמש. שונה ב: `OwnerDashboard.jsx`, `MenuHealthReview.jsx`, `lib/dishFlags.js`,
+ובפרומפטים + `FLAG_VALUES` של `menu-ai-parse` (**v24 פרוס דרך MCP, אומת חי**:
+פסטה אלפרדו ⇒ `[לקטוז, גלוטן]`, סשימי ⇒ `allergens:[] pregnancy:[דג נא]`).
+מיגרציית נתונים: 48 מנות חלב⇒לקטוז, 24 הוסר דגים, published_menu סונכרן בטריגר.
+⚠️ ה-rebuild clone צריך `git pull` כרגיל.
+
 ## מוקשים + ה-Edge Function (2026-08-13)
 
 - `PITFALLS` (טופס המנה, `MenuHealthReview`) — **מוקשים ≠ אלרגיות**. `דג נא` הוצא

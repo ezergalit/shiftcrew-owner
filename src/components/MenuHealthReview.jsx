@@ -5,7 +5,7 @@ import { FACET_META, RECOMMENDED_FACETS } from "../lib/examFacets";
 import { FLAG_GROUP_BY_KEY } from "../lib/dishFlags";
 
 const db = supabase.schema("menu_app");
-const ALLERGENS = ["גלוטן", "חלב", "ביצים", "אגוזים", "בוטנים", "דגים", "רכיכות", "סויה", "שומשום"];
+const ALLERGENS = ["גלוטן", "לקטוז", "ביצים", "אגוזים", "בוטנים", "רכיכות", "סויה", "שומשום"];
 // "מוקשים" — what a guest often asks to avoid by preference, not by safety. Separate from
 // ALLERGENS on purpose: folding a preference into the allergen list makes the allergen
 // list less trustworthy, and a waiter reads the two for different reasons. Free text, so
