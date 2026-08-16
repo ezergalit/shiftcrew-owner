@@ -1,4 +1,4 @@
-package il.co.shiftcrew.owner;
+package il.co.crewmenu.owner;
 
 import com.getcapacitor.BridgeActivity;
 

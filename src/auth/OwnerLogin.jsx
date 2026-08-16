@@ -154,7 +154,7 @@ export default function OwnerLogin({ onGranted }) {
         <div className="w-16 h-16 rounded-3xl text-white flex items-center justify-center mx-auto mb-4 bg-[#15302b]">
           <ChefHat size={32} />
         </div>
-        <h1 className="text-3xl font-black leading-tight">Menu Trainer</h1>
+        <h1 className="text-3xl font-black leading-tight">CrewMenu</h1>
         <p className="text-sm text-[#8a8aa0] font-semibold mt-2 leading-relaxed">
           מנהל תפריט + מאמן AI
         </p>
@@ -261,7 +261,7 @@ export default function OwnerLogin({ onGranted }) {
         </div>
 
         <p className="text-center text-[12px] text-[#8a8aa0] font-semibold mt-auto pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] leading-relaxed">
-          Menu Trainer · ניהול תפריט + מאמן לימוד לצוות
+          CrewMenu · ניהול תפריט + מאמן לימוד לצוות
         </p>
       </form>
     </div>
