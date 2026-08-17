@@ -1,43 +1,61 @@
 import { useState } from "react";
-import { X, ChevronLeft } from "lucide-react";
+import { X, ChevronLeft, Compass } from "lucide-react";
 
 // A guided walk through the whole app — the user's ask was explicit: "tutorial שממש שולח
-// אותו לכל חלק באפליקציה", especially settings, so the owner discovers every feature
-// instead of living in the two tabs they found by themselves.
+// אותו לכל חלק באפליקציה", and later sharpened (2026-08-17): it must open as an up-front
+// welcome message with a skip option — not live only as a button in settings — and it must
+// teach HOW to do each thing (edit a dish, add team members), not just describe the tabs.
 //
 // Each step SWITCHES the app to the real tab (via onNavigate) and explains what's on it —
 // the owner is looking at their own live data while reading, not at screenshots. The tour
 // is a bottom card over the real screen; everything above it stays interactive on purpose,
-// so "הגדירו את זה עכשיו" is literal.
-const STEPS = [
+// so "נסו את זה עכשיו" is literal.
+const buildSteps = (teamCode) => [
   {
     tab: "home",
-    title: "טאב הבית — הבריף היומי",
-    body: "כאן כותבים לצוות מה חסר היום, מה חדש ומה בתנור — והלוח שמתחת מראה מי קרא ומי ענה נכון על שאלת ההבנה. כרטיסי הצעה חכמים יופיעו כאן כשנזהה מנות שהצוות מתקשה בהן.",
+    title: "טאב הבית — העדכון היומי לצוות",
+    body: "כאן מתחיל כל יום: כתבו מה חסר היום, מה חדש ומה בתנור — ולחצו שמירה. הצוות רואה את זה באפליקציה שלו לפני המשמרת, והלוח שמתחת מראה לכם מי קרא ומי ענה נכון על שאלת ההבנה.",
   },
   {
     tab: "menu",
-    title: "טאב התפריט — המנות, הכוכבים והעוזר",
-    body: "כל מנה מציגה את התיאור שלה — לחיצה עליו פותחת עריכה. הכוכב ⭐ מסמן ״חשוב לי שהצוות ידע את זו״. ולמעלה — עוזר התפריט: רוצים לשנות משהו בתפריט או בכמה מנות בבת אחת? כתבו פקודה במילים שלכם (״תוריד את כל סימני השאלה״), בדקו שהיא נכונה, ואשרו. אפשר גם להוסיף מנות חדשות בהדבקת טקסט ולשאול שאלות על התפריט.",
+    title: "טאב התפריט — כך מוסיפים מנות",
+    body: "שתי דרכים: הכפתור ״הוסף מנה״ פותח טופס למנה בודדת, והכפתור שלצידו (סמל ההדבקה) מייבא תפריט שלם בבת אחת — מדביקים את כל הטקסט או מצלמים את התפריט, והמערכת מפרקת לקטגוריות ומנות. כל שינוי מתפרסם לצוות אוטומטית.",
+  },
+  {
+    tab: "menu",
+    title: "כך נכנסים לכל מנה ועורכים אותה",
+    body: "לחיצה על התיאור של מנה (או על כפתור ״עריכה״) פותחת אותה לעריכה מלאה: שם, מחיר, תיאור, מרכיבים ואלרגנים. הכוכב ⭐ ליד השם מסמן ״חשוב לי שהצוות ידע את זו״ — היא תקבל עדיפות בלימוד. ״מחיקה״ מסירה את המנה גם מאפליקציית הצוות.",
+  },
+  {
+    tab: "menu",
+    title: "עוזר התפריט — שינויים במילים שלכם",
+    body: "בראש הטאב יושב העוזר: רוצים לשנות משהו בהרבה מנות בבת אחת? כתבו פקודה חופשית (״תוריד את כל סימני השאלה״, ״תעלה את כל הקינוחים ב-5 שקלים״), קבלו תצוגה מקדימה של מה שישתנה — ורק אחרי אישור שלכם זה נשמר. אפשר גם סתם לשאול שאלות על התפריט.",
   },
   {
     tab: "team",
-    title: "טאב הצוות — מי למד היום ומי יודע מה",
+    title: "כך מוסיפים חברי צוות",
+    body: `אין טפסים: שתפו עם המלצרים את קוד הצוות שמופיע כאן למעלה${teamCode ? ` (${teamCode})` : ""} — למשל בקבוצת הוואטסאפ. כל אחד מוריד את אפליקציית הצוות, מזין את הקוד ואת שמו — וזהו, הוא בפנים ומתחיל ללמוד. אתם תראו אותו מופיע כאן ברגע שנכנס.`,
+  },
+  {
+    tab: "team",
+    title: "מעקב — מי למד ומי צריך תזכורת",
     body: "שתי תצוגות: ״מי למד היום״ — מי למד, מי נכנס ולא למד (הקבוצה שהכי שווה לשים לב אליה) ומי צריך תזכורת. ו״התקדמות ומבחנים״ — אחוז הידע של כל מלצר, המנות שהוא טועה בהן, תוצאות המבחנים וגרף השיפור שלו כמו גרף מניה.",
   },
   {
     tab: "settings",
     title: "ההגדרות (1/2) — הלב של מסלול הלמידה",
-    body: "העצירה הכי חשובה בסיור. כאן קובעים מה חשוב לבחון (אלרגנים? מחירים? מרכיבים?), את סדר הקטגוריות בלימוד, את סף המעבר למבחן, את היעד היומי בדקות ואת בוחן ההיכרות למלצר חדש. הכל מאותחל להמלצה שלנו — אבל המסעדה שלכם, הכללים שלכם. שווה לכוון עכשיו.",
+    body: "העצירה הכי חשובה בסיור. כאן קובעים מה חשוב לבחון (אלרגנים? מחירים? מרכיבים?), את סדר הקטגוריות בלימוד, את סף המעבר למבחן, את היעד היומי בדקות ואת בוחן ההיכרות למלצר חדש. הכל מאותחל להמלצה שלנו — אבל המסעדה שלכם, הכללים שלכם.",
   },
   {
     tab: "settings",
     title: "ההגדרות (2/2) — תפריט בריא וניהול החשבון",
-    body: "גללו מטה: ״בדיקת בריאות תפריט״ מוצאת מנות עם מידע חסר ומתקנת קבוצות שלמות במכה — הצוות לומד רק ממה שמלא. מתחת: פרטי המסעדה, הוספת מנהלים נוספים עם סיסמה משלהם (בלי למסור את שלכם), החלפת סיסמה ואבטחת החשבון.",
+    body: "גללו מטה: ״בדיקת בריאות תפריט״ מוצאת מנות עם מידע חסר ומתקנת קבוצות שלמות במכה — הצוות לומד רק ממה שמלא. מתחת: פרטי המסעדה, הוספת מנהלים נוספים עם סיסמה משלהם (בלי למסור את שלכם), והחלפת סיסמה. ואם תרצו לחזור על הסיור — הוא מחכה לכם כאן למעלה.",
   },
 ];
 
-export default function GuidedTour({ onNavigate, onClose }) {
+export default function GuidedTour({ onNavigate, onClose, teamCode, withWelcome = false }) {
+  const STEPS = buildSteps(teamCode);
+  const [welcome, setWelcome] = useState(withWelcome);
   const [step, setStep] = useState(0);
   const s = STEPS[step];
   const last = step === STEPS.length - 1;
@@ -46,6 +64,40 @@ export default function GuidedTour({ onNavigate, onClose }) {
     setStep(i);
     onNavigate(STEPS[i].tab);
   };
+
+  // Up-front welcome: a centered, unmissable modal with an explicit skip — the tour must
+  // introduce itself, not wait to be discovered in settings.
+  if (welcome) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-6" dir="rtl">
+        <div className="w-full max-w-sm bg-[#1c1e24] border border-[#6d5efc]/60 rounded-2xl p-6 shadow-2xl shadow-black/60 text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-[#6d5efc]/15 flex items-center justify-center mx-auto">
+            <Compass size={28} className="text-[#a79bff]" />
+          </div>
+          <div>
+            <p className="text-lg font-black text-[#eef0f6]">ברוכים הבאים!</p>
+            <p className="text-sm text-[#b9b9c9] leading-relaxed mt-2">
+              בסיור קצר של שתי דקות נעבור יחד על כל מה שחשוב: איך מוסיפים ועורכים מנות,
+              איך מצרפים את הצוות, ואיפה עוקבים אחרי מי שלמד. האפליקציה נשארת חיה מתחת —
+              אפשר לנסות כל דבר תוך כדי.
+            </p>
+          </div>
+          <button
+            onClick={() => { setWelcome(false); onNavigate(STEPS[0].tab); }}
+            className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#5b4ef0] transition"
+          >
+            התחילו את הסיור המודרך
+          </button>
+          <button
+            onClick={onClose}
+            className="w-full text-[#8a8aa0] font-bold py-2 text-xs hover:text-[#b9b9c9] transition"
+          >
+            דלגו בינתיים — אפשר תמיד לחזור דרך ההגדרות
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 max-w-md mx-auto px-3 pb-20 pointer-events-none">
@@ -56,7 +108,9 @@ export default function GuidedTour({ onNavigate, onClose }) {
               סיור מודרך · {step + 1}/{STEPS.length}
             </span>
           </div>
-          <button onClick={onClose} className="text-[#6a6a7e]" aria-label="סגירת הסיור"><X size={16} /></button>
+          <button onClick={onClose} className="text-[#6a6a7e] flex items-center gap-1 text-[10px] font-bold" aria-label="דילוג על הסיור">
+            דלגו <X size={14} />
+          </button>
         </div>
         <div>
           <p className="text-sm font-black text-[#eef0f6]">{s.title}</p>

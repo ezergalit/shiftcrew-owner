@@ -255,6 +255,10 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // hands the owner the plain form for the rest of the session.
   const [briefAssistantOff, setBriefAssistantOff] = useState(false);
   const [tourActive, setTourActive] = useState(false);
+  // True only for the automatic first-login run: it opens with the welcome modal, and on
+  // an empty menu it hands off to the import wizard when it closes. The settings-button
+  // rerun does neither.
+  const [tourAutoRun, setTourAutoRun] = useState(false);
   // First-load gate: the wizard/tour decision must not run against the initial
   // empty items state (see the effect below).
   const [menuLoaded, setMenuLoaded] = useState(false);
@@ -313,26 +317,32 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     }
   }, [restaurant]);
 
-  // First look at an empty menu = open the tutorial; an operator-built menu skips the
-  // import wizard and goes straight to the guided tour instead. Both decisions wait for
-  // menuLoaded — deciding on the initial empty `items` state opened the import wizard
-  // over a full menu (race caught live on the DEMO26 restaurant, 2026-08-16).
+  // First login on this device = the welcome modal + guided tour, for every restaurant —
+  // empty or operator-built alike (the user's 2026-08-17 feedback: the tour must announce
+  // itself up front with a skip, not hide behind the settings button). An empty menu opens
+  // the import wizard only AFTER the tour closes (see handleTourClose), so the welcome is
+  // always the first thing a new owner sees. Waits for menuLoaded — deciding on the initial
+  // empty `items` state opened the import wizard over a full menu (race caught live on the
+  // DEMO26 restaurant, 2026-08-16).
   useEffect(() => {
     if (!menuLoaded || !restaurant) return;
-    if (!restaurant.onboarding_completed && items.length === 0) {
-      setMenuSetupActive(true);
-      return;
-    }
-    // Operator-built restaurants: the owner's first login lands on a menu they never
-    // imported themselves, so the import-triggered tour (handleMenuSetupDone) never
-    // fires for them. Same once-per-device flag guards both paths from double-running.
-    if (items.length > 0 && !localStorage.getItem(`menu-app-tour-done:${restaurant.id}`)) {
+    if (!localStorage.getItem(`menu-app-tour-done:${restaurant.id}`)) {
       localStorage.setItem(`menu-app-tour-done:${restaurant.id}`, "1");
+      setTourAutoRun(true);
       setTourActive(true);
       setTab("home");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [menuLoaded, restaurant?.id]);
+
+  const handleTourClose = () => {
+    setTourActive(false);
+    // The first-login tour on a menu-less restaurant flows straight into the paste-a-menu
+    // wizard — the tour explains the app, the wizard fills it. A settings-button rerun
+    // (tourAutoRun=false) never does this.
+    if (tourAutoRun && items.length === 0) setMenuSetupActive(true);
+    setTourAutoRun(false);
+  };
 
   // Re-fetch just the menu (used after the paste-a-menu tutorial bulk-inserts dishes
   // directly via Supabase, bypassing the `items` state entirely — without this, the
@@ -631,14 +641,6 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     setMenuSetupActive(false);
     setTab("menu");
     if (count > 0) setShowMenuTip(true);
-    // First successful import = the moment the app fills with the owner's own data, which
-    // is the best moment to walk them through everything it can do (once; restartable
-    // from settings).
-    if (count > 0 && !localStorage.getItem(`menu-app-tour-done:${restaurant.id}`)) {
-      localStorage.setItem(`menu-app-tour-done:${restaurant.id}`, "1");
-      setTourActive(true);
-      setTab("home");
-    }
   };
 
   const handleSaveBrief = async () => {
@@ -1293,7 +1295,14 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           <NavButton icon={<Settings size={18} />} label="הגדרות" active={tab === "settings"} onClick={() => setTab("settings")} />
           <NavButton icon={<LogOut size={18} />} label="יציאה" onClick={onSignOut} />
         </div>
-      {tourActive && <GuidedTour onNavigate={setTab} onClose={() => setTourActive(false)} />}
+      {tourActive && (
+        <GuidedTour
+          onNavigate={setTab}
+          onClose={handleTourClose}
+          teamCode={restaurant?.team_code}
+          withWelcome={tourAutoRun}
+        />
+      )}
       </div>
     </div>
   );
