@@ -326,3 +326,34 @@ db.from("team_members").select("*").eq("restaurant_id", id)
   הקובע מעתה: **CrewMenu**.
 - `Info.plist`: נוסף `ITSAppUsesNonExemptEncryption=false`.
 - ⚠️ ה-RLS session-token cutover חי בפרודקשן — לא נוגעים ב-policies של `menu_app`.
+
+## 🍏 2026-08-17 — iOS builds הועלו ל-App Store Connect מ-homestation
+
+**הקשר**: המק השני שודרג ל-macOS 27 עם Xcode בטא בלבד, ואפל דוחה builds מ-Xcode
+בטא ⇒ צד ה-iOS עבר ל-homestation (Xcode 26.6 יציב, build 17F113).
+
+**בוצע**: שתי האפליקציות (owner + waiter) — גרסה 1.0, **build 6** — נבנו והועלו
+בהצלחה. build 5 כבר היה תפוס בשרת (הועלה בעבר מהמק השני לפני שנפסל).
+
+**הצינור שעבד (לכל אפליקציה):**
+```
+npm run build && npx cap sync ios          # בשורש הריפו
+cd ios/App
+xcodebuild -project App.xcodeproj -scheme App -configuration Release \
+  -destination "generic/platform=iOS" -archivePath <path>.xcarchive \
+  archive -allowProvisioningUpdates
+xcodebuild -exportArchive -archivePath <path>.xcarchive \
+  -exportOptionsPlist ExportOptions.plist -exportPath <out> -allowProvisioningUpdates
+```
+`ExportOptions.plist`: `method=app-store-connect` · `destination=upload` ·
+`teamID=Q9994667T8` · `uploadSymbols=true` · `manageAppVersionAndBuildNumber=false`.
+
+**אימות**: אין מפתח API בשום מקום (ה-`AuthKey_*.p8` שהובטח מעולם לא הגיע ל-git) —
+ההעלאה עובדת דרך חשבון האפל המחובר ב-Xcode של homestation (Yotam Ezer, Team
+`Q9994667T8`) עם cloud signing. מכונה אחרת שתריץ את הצינור צריכה או Xcode מחובר
+לחשבון בעל הרשאה ב-Team, או מפתח API אמיתי.
+
+⚠️ **מספר build חייב לעלות בכל העלאה**: `xcrun agvtool new-version -all <n>`
+בתוך `ios/App`, ואז **לשחזר** את `Info.plist` (`git checkout`) — agvtool דורס את
+`$(CURRENT_PROJECT_VERSION)` בערך קשיח, וה-pbxproj לבדו מספיק. נכון לעכשיו: **6**
+בשני הריפואים (committed).
