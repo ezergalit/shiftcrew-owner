@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Home, BookOpen, Users, Settings, LogOut, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Star } from "lucide-react";
 import LearningStatus from "../components/LearningStatus";
-import CommandsTab from "../components/CommandsTab";
+import OperatorLine from "../components/OperatorLine";
 import SmartSuggestions from "../components/SmartSuggestions";
 import { categoryVisual } from "../lib/categoryVisual";
 import GuidedTour from "../components/GuidedTour";
@@ -128,6 +128,8 @@ const ALLERGENS = ["גלוטן", "לקטוז", "ביצים", "אגוזים", "ב
 // raw-fish warning is for pregnancy, not for someone who dislikes coriander — it lives in
 // the `pregnancy` group now and reaches the dish through that column.
 const PITFALLS = FLAG_GROUP_BY_KEY.pitfalls.values;
+const PREGNANCY = FLAG_GROUP_BY_KEY.pregnancy.values;
+const KASHRUT = FLAG_GROUP_BY_KEY.kashrut.values;
 
 // exam_results.category stores whatever the menu uses. Older seeded menus use these fixed
 // English keys; menus built through the paste/AI import use free-text Hebrew names, which
@@ -227,7 +229,12 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // "progress" = per-waiter standing, exams and improvement graphs.
   const [teamView, setTeamView] = useState("today");
   const [onboarding, setOnboarding] = useState(false); // true if first time setup needed
-  const [menuSetupActive, setMenuSetupActive] = useState(false);
+  // The paste-a-menu import wizard is an OPERATOR tool now — owners never build their own
+  // menu (decision 2026-08-17: "החלטנו שאנחנו עושים את זה"). Reachable only by knowing the
+  // URL (?import=1), same gate as ?operator=1 and ?signup=1.
+  const [menuSetupActive, setMenuSetupActive] = useState(
+    () => new URLSearchParams(window.location.search).get("import") === "1"
+  );
   const [showMenuTip, setShowMenuTip] = useState(false);
 
   // Menu state
@@ -337,10 +344,6 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
   const handleTourClose = () => {
     setTourActive(false);
-    // The first-login tour on a menu-less restaurant flows straight into the paste-a-menu
-    // wizard — the tour explains the app, the wizard fills it. A settings-button rerun
-    // (tourAutoRun=false) never does this.
-    if (tourAutoRun && items.length === 0) setMenuSetupActive(true);
     setTourAutoRun(false);
   };
 
@@ -494,7 +497,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       description: "",
       ingredients: [],
       allergens: [],
+      pregnancy: [],
       pitfalls: [],
+      kashrut: [],
       isSpecial: false
     });
   };
@@ -512,7 +517,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       description: editingItem.description || "",
       ingredients: editingItem.ingredients || [],
       allergens: editingItem.allergens || [],
+      pregnancy: editingItem.pregnancy || [],
       pitfalls: editingItem.pitfalls || [],
+      kashrut: editingItem.kashrut || [],
       is_special: !!editingItem.isSpecial,
       // Inserts only — editing an existing dish must never re-star it ("לוודא שזו אכן
       // מנה חדשה ולא מנה קיימת ששונתה"). A manual star from the form wins either way.
@@ -628,12 +635,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     setDetails(fromDbRestaurant(updated));
     onRestaurantUpdated?.(updated);
     setOnboarding(false);
-    // Straight into the menu-import tutorial, but only for a restaurant that has no menu
-    // yet. An existing restaurant filling in its profile late (e.g. the fields added after
-    // it was created) must not be dropped into a paste-a-menu screen — anything pasted
-    // there is inserted on top of the dishes it already has.
-    if (items.length === 0) setMenuSetupActive(true);
-    else setTab("menu");
+    setTab("menu");
   };
 
   const handleMenuSetupDone = async (count) => {
@@ -929,30 +931,21 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
         {tab === "menu" && (
           <div className="space-y-3">
-            {/* The owner's plain-language remote control lives at the top of the menu tab —
-                bulk edits, paste-to-add dishes, and basic questions, always preview+approve. */}
-            <CommandsTab restaurant={restaurant} items={items} onApplied={loadMenuItems} />
+            {/* The direct line to the operator lives at the top of the menu tab — the
+                owner writes what they want changed, we do it for them. */}
+            <OperatorLine restaurant={restaurant} />
             {showMenuTip && (
               <div className="bg-[#6d5efc]/10 border border-[#6d5efc]/40 rounded-lg p-3 flex items-start justify-between gap-2">
                 <p className="text-xs text-[#a79bff] leading-relaxed">התפריט יובא בהצלחה! מכאן תוכלו תמיד להוסיף, לערוך או למחוק מנות עם הכפתור "הוסף מנה".</p>
                 <button onClick={() => setShowMenuTip(false)} className="text-[#8a8aa0] shrink-0"><X size={14} /></button>
               </div>
             )}
-            <div className="flex gap-2">
-              <button
-                onClick={handleAddDish}
-                className="flex-1 bg-[#6d5efc] text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 hover:bg-[#5b4ef0] transition text-sm"
-              >
-                <Plus size={18} /> הוסף מנה
-              </button>
-              <button
-                onClick={() => setMenuSetupActive(true)}
-                className="bg-[#22252b] text-[#8a8aa0] font-bold py-3 px-4 rounded-lg flex items-center justify-center gap-2 hover:bg-[#2c2e35] transition text-sm"
-                title="ייבוא תפריט מהיר מהדבקת טקסט"
-              >
-                <ClipboardPaste size={16} />
-              </button>
-            </div>
+            <button
+              onClick={handleAddDish}
+              className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 hover:bg-[#5b4ef0] transition text-sm"
+            >
+              <Plus size={18} /> הוסף מנה
+            </button>
 
             {showAddForm && (
               <DishForm
@@ -965,7 +958,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             )}
 
             {existingCategories.length === 0 && items.length === 0 && (
-              <p className="text-sm text-[#8a8aa0] text-center py-6">עדיין אין מנות בתפריט. הוסיפו מנה או ייבאו את התפריט בבת אחת.</p>
+              <p className="text-sm text-[#8a8aa0] text-center py-6">התפריט שלכם בהכנה אצלנו ויופיע כאן בקרוב. אפשר גם להוסיף מנות ידנית בכל רגע.</p>
             )}
 
             {existingCategories.map((cat) => {
@@ -2166,6 +2159,33 @@ function DishForm({ item, onChange, onSave, onCancel, existingCategories }) {
       </div>
 
       <div className="space-y-2">
+        <p className="text-xs font-bold text-[#8a8aa0]">רגישות בהריון <span className="font-normal">(לא אלרגיה — סיכון אחר)</span>:</p>
+        <div className="grid grid-cols-3 gap-2">
+          {PREGNANCY.map((flag) => (
+            <button
+              key={flag}
+              onClick={() => {
+                const current = item.pregnancy || [];
+                onChange({
+                  ...item,
+                  pregnancy: current.includes(flag)
+                    ? current.filter((p) => p !== flag)
+                    : [...current, flag],
+                });
+              }}
+              className={`text-xs py-1 rounded transition ${
+                (item.pregnancy || []).includes(flag)
+                  ? "bg-[#a06af0] text-white"
+                  : "bg-[#22252b] text-[#8a8aa0] hover:bg-[#2c2e35]"
+              }`}
+            >
+              {flag}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2">
         <p className="text-xs font-bold text-[#8a8aa0]">מוקשים <span className="font-normal">(מה שאורחים מבקשים בלי — לא אלרגיה)</span>:</p>
         <div className="grid grid-cols-3 gap-2">
           {PITFALLS.map((pitfall) => (
@@ -2187,6 +2207,33 @@ function DishForm({ item, onChange, onSave, onCancel, existingCategories }) {
               }`}
             >
               {pitfall}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-xs font-bold text-[#8a8aa0]">כשרות <span className="font-normal">(רק אם רלוונטי למסעדה שלכם)</span>:</p>
+        <div className="grid grid-cols-3 gap-2">
+          {KASHRUT.map((flag) => (
+            <button
+              key={flag}
+              onClick={() => {
+                const current = item.kashrut || [];
+                onChange({
+                  ...item,
+                  kashrut: current.includes(flag)
+                    ? current.filter((k) => k !== flag)
+                    : [...current, flag],
+                });
+              }}
+              className={`text-xs py-1 rounded transition ${
+                (item.kashrut || []).includes(flag)
+                  ? "bg-[#3b82f6] text-white"
+                  : "bg-[#22252b] text-[#8a8aa0] hover:bg-[#2c2e35]"
+              }`}
+            >
+              {flag}
             </button>
           ))}
         </div>
