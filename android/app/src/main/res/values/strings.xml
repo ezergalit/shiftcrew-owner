@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">ShiftCrew ניהול</string>
-    <string name="title_activity_main">ShiftCrew ניהול</string>
-    <string name="package_name">il.co.shiftcrew.owner</string>
-    <string name="custom_url_scheme">il.co.shiftcrew.owner</string>
+    <string name="app_name">CrewMenu ניהול</string>
+    <string name="title_activity_main">CrewMenu ניהול</string>
+    <string name="package_name">il.co.crewmenu.owner</string>
+    <string name="custom_url_scheme">il.co.crewmenu.owner</string>
 </resources>
