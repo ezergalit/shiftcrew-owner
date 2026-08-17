@@ -51,9 +51,14 @@ const buildSteps = (teamCode) => [
     title: "ההגדרות (2/2) — תפריט בריא וניהול החשבון",
     body: "גללו מטה: ״בדיקת בריאות תפריט״ מוצאת מנות עם מידע חסר ומתקנת קבוצות שלמות במכה — הצוות לומד רק ממה שמלא. מתחת: פרטי המסעדה, הוספת מנהלים נוספים עם סיסמה משלהם (בלי למסור את שלכם), והחלפת סיסמה. ואם תרצו לחזור על הסיור — הוא מחכה לכם כאן למעלה.",
   },
+  {
+    tab: "settings",
+    title: "זהו! עכשיו — המסעדה שלכם, הכללים שלכם",
+    body: "התפריט שלכם כבר בפנים, והכל ניתן לעריכה: מה הצוות נבחן עליו (אלרגנים? הריון? כשרות?), סדר הקטגוריות בלימוד — מה קודם ומה אחר כך, ואיזו מנה שייכת לאיפה (דרך עריכת המנה בטאב התפריט). מומלץ להקדיש לזה חמש דקות עכשיו — זה מה שהופך את הלימוד לשלכם באמת.",
+  },
 ];
 
-export default function GuidedTour({ onNavigate, onClose, teamCode, withWelcome = false }) {
+export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, withWelcome = false }) {
   const STEPS = buildSteps(teamCode);
   const [welcome, setWelcome] = useState(withWelcome);
   const [step, setStep] = useState(0);
@@ -116,22 +121,50 @@ export default function GuidedTour({ onNavigate, onClose, teamCode, withWelcome 
           <p className="text-sm font-black text-[#eef0f6]">{s.title}</p>
           <p className="text-xs text-[#b9b9c9] leading-relaxed mt-1">{s.body}</p>
         </div>
-        <div className="flex items-center gap-2">
-          {step > 0 && (
+        {/* The tour's exit is a fork, not a dead end: the primary action hands the owner
+            straight to the learning-path settings ("שיהיה להם אופציה לערוך הכל"), so
+            configuring the restaurant is the tour's natural next step, not a discovery. */}
+        {last ? (
+          <div className="space-y-2">
             <button
-              onClick={() => go(step - 1)}
-              className="bg-[#22252b] text-[#8a8aa0] font-bold py-2 px-4 rounded-lg text-xs hover:bg-[#2c2e35] transition"
+              onClick={() => (onSetupNow || onClose)()}
+              className="w-full bg-[#6d5efc] text-white font-bold py-2.5 rounded-lg text-xs hover:bg-[#5b4ef0] transition"
             >
-              הקודם
+              הגדירו את המסעדה שלכם עכשיו ←
             </button>
-          )}
-          <button
-            onClick={() => (last ? onClose() : go(step + 1))}
-            className="flex-1 bg-[#6d5efc] text-white font-bold py-2 rounded-lg text-xs hover:bg-[#5b4ef0] transition flex items-center justify-center gap-1"
-          >
-            {last ? "סיימנו — לעבודה!" : "הבא"} {!last && <ChevronLeft size={14} />}
-          </button>
-        </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => go(step - 1)}
+                className="bg-[#22252b] text-[#8a8aa0] font-bold py-2 px-4 rounded-lg text-xs hover:bg-[#2c2e35] transition"
+              >
+                הקודם
+              </button>
+              <button
+                onClick={onClose}
+                className="flex-1 bg-[#22252b] text-[#8a8aa0] font-bold py-2 rounded-lg text-xs hover:bg-[#2c2e35] transition"
+              >
+                אחר כך — לעבודה!
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            {step > 0 && (
+              <button
+                onClick={() => go(step - 1)}
+                className="bg-[#22252b] text-[#8a8aa0] font-bold py-2 px-4 rounded-lg text-xs hover:bg-[#2c2e35] transition"
+              >
+                הקודם
+              </button>
+            )}
+            <button
+              onClick={() => go(step + 1)}
+              className="flex-1 bg-[#6d5efc] text-white font-bold py-2 rounded-lg text-xs hover:bg-[#5b4ef0] transition flex items-center justify-center gap-1"
+            >
+              הבא <ChevronLeft size={14} />
+            </button>
+          </div>
+        )}
         <div className="flex justify-center gap-1">
           {STEPS.map((_, i) => (
             <span key={i} className={`w-1.5 h-1.5 rounded-full ${i === step ? "bg-[#6d5efc]" : "bg-[#3a3d46]"}`} />

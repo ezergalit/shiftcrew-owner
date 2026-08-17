@@ -347,6 +347,16 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     setTourAutoRun(false);
   };
 
+  // The tour's "הגדירו עכשיו" exit: close, land on settings, and scroll the learning-path
+  // panel into view — the owner should be looking at the thing they were promised.
+  const handleTourSetupNow = () => {
+    handleTourClose();
+    setTab("settings");
+    setTimeout(() => {
+      document.getElementById("learning-path-settings")?.scrollIntoView({ behavior: "smooth" });
+    }, 100);
+  };
+
   // Re-fetch just the menu (used after the paste-a-menu tutorial bulk-inserts dishes
   // directly via Supabase, bypassing the `items` state entirely — without this, the
   // Menu tab would show "no dishes yet" right after a successful import).
@@ -492,7 +502,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     setShowAddForm(true);
     setEditingItem({
       name: "",
-      category: existingCategories[0] || "עיקריות",
+      category: existingCategories[0] || "",
       price: 0,
       description: "",
       ingredients: [],
@@ -1225,7 +1235,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
             {/* What the team is tested on and how the path is paced. Lives above the
                 account admin because it is the thing an owner comes here to change. */}
-            <LearningPathSettings restaurant={restaurant} items={items} />
+            <div id="learning-path-settings">
+              <LearningPathSettings restaurant={restaurant} items={items} />
+            </div>
 
             <div className="bg-[#16181c] rounded-lg p-4 border border-[#22252b] space-y-3">
               <p className="font-bold text-[#eef0f6] mb-1">משתמשי ניהול נוספים</p>
@@ -1292,6 +1304,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
         <GuidedTour
           onNavigate={setTab}
           onClose={handleTourClose}
+          onSetupNow={handleTourSetupNow}
           teamCode={restaurant?.team_code}
           withWelcome={tourAutoRun}
         />
@@ -2095,18 +2108,39 @@ function DishForm({ item, onChange, onSave, onCancel, existingCategories }) {
         dir="rtl"
       />
 
-      <input
-        type="text"
-        list="dish-category-options"
-        value={item.category}
-        onChange={(e) => onChange({ ...item, category: e.target.value })}
-        placeholder="קטגוריה (לדוגמה: ראשונות, עיקריות...)"
-        className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-3 py-2 text-[#eef0f6] placeholder:text-[#8a8aa0] focus:outline-none focus:border-[#6d5efc] text-sm"
-        dir="rtl"
-      />
-      <datalist id="dish-category-options">
-        {existingCategories.map((c) => <option key={c} value={c} />)}
-      </datalist>
+      {/* The category is a CHOICE from this restaurant's own menu structure, not free
+          text — we split their menu into ראשונות/עיקריות/קינוחים etc. when we build it,
+          and a typo'd category would orphan the dish outside that structure. Free text
+          only as a fallback for a menu that has no categories yet. */}
+      {existingCategories.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-xs font-bold text-[#8a8aa0]">קטגוריה:</p>
+          <div className="flex flex-wrap gap-2">
+            {existingCategories.map((c) => (
+              <button
+                key={c}
+                onClick={() => onChange({ ...item, category: c })}
+                className={`text-xs py-1.5 px-3 rounded-lg transition ${
+                  item.category === c
+                    ? "bg-[#6d5efc] text-white font-bold"
+                    : "bg-[#22252b] text-[#8a8aa0] hover:bg-[#2c2e35]"
+                }`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <input
+          type="text"
+          value={item.category}
+          onChange={(e) => onChange({ ...item, category: e.target.value })}
+          placeholder="קטגוריה (לדוגמה: ראשונות, עיקריות...)"
+          className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-3 py-2 text-[#eef0f6] placeholder:text-[#8a8aa0] focus:outline-none focus:border-[#6d5efc] text-sm"
+          dir="rtl"
+        />
+      )}
 
       <input
         type="number"
