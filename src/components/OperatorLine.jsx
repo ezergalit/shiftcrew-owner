@@ -9,13 +9,6 @@ const db = supabase.schema("menu_app");
 // want in their own words, it lands in operator_requests (the same queue the operator
 // panel drains), and the menu updates for them without touching anything. The open
 // requests are listed with their status so a sent request never feels swallowed.
-const EXAMPLES = [
-  "תעלו את מחיר הסלמון ל-84",
-  "תוסיפו את מנות הספיישל החדשות",
-  "תמחקו את הקינוחים של הקיץ",
-  "משהו לא עובד לי במסך הצוות",
-];
-
 export default function OperatorLine({ restaurant }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -34,6 +27,8 @@ export default function OperatorLine({ restaurant }) {
 
   useEffect(() => { loadRequests(); }, [restaurant?.id]);
 
+  const pending = requests.filter((r) => r.status !== "done");
+
   const send = async () => {
     if (!text.trim()) return;
     setBusy(true); setErr(""); setSent(false);
@@ -49,59 +44,52 @@ export default function OperatorLine({ restaurant }) {
 
   return (
     <div className="space-y-3">
-      <div className="bg-[#16181c] rounded-2xl p-4 border border-[#22252b] space-y-3">
-        <p className="font-bold text-[#eef0f6] flex items-center gap-2">
-          <MessageCircle size={16} className="text-[#6d5efc]" /> קו ישיר אלינו
-        </p>
-        <p className="text-xs text-[#8a8aa0] leading-relaxed">
-          רוצים לשנות משהו בתפריט? נתקלתם בבעיה? יש רעיון? כתבו לנו במילים שלכם — אנחנו
-          מטפלים בהכל בשבילכם, והאפליקציה מתעדכנת אצלכם ואצל הצוות אוטומטית.
+      {/* One line, one field, one button. The block used to open with a three-line pitch
+           and four example chips — a paragraph of marketing sitting on top of the menu the
+           owner actually came to look at (user, 2026-08-20: "כל הדוגמאות מיותרות לגמרי,
+           פשוט וחלק"). The placeholder carries the one example that is still worth having. */}
+      <div className="bg-[#16181c] rounded-2xl p-3 border border-[#22252b] space-y-2">
+        <p className="text-[12px] font-bold text-[#eef0f6] flex items-center gap-1.5">
+          <MessageCircle size={14} className="text-[#6d5efc]" /> רוצים לשנות משהו? כתבו לנו ונטפל
         </p>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={'למשל: "תעלו את מחיר הסלמון ל-84"'}
+          placeholder="למשל: תעלו את מחיר הסלמון ל-84"
           rows={2}
           dir="rtl"
-          className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-3 py-2.5 text-[#eef0f6] text-sm placeholder:text-[#6a6a7e] focus:outline-none focus:border-[#6d5efc] resize-none"
+          className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-3 py-2 text-[#eef0f6] text-[13px] placeholder:text-[#5a5a6e] focus:outline-none focus:border-[#6d5efc] resize-none"
         />
-        <div className="flex flex-wrap gap-1.5">
-          {EXAMPLES.map((ex) => (
-            <button key={ex} onClick={() => setText(ex)} className="text-[10px] text-[#8a8aa0] bg-[#0c0d10] border border-[#22252b] rounded-full px-2.5 py-1 hover:border-[#6d5efc]/50 transition">
-              {ex}
-            </button>
-          ))}
-        </div>
-        <button
-          onClick={send}
-          disabled={busy || !text.trim()}
-          className="w-full bg-[#6d5efc] text-white font-bold py-2.5 rounded-lg text-sm hover:bg-[#5b4ef0] transition disabled:opacity-40 flex items-center justify-center gap-2"
-        >
-          {busy ? <><Loader2 size={15} className="animate-spin" /> שולח…</> : "שלחו לנו — נטפל בזה"}
-        </button>
+        {text.trim() && (
+          <button
+            onClick={send}
+            disabled={busy}
+            className="w-full bg-[#6d5efc] text-white font-bold py-2.5 min-h-[44px] rounded-lg text-[13px] hover:bg-[#5b4ef0] transition disabled:opacity-40 flex items-center justify-center gap-2"
+          >
+            {busy ? <><Loader2 size={15} className="animate-spin" /> שולח…</> : "שליחה"}
+          </button>
+        )}
         {sent && (
-          <p className="text-xs font-bold text-[#22c08c] flex items-center gap-1.5">
-            <Check size={14} /> הבקשה התקבלה! נטפל בה בהקדם ונעדכן אתכם.
+          <p className="text-[11px] font-bold text-[#22c08c] flex items-center gap-1.5">
+            <Check size={13} /> הבקשה התקבלה — נטפל ונעדכן אתכם.
           </p>
         )}
         {err && (
-          <p className="text-xs font-bold text-[#e0315a] flex items-center gap-1.5">
-            <AlertTriangle size={14} className="shrink-0" /> {err}
+          <p className="text-[11px] font-bold text-[#e0315a] flex items-center gap-1.5">
+            <AlertTriangle size={13} className="shrink-0" /> {err}
           </p>
         )}
       </div>
 
-      {requests.length > 0 && (
-        <div className="bg-[#16181c] rounded-2xl p-4 border border-[#22252b] space-y-2">
-          <p className="text-[11px] font-bold text-[#8a8aa0]">הבקשות האחרונות שלכם</p>
-          {requests.map((r) => (
-            <div key={r.id} className="bg-[#0c0d10] rounded-lg p-2.5 border border-[#22252b] flex items-start justify-between gap-2">
-              <p className="text-xs text-[#c4c4d4] leading-relaxed min-w-0">{r.request}</p>
-              {r.status === "done" ? (
-                <span className="text-[10px] font-bold text-[#22c08c] bg-[#1aa376]/15 px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1"><Check size={10} /> טופל</span>
-              ) : (
-                <span className="text-[10px] font-bold text-[#f3c98b] bg-[#f3a712]/10 px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1"><Clock size={10} /> בטיפול</span>
-              )}
+      {/* Open requests only. A closed request is a thing that already happened, and the
+          owner is looking at the menu, not at an archive. */}
+      {pending.length > 0 && (
+        <div className="space-y-1.5">
+          {pending.map((r) => (
+            <div key={r.id} className="bg-[#16181c] rounded-xl px-3 py-2 border border-[#22252b] flex items-center gap-2">
+              <Clock size={12} className="text-[#f3c98b] shrink-0" />
+              <p className="text-[11.5px] text-[#c4c4d4] leading-snug flex-1 min-w-0 truncate">{r.request}</p>
+              <span className="text-[10px] font-bold text-[#f3c98b] shrink-0">בטיפול</span>
             </div>
           ))}
         </div>

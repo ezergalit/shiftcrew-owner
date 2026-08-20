@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Sunrise, Utensils, Moon, GraduationCap, ListChecks, Plus, Trash2, X, Check,
-  ChevronUp, ChevronDown, Eye, EyeOff, Sparkles, Loader2, AlertTriangle,
+  ChevronUp, ChevronDown, ChevronRight, Eye, EyeOff, Sparkles, Loader2, AlertTriangle,
   CalendarDays, CalendarRange, Repeat,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
@@ -69,6 +69,10 @@ const GROUPS = [
   },
 ];
 const GROUP_KINDS = GROUPS.map((g) => g.kind);
+// The overview splits the tiles by how often they come round — a manager thinks "today"
+// and "recurring", not "six checklists".
+const DAILY_GROUPS = GROUPS.filter((g) => ["opening", "shift", "closing", "training"].includes(g.kind));
+const STANDING_GROUPS = GROUPS.filter((g) => ["weekly", "monthly"].includes(g.kind));
 const groupOf = (kind) => (GROUP_KINDS.includes(kind) ? kind : "other");
 
 // The library. Deliberately long — an owner should find their own restaurant in here and
@@ -179,7 +183,7 @@ export default function TasksManager({ restaurant, teamCount = 0 }) {
   const [doneBy, setDoneBy] = useState({ day: {}, week: {}, month: {} });
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const [openGroup, setOpenGroup] = useState("opening");
+  const [groupView, setGroupView] = useState(null); // which checklist is open, null = overview
   const [picker, setPicker] = useState(null);    // kind whose library sheet is open
   const [picked, setPicked] = useState(new Set());
   const [showAllLibrary, setShowAllLibrary] = useState(false);
@@ -325,24 +329,89 @@ export default function TasksManager({ restaurant, teamCount = 0 }) {
     );
   }
 
+  const openGroupDef = GROUPS.find((g) => g.kind === groupView);
+
+  // Overview → one checklist. Six groups as a stacked accordion, nested inside the home
+  // screen's own accordion, was two levels of folding and six two-line headers before any
+  // content ("ארוך ולא מסודר"). Now the default view is a grid of tiles you can take in at
+  // a glance, and opening one shows that checklist alone.
+  if (!groupView) {
+    const Tile = (g) => {
+      const list = byGroup[g.kind];
+      if (g.kind === "other" && list.length === 0) return null;
+      const on = list.filter((r) => r.active).length;
+      const Icon = g.icon;
+      return (
+        <button
+          key={g.kind}
+          onClick={() => setGroupView(g.kind)}
+          className="rounded-xl border p-3 text-right transition active:scale-[0.99]"
+          style={{ background: on ? `${g.color}0f` : "#0c0d10", borderColor: on ? `${g.color}44` : "#22252b" }}
+        >
+          <span className="w-7 h-7 rounded-lg flex items-center justify-center mb-2" style={{ background: `${g.color}22` }}>
+            <Icon size={14} style={{ color: g.color }} />
+          </span>
+          <span className="block text-[12.5px] font-black text-[#eef0f6] leading-snug">{g.label}</span>
+          <span className="block text-[10.5px] mt-0.5" style={{ color: on ? g.color : "#5a5a6e" }}>
+            {on === 0 ? "להגדרה" : on === 1 ? "משימה אחת" : `${on} משימות`}
+          </span>
+        </button>
+      );
+    };
+
+    return (
+      <div className="space-y-3">
+        <p className="text-[11.5px] text-[#8a8aa0] leading-relaxed px-1">
+          מה שתגדירו כאן מופיע לצוות כרשימה מסומנת.{" "}
+          <span className="text-[#eef0f6] font-bold">
+            {activeCount === 0 ? "עוד לא הוגדרו משימות." : activeCount === 1 ? "משימה פעילה אחת." : `${activeCount} משימות פעילות.`}
+          </span>
+        </p>
+
+        {err && (
+          <p className="text-[11px] font-bold text-[#e0315a] flex items-start gap-1.5 px-1 leading-relaxed">
+            <AlertTriangle size={13} className="shrink-0 mt-0.5" /> {err}
+          </p>
+        )}
+
+        <div>
+          <p className="text-[10px] font-black text-[#5a5a6e] px-1 mb-1.5">כל יום</p>
+          <div className="grid grid-cols-2 gap-2">{DAILY_GROUPS.map(Tile)}</div>
+        </div>
+
+        <div>
+          <p className="text-[10px] font-black text-[#5a5a6e] px-1 mb-1.5">חוזר מעצמו</p>
+          <div className="grid grid-cols-2 gap-2">{STANDING_GROUPS.map(Tile)}</div>
+        </div>
+
+        {byGroup.other.length > 0 && (
+          <div className="grid grid-cols-2 gap-2">{[GROUPS.find((g) => g.kind === "other")].map(Tile)}</div>
+        )}
+      </div>
+    );
+  }
+
+  const g = openGroupDef;
+  const list = byGroup[g.kind];
+  const Icon = g.icon;
+
   return (
     <div className="space-y-3">
-      <div className="bg-[#16181c] border border-[#22252b] rounded-2xl p-4">
-        <p className="text-sm font-black text-[#eef0f6]">המשימות שהצוות רואה</p>
-        <p className="text-[11px] text-[#8a8aa0] leading-relaxed mt-1">
-          כל משימה שתפעילו כאן מופיעה לכל חבר צוות באפליקציה שלו כרשימה מסומנת ליום הזה.
-          בוחרים מהספרייה — ואפשר לערוך כל אחת אחר כך.
-        </p>
-        <div className="flex gap-2 mt-3">
-          <span className="text-[11px] font-black text-[#22c08c] bg-[#22c08c]/10 border border-[#22c08c]/25 px-2.5 py-1 rounded-full">
-            {activeCount === 1 ? "משימה פעילה אחת" : `${activeCount} משימות פעילות`}
-          </span>
-          {teamCount > 0 && (
-            <span className="text-[11px] font-black text-[#8a8aa0] bg-[#20232b] px-2.5 py-1 rounded-full">
-              {teamCount} חברי צוות
-            </span>
-          )}
-        </div>
+      <div className="flex items-center gap-2.5">
+        <button
+          onClick={() => { setGroupView(null); setEditing(null); setCustomFor(null); }}
+          aria-label="חזרה לכל הצ׳קליסטים"
+          className="w-9 h-9 rounded-xl bg-[#0c0d10] border border-[#22252b] flex items-center justify-center text-[#eef0f6] flex-shrink-0"
+        >
+          <ChevronRight size={18} />
+        </button>
+        <span className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${g.color}22` }}>
+          <Icon size={15} style={{ color: g.color }} />
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="block text-[13.5px] font-black text-[#eef0f6]">{g.label}</span>
+          <span className="block text-[10.5px] text-[#5a5a6e] leading-snug">{g.hint}</span>
+        </span>
       </div>
 
       {err && (
@@ -351,238 +420,201 @@ export default function TasksManager({ restaurant, teamCount = 0 }) {
         </p>
       )}
 
-      <div className="bg-[#16181c] border border-[#22252b] rounded-2xl overflow-hidden">
-        {GROUPS.map((g) => {
-          const list = byGroup[g.kind];
-          // The fallback group is a migration aid, not a feature — hide it when empty.
-          if (g.kind === "other" && list.length === 0) return null;
-          const open = openGroup === g.kind;
-          const on = list.filter((r) => r.active).length;
-          const Icon = g.icon;
-          return (
-            <div key={g.kind} className={`border-b border-[#1e2128] last:border-b-0 ${open ? "bg-[#1a1d23]" : ""}`}>
-              <button
-                onClick={() => setOpenGroup(open ? null : g.kind)}
-                aria-expanded={open}
-                className="w-full flex items-center gap-3 p-3.5 text-right hover:bg-[#1a1d23] transition"
-              >
-                <span
-                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background: `${g.color}22` }}
-                >
-                  <Icon size={15} style={{ color: g.color }} />
-                </span>
-                <span className="flex-1 min-w-0">
-                  <span className="block text-[13px] font-black text-[#eef0f6]">{g.label}</span>
-                  <span className={`block text-[10.5px] mt-0.5 leading-snug ${open ? "text-[#a79bff]" : "text-[#5a5a6e] truncate"}`}>
-                    {on === 0 ? g.hint : on === 1 ? `משימה אחת · ${g.hint}` : `${on} משימות · ${g.hint}`}
-                  </span>
-                </span>
-                <ChevronDown size={15} className={`flex-shrink-0 transition-transform ${open ? "rotate-180 text-[#a79bff]" : "text-[#5a5a6e]"}`} />
-              </button>
+      <div className="space-y-2">
+  {g.kind === "training" && (
+    <div className="bg-[#0c0d10] border border-[#22c08c]/25 rounded-xl p-3 space-y-2">
+      <p className="text-[11px] font-black text-[#22c08c] flex items-center gap-1.5">
+        <Sparkles size={12} /> האפליקציה סוגרת את אלה לבד
+      </p>
+      {AUTOMATIC.map(([t, s]) => (
+        <div key={t} className="flex items-start gap-2">
+          <Check size={12} className="text-[#22c08c] shrink-0 mt-[3px]" />
+          <span className="min-w-0">
+            <span className="block text-[11.5px] font-bold text-[#eef0f6] leading-snug">{t}</span>
+            {s && <span className="block text-[10px] text-[#5a5a6e] leading-snug mt-0.5">{s}</span>}
+          </span>
+        </div>
+      ))}
+      <p className="text-[10px] text-[#5a5a6e] leading-relaxed pt-0.5">
+        הן מופיעות אצל המלצר רק כשיש בהן תוכן, ונסגרות מהתקדמות אמיתית — לא מלחיצה על תיבה.
+      </p>
+    </div>
+  )}
 
-              {open && (
-                <div className="px-3.5 pb-3.5 space-y-2">
-                  {g.kind === "training" && (
-                    <div className="bg-[#0c0d10] border border-[#22c08c]/25 rounded-xl p-3 space-y-2">
-                      <p className="text-[11px] font-black text-[#22c08c] flex items-center gap-1.5">
-                        <Sparkles size={12} /> האפליקציה סוגרת את אלה לבד
-                      </p>
-                      {AUTOMATIC.map(([t, s]) => (
-                        <div key={t} className="flex items-start gap-2">
-                          <Check size={12} className="text-[#22c08c] shrink-0 mt-[3px]" />
-                          <span className="min-w-0">
-                            <span className="block text-[11.5px] font-bold text-[#eef0f6] leading-snug">{t}</span>
-                            {s && <span className="block text-[10px] text-[#5a5a6e] leading-snug mt-0.5">{s}</span>}
-                          </span>
-                        </div>
-                      ))}
-                      <p className="text-[10px] text-[#5a5a6e] leading-relaxed pt-0.5">
-                        הן מופיעות אצל המלצר רק כשיש בהן תוכן, ונסגרות מהתקדמות אמיתית — לא מלחיצה על תיבה.
-                      </p>
-                    </div>
-                  )}
+  {/* The promise the manager is buying: set it once and stop remembering
+      it. Said out loud, because a checklist you have to re-create every
+      week is just a note. */}
+  {g.period && (
+    <div className="bg-[#0c0d10] border rounded-xl p-2.5 flex items-start gap-2" style={{ borderColor: `${g.color}40` }}>
+      <Repeat size={12} className="shrink-0 mt-0.5" style={{ color: g.color }} />
+      <p className="text-[10.5px] leading-relaxed text-[#8a8aa0]">
+        המשימות האלה <span className="font-black" style={{ color: g.color }}>קבועות</span> — מגדירים פעם אחת והן
+        חוזרות {g.kind === "weekly" ? "כל שבוע (מיום ראשון)" : "כל חודש (מה-1 בחודש)"} מעצמן.
+        הסימון מתאפס בתחילת {g.kind === "weekly" ? "השבוע" : "החודש"} הבא.
+      </p>
+    </div>
+  )}
 
-                  {/* The promise the manager is buying: set it once and stop remembering
-                      it. Said out loud, because a checklist you have to re-create every
-                      week is just a note. */}
-                  {g.period && (
-                    <div className="bg-[#0c0d10] border rounded-xl p-2.5 flex items-start gap-2" style={{ borderColor: `${g.color}40` }}>
-                      <Repeat size={12} className="shrink-0 mt-0.5" style={{ color: g.color }} />
-                      <p className="text-[10.5px] leading-relaxed text-[#8a8aa0]">
-                        המשימות האלה <span className="font-black" style={{ color: g.color }}>קבועות</span> — מגדירים פעם אחת והן
-                        חוזרות {g.kind === "weekly" ? "כל שבוע (מיום ראשון)" : "כל חודש (מה-1 בחודש)"} מעצמן.
-                        הסימון מתאפס בתחילת {g.kind === "weekly" ? "השבוע" : "החודש"} הבא.
-                      </p>
-                    </div>
-                  )}
+  {list.length === 0 && g.kind !== "other" && (
+    <p className="text-[11.5px] text-[#8a8aa0] text-center py-3 leading-relaxed">
+      אין כאן עדיין משימות. הוסיפו מהספרייה למטה — זה לוקח חצי דקה.
+    </p>
+  )}
 
-                  {list.length === 0 && g.kind !== "other" && (
-                    <p className="text-[11.5px] text-[#8a8aa0] text-center py-3 leading-relaxed">
-                      אין כאן עדיין משימות. הוסיפו מהספרייה למטה — זה לוקח חצי דקה.
-                    </p>
-                  )}
+  {/* One line per task: a number and the text, the way a checklist looks
+      on paper. Every row used to carry four controls (↑ ↓ 👁 🗑) plus its
+      subtitle, so a fourteen-line opening routine read as a control panel
+      rather than a list ("נראה ארוך ומסובך"). The controls moved inside the
+      row — tap a task to edit, reorder, hide or delete it. */}
+  <div className={`rounded-xl overflow-hidden ${list.length ? "border border-[#22252b]" : ""}`}>
+  {list.map((r, i) => (
+    <div
+      key={r.id}
+      className={`border-b border-[#1e2128] last:border-b-0 ${
+        editing?.id === r.id ? "bg-[#1a1d23]" : r.active ? "bg-[#16181c]" : "bg-[#131519]"
+      }`}
+    >
+      <button
+        onClick={() => setEditing(editing?.id === r.id ? null : { id: r.id, title: r.title, subtitle: r.subtitle || "" })}
+        className="w-full text-right flex items-center gap-2.5 px-2.5 py-2 min-h-[40px]"
+      >
+        <span
+          className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black flex-shrink-0 tabular-nums"
+          style={{ background: r.active ? `${g.color}22` : "#20232b", color: r.active ? g.color : "#5a5a6e" }}
+        >
+          {i + 1}
+        </span>
+        <span className={`flex-1 min-w-0 text-[12.5px] font-bold leading-snug truncate ${r.active ? "text-[#eef0f6]" : "text-[#5a5a6e] line-through"}`}>
+          {r.title}
+        </span>
+        {r.active && doneCount(g.kind, r.id) > 0 && (
+          <span className="text-[10px] font-black text-[#22c08c] flex-shrink-0">
+            ✓{doneCount(g.kind, r.id)}{teamCount ? `/${teamCount}` : ""}
+          </span>
+        )}
+        <ChevronDown
+          size={13}
+          className={`flex-shrink-0 transition-transform ${editing?.id === r.id ? "rotate-180 text-[#a79bff]" : "text-[#3a3d46]"}`}
+        />
+      </button>
 
-                  {/* One line per task: a number and the text, the way a checklist looks
-                      on paper. Every row used to carry four controls (↑ ↓ 👁 🗑) plus its
-                      subtitle, so a fourteen-line opening routine read as a control panel
-                      rather than a list ("נראה ארוך ומסובך"). The controls moved inside the
-                      row — tap a task to edit, reorder, hide or delete it. */}
-                  <div className={`rounded-xl overflow-hidden ${list.length ? "border border-[#22252b]" : ""}`}>
-                  {list.map((r, i) => (
-                    <div
-                      key={r.id}
-                      className={`border-b border-[#1e2128] last:border-b-0 ${
-                        editing?.id === r.id ? "bg-[#1a1d23]" : r.active ? "bg-[#16181c]" : "bg-[#131519]"
-                      }`}
-                    >
-                      <button
-                        onClick={() => setEditing(editing?.id === r.id ? null : { id: r.id, title: r.title, subtitle: r.subtitle || "" })}
-                        className="w-full text-right flex items-center gap-2.5 px-2.5 py-2 min-h-[40px]"
-                      >
-                        <span
-                          className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black flex-shrink-0 tabular-nums"
-                          style={{ background: r.active ? `${g.color}22` : "#20232b", color: r.active ? g.color : "#5a5a6e" }}
-                        >
-                          {i + 1}
-                        </span>
-                        <span className={`flex-1 min-w-0 text-[12.5px] font-bold leading-snug truncate ${r.active ? "text-[#eef0f6]" : "text-[#5a5a6e] line-through"}`}>
-                          {r.title}
-                        </span>
-                        {r.active && doneCount(g.kind, r.id) > 0 && (
-                          <span className="text-[10px] font-black text-[#22c08c] flex-shrink-0">
-                            ✓{doneCount(g.kind, r.id)}{teamCount ? `/${teamCount}` : ""}
-                          </span>
-                        )}
-                        <ChevronDown
-                          size={13}
-                          className={`flex-shrink-0 transition-transform ${editing?.id === r.id ? "rotate-180 text-[#a79bff]" : "text-[#3a3d46]"}`}
-                        />
-                      </button>
+      {editing?.id === r.id && (
+        <div className="px-2.5 pb-2.5 space-y-2">
+          <input
+            value={editing.title}
+            onChange={(e) => setEditing({ ...editing, title: e.target.value })}
+            className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-2.5 py-2 text-[12.5px] text-[#eef0f6] focus:outline-none focus:border-[#6d5efc]"
+            dir="rtl"
+          />
+          <input
+            value={editing.subtitle}
+            onChange={(e) => setEditing({ ...editing, subtitle: e.target.value })}
+            placeholder="פירוט (לא חובה) — מה שהמלצר יראה כשיפתח את המשימה"
+            className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-2.5 py-2 text-[11px] text-[#eef0f6] placeholder:text-[#5a5a6e] focus:outline-none focus:border-[#6d5efc]"
+            dir="rtl"
+          />
+          {r.active && doneCount(g.kind, r.id) > 0 && (
+            <p className="text-[10px] font-black text-[#22c08c]">
+              ✓ {doneCount(g.kind, r.id)}{teamCount ? ` מתוך ${teamCount}` : ""} סימנו {g.period || "היום"}
+            </p>
+          )}
+          <div className="flex items-center gap-1.5">
+            <button onClick={saveEdit} className="flex-1 bg-[#6d5efc] text-white text-[11px] font-black py-2 min-h-[34px] rounded-lg">
+              שמירה
+            </button>
+            <button
+              onClick={() => move(g.kind, i, -1)}
+              disabled={i === 0}
+              aria-label="הזזה למעלה"
+              className="w-8 h-[34px] rounded-lg bg-[#20232b] text-[#8a8aa0] flex items-center justify-center disabled:opacity-25"
+            >
+              <ChevronUp size={13} />
+            </button>
+            <button
+              onClick={() => move(g.kind, i, 1)}
+              disabled={i === list.length - 1}
+              aria-label="הזזה למטה"
+              className="w-8 h-[34px] rounded-lg bg-[#20232b] text-[#8a8aa0] flex items-center justify-center disabled:opacity-25"
+            >
+              <ChevronDown size={13} />
+            </button>
+            <button
+              onClick={() => toggleActive(r)}
+              title={r.active ? "להסתיר מהצוות" : "להציג לצוות"}
+              aria-label={r.active ? "להסתיר מהצוות" : "להציג לצוות"}
+              className="w-8 h-[34px] rounded-lg bg-[#20232b] text-[#8a8aa0] flex items-center justify-center"
+            >
+              {r.active ? <Eye size={13} /> : <EyeOff size={13} />}
+            </button>
+            <button
+              onClick={() => removeTask(r.id)}
+              title="מחיקה"
+              aria-label="מחיקת המשימה"
+              className="w-8 h-[34px] rounded-lg bg-[#20232b] text-[#e0315a] flex items-center justify-center"
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  ))}
+  </div>
 
-                      {editing?.id === r.id && (
-                        <div className="px-2.5 pb-2.5 space-y-2">
-                          <input
-                            value={editing.title}
-                            onChange={(e) => setEditing({ ...editing, title: e.target.value })}
-                            className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-2.5 py-2 text-[12.5px] text-[#eef0f6] focus:outline-none focus:border-[#6d5efc]"
-                            dir="rtl"
-                          />
-                          <input
-                            value={editing.subtitle}
-                            onChange={(e) => setEditing({ ...editing, subtitle: e.target.value })}
-                            placeholder="פירוט (לא חובה) — מה שהמלצר יראה כשיפתח את המשימה"
-                            className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-2.5 py-2 text-[11px] text-[#eef0f6] placeholder:text-[#5a5a6e] focus:outline-none focus:border-[#6d5efc]"
-                            dir="rtl"
-                          />
-                          {r.active && doneCount(g.kind, r.id) > 0 && (
-                            <p className="text-[10px] font-black text-[#22c08c]">
-                              ✓ {doneCount(g.kind, r.id)}{teamCount ? ` מתוך ${teamCount}` : ""} סימנו {g.period || "היום"}
-                            </p>
-                          )}
-                          <div className="flex items-center gap-1.5">
-                            <button onClick={saveEdit} className="flex-1 bg-[#6d5efc] text-white text-[11px] font-black py-2 min-h-[34px] rounded-lg">
-                              שמירה
-                            </button>
-                            <button
-                              onClick={() => move(g.kind, i, -1)}
-                              disabled={i === 0}
-                              aria-label="הזזה למעלה"
-                              className="w-8 h-[34px] rounded-lg bg-[#20232b] text-[#8a8aa0] flex items-center justify-center disabled:opacity-25"
-                            >
-                              <ChevronUp size={13} />
-                            </button>
-                            <button
-                              onClick={() => move(g.kind, i, 1)}
-                              disabled={i === list.length - 1}
-                              aria-label="הזזה למטה"
-                              className="w-8 h-[34px] rounded-lg bg-[#20232b] text-[#8a8aa0] flex items-center justify-center disabled:opacity-25"
-                            >
-                              <ChevronDown size={13} />
-                            </button>
-                            <button
-                              onClick={() => toggleActive(r)}
-                              title={r.active ? "להסתיר מהצוות" : "להציג לצוות"}
-                              aria-label={r.active ? "להסתיר מהצוות" : "להציג לצוות"}
-                              className="w-8 h-[34px] rounded-lg bg-[#20232b] text-[#8a8aa0] flex items-center justify-center"
-                            >
-                              {r.active ? <Eye size={13} /> : <EyeOff size={13} />}
-                            </button>
-                            <button
-                              onClick={() => removeTask(r.id)}
-                              title="מחיקה"
-                              aria-label="מחיקת המשימה"
-                              className="w-8 h-[34px] rounded-lg bg-[#20232b] text-[#e0315a] flex items-center justify-center"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  </div>
+  {g.kind !== "other" && (
+    <div className="flex gap-2 pt-1">
+      <button
+        onClick={() => { setPicker(g.kind); setPicked(new Set()); setShowAllLibrary(false); }}
+        className="flex-1 text-[11.5px] font-black py-2.5 rounded-xl border transition"
+        style={{ color: g.color, borderColor: `${g.color}55`, background: `${g.color}12` }}
+      >
+        <Plus size={13} className="inline ml-1" /> הוספה מהספרייה
+      </button>
+      <button
+        onClick={() => { setCustomFor(g.kind); setCustom({ title: "", subtitle: "" }); }}
+        className="px-3 text-[11.5px] font-black py-2.5 rounded-xl bg-[#20232b] text-[#8a8aa0]"
+      >
+        משימה משלכם
+      </button>
+    </div>
+  )}
 
-                  {g.kind !== "other" && (
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        onClick={() => { setPicker(g.kind); setPicked(new Set()); setShowAllLibrary(false); }}
-                        className="flex-1 text-[11.5px] font-black py-2.5 rounded-xl border transition"
-                        style={{ color: g.color, borderColor: `${g.color}55`, background: `${g.color}12` }}
-                      >
-                        <Plus size={13} className="inline ml-1" /> הוספה מהספרייה
-                      </button>
-                      <button
-                        onClick={() => { setCustomFor(g.kind); setCustom({ title: "", subtitle: "" }); }}
-                        className="px-3 text-[11.5px] font-black py-2.5 rounded-xl bg-[#20232b] text-[#8a8aa0]"
-                      >
-                        משימה משלכם
-                      </button>
-                    </div>
-                  )}
-
-                  {customFor === g.kind && (
-                    <div className="bg-[#0c0d10] border border-[#22252b] rounded-xl p-3 space-y-2">
-                      <input
-                        value={custom.title}
-                        onChange={(e) => setCustom({ ...custom, title: e.target.value })}
-                        placeholder="מה המשימה? למשל: לבדוק שהמקרר של הקינוחים מלא"
-                        className="w-full bg-[#16181c] border border-[#22252b] rounded-lg px-2.5 py-2 text-[12.5px] text-[#eef0f6] placeholder:text-[#5a5a6e] focus:outline-none focus:border-[#6d5efc]"
-                        dir="rtl"
-                        autoFocus
-                      />
-                      <input
-                        value={custom.subtitle}
-                        onChange={(e) => setCustom({ ...custom, subtitle: e.target.value })}
-                        placeholder="פירוט (לא חובה)"
-                        className="w-full bg-[#16181c] border border-[#22252b] rounded-lg px-2.5 py-2 text-[11.5px] text-[#eef0f6] placeholder:text-[#5a5a6e] focus:outline-none focus:border-[#6d5efc]"
-                        dir="rtl"
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          onClick={async () => {
-                            if (!custom.title.trim()) return;
-                            await addTasks(g.kind, [[custom.title.trim(), custom.subtitle.trim()]]);
-                            setCustomFor(null);
-                          }}
-                          disabled={busy || !custom.title.trim()}
-                          className="flex-1 bg-[#6d5efc] text-white text-[11.5px] font-black py-2 rounded-lg disabled:opacity-40"
-                        >
-                          הוספה
-                        </button>
-                        <button onClick={() => setCustomFor(null)} className="px-4 bg-[#22252b] text-[#8a8aa0] text-[11.5px] font-black py-2 rounded-lg">
-                          ביטול
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
+  {customFor === g.kind && (
+    <div className="bg-[#0c0d10] border border-[#22252b] rounded-xl p-3 space-y-2">
+      <input
+        value={custom.title}
+        onChange={(e) => setCustom({ ...custom, title: e.target.value })}
+        placeholder="מה המשימה? למשל: לבדוק שהמקרר של הקינוחים מלא"
+        className="w-full bg-[#16181c] border border-[#22252b] rounded-lg px-2.5 py-2 text-[12.5px] text-[#eef0f6] placeholder:text-[#5a5a6e] focus:outline-none focus:border-[#6d5efc]"
+        dir="rtl"
+        autoFocus
+      />
+      <input
+        value={custom.subtitle}
+        onChange={(e) => setCustom({ ...custom, subtitle: e.target.value })}
+        placeholder="פירוט (לא חובה)"
+        className="w-full bg-[#16181c] border border-[#22252b] rounded-lg px-2.5 py-2 text-[11.5px] text-[#eef0f6] placeholder:text-[#5a5a6e] focus:outline-none focus:border-[#6d5efc]"
+        dir="rtl"
+      />
+      <div className="flex gap-2">
+        <button
+          onClick={async () => {
+            if (!custom.title.trim()) return;
+            await addTasks(g.kind, [[custom.title.trim(), custom.subtitle.trim()]]);
+            setCustomFor(null);
+          }}
+          disabled={busy || !custom.title.trim()}
+          className="flex-1 bg-[#6d5efc] text-white text-[11.5px] font-black py-2 rounded-lg disabled:opacity-40"
+        >
+          הוספה
+        </button>
+        <button onClick={() => setCustomFor(null)} className="px-4 bg-[#22252b] text-[#8a8aa0] text-[11.5px] font-black py-2 rounded-lg">
+          ביטול
+        </button>
       </div>
-
+    </div>
+  )}
+      </div>
       {/* The library sheet. Titles already on the list are shown as taken rather than
           hidden — an owner scanning for "did I already add this?" should find the answer
           in the same place they'd add it. */}

@@ -15,6 +15,7 @@ const db = supabase.schema("menu_app");
 //     what they are overriding.
 
 const shortCat = (c) => String(c || "").split(/\s*[—–]\s*/)[0].trim();
+const snapshot = (ranked, catOrder, path) => JSON.stringify({ ranked, catOrder, path });
 
 export default function LearningPathSettings({ restaurant, items, onSaved }) {
   const menuCategories = useMemo(() => {
@@ -30,6 +31,10 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
   const [error, setError] = useState("");
+  // A snapshot of what is actually in the database, so "unsaved changes" is a fact rather
+  // than a flag someone forgot to clear. Toggling a setting off and back on correctly
+  // reports nothing to save.
+  const [persisted, setPersisted] = useState("");
   const [ranked, setRanked] = useState([]);     // ordered facet keys the owner tests on
   const [disabled, setDisabled] = useState([]); // supported but deliberately switched off
   const [catOrder, setCatOrder] = useState([]);
@@ -45,14 +50,18 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
       setDisabled(savedFacets.length ? supported.filter((f) => !savedFacets.includes(f)) : []);
       const savedCats = (data?.category_order || []).filter((c) => menuCategories.includes(c));
       setCatOrder([...savedCats, ...menuCategories.filter((c) => !savedCats.includes(c))]);
-      setPath({
+      const loadedRanked = savedFacets.length ? savedFacets : supported;
+      const loadedCats = [...savedCats, ...menuCategories.filter((c) => !savedCats.includes(c))];
+      const loadedPath = {
         pass_threshold: data?.pass_threshold ?? DEFAULT_PATH.pass_threshold,
         gate_games: data?.gate_games ?? DEFAULT_PATH.gate_games,
         daily_goal_minutes: data?.daily_goal_minutes ?? DEFAULT_PATH.daily_goal_minutes,
         general_exam_questions: data?.general_exam_questions ?? DEFAULT_PATH.general_exam_questions,
         baseline_enabled: data?.baseline_enabled ?? DEFAULT_PATH.baseline_enabled,
         baseline_minutes: data?.baseline_minutes ?? DEFAULT_PATH.baseline_minutes,
-      });
+      };
+      setPath(loadedPath);
+      setPersisted(snapshot(loadedRanked, loadedCats, loadedPath));
       setLoading(false);
     })();
     return () => { alive = false; };
@@ -98,6 +107,15 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
     path.baseline_enabled === DEFAULT_PATH.baseline_enabled &&
     path.baseline_minutes === DEFAULT_PATH.baseline_minutes;
 
+  const dirty = !loading && snapshot(ranked, catOrder, path) !== persisted;
+
+  // The confirmation is news for a moment, then it is clutter sitting over the screen.
+  useEffect(() => {
+    if (!savedAt) return;
+    const t = setTimeout(() => setSavedAt(null), 3000);
+    return () => clearTimeout(t);
+  }, [savedAt]);
+
   const save = async () => {
     setSaving(true); setError("");
     const { error: err } = await db.from("exam_config").upsert({
@@ -109,6 +127,8 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
     }, { onConflict: "restaurant_id" });
     setSaving(false);
     if (err) { setError(err.message); return; }
+    // Only now is it true that the screen matches the database.
+    setPersisted(snapshot(ranked, catOrder, path));
     setSavedAt(Date.now());
     onSaved?.();
   };
@@ -319,12 +339,44 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
       </Card>
 
       {error && <p className="text-xs text-[#e0315a] px-1">{error}</p>}
-      <button onClick={save} disabled={saving}
-        className="w-full py-3 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2"
-        style={{ background: "linear-gradient(135deg,#6d5efc,#9b7bff)" }}>
-        {saving ? <Loader2 size={16} className="animate-spin" /> : savedAt ? <Check size={16} /> : null}
-        {saving ? "שומר…" : savedAt ? "נשמר" : "שמירת המסלול"}
-      </button>
+
+      {/* ⚠️ The save button used to be a plain button at the very bottom of a very long
+          panel — scrolled off-screen, so a change looked like it had simply not taken
+          ("לא רואים את הכפתור שמירה"). It is sticky now: the moment anything changes, the
+          bar rides the bottom of the screen until the change is saved or undone.
+          `dirty` is computed by comparing against what's actually in the database, so
+          flipping a switch and flipping it back correctly reports nothing to save. */}
+      {/* ⚠️ `fixed`, not `sticky`. The settings sections are wrapped in a rounded card with
+          `overflow-hidden`, and an overflow-hidden ancestor silently disables position:
+          sticky — the bar simply never appeared. Fixed is immune to that, and sits just
+          above the bottom nav. */}
+      <div className="fixed inset-x-0 bottom-[74px] z-40 max-w-md mx-auto px-4 pointer-events-none">
+        {dirty ? (
+          <div
+            className="rounded-xl border border-[#6d5efc] p-2.5 flex items-center gap-2.5 shadow-xl shadow-black/70 pointer-events-auto"
+            style={{ background: "linear-gradient(135deg,#241f4d,#1a1730)" }}
+          >
+            <span className="flex-1 min-w-0">
+              <span className="block text-[12px] font-black text-[#eef0f6]">יש שינויים שלא נשמרו</span>
+              <span className="block text-[10px] text-[#a79bff] mt-0.5">הצוות יראה אותם רק אחרי שמירה</span>
+            </span>
+            <button
+              onClick={save}
+              disabled={saving}
+              className="px-4 py-2.5 min-h-[44px] rounded-lg font-black text-[13px] text-white flex items-center justify-center gap-1.5 flex-shrink-0 disabled:opacity-60"
+              style={{ background: "linear-gradient(135deg,#6d5efc,#9b7bff)" }}
+            >
+              {saving ? <Loader2 size={15} className="animate-spin" /> : null}
+              {saving ? "שומר…" : "שמירה"}
+            </button>
+          </div>
+        ) : savedAt ? (
+          <div className="rounded-xl border border-[#22c08c]/40 bg-[#0d1f19] p-2.5 flex items-center gap-2 shadow-xl shadow-black/70 pointer-events-auto">
+            <Check size={15} className="text-[#22c08c] flex-shrink-0" />
+            <p className="text-[12px] font-black text-[#22c08c]">נשמר — הצוות מתעדכן מיד</p>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
