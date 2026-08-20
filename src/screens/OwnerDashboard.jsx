@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Home, BookOpen, Users, Settings, LogOut, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Star, Target, Stethoscope, Store, ShieldCheck, Compass} from "lucide-react";
+import { Home, BookOpen, Users, Settings, LogOut, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Star, Target, Stethoscope, Store, ShieldCheck, Compass, ChevronLeft, ChevronRight} from "lucide-react";
 import LearningStatus from "../components/LearningStatus";
 import OperatorLine from "../components/OperatorLine";
 import SmartSuggestions from "../components/SmartSuggestions";
@@ -79,6 +79,7 @@ function dishFromDb(row) {
     id: row.id,
     name: row.name,
     category: row.category,
+    menuGroup: row.menu_group || null,
     price: row.price,
     description: row.description || "",
     // Ingredients used to be dropped here. The AI import writes them and the waiter app
@@ -231,6 +232,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // "progress" = per-waiter standing, exams and improvement graphs.
   const [teamView, setTeamView] = useState("today");
   const [openSetting, setOpenSetting] = useState(null); // one settings section at a time
+  const [menuGroupView, setMenuGroupView] = useState(null); // open menu (menu_group) or null
   const [onboarding, setOnboarding] = useState(false); // true if first time setup needed
   // The paste-a-menu import wizard is an OPERATOR tool now — owners never build their own
   // menu (decision 2026-08-17: "החלטנו שאנחנו עושים את זה"). Reachable only by knowing the
@@ -471,6 +473,13 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   }, [restaurant?.id]);
 
   const existingCategories = [...new Set(items.map((i) => i.category).filter(Boolean))];
+  // Menus are the level above categories (menu_group, 2026-08-20): a restaurant has a food
+  // menu, a bar menu, and seasonal ones. Finding one dish is two taps instead of scrolling
+  // the whole list. A menu with no group set keeps the old flat behaviour.
+  const menuGroups = [...new Set(items.map((i) => i.menuGroup).filter(Boolean))];
+  const shownCategories = menuGroupView
+    ? [...new Set(items.filter((i) => i.menuGroup === menuGroupView).map((i) => i.category).filter(Boolean))]
+    : existingCategories;
 
   // Handle new dish form
   // The dish form renders at the top of the menu tab, but the tapped card can be a full
@@ -975,11 +984,55 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
               />
             )}
 
+            {/* The owner fixes and asks; the operator builds. Structural work — a new
+                menu, moving a category — goes out as a request rather than living as a
+                button they would rarely use correctly. */}
+            {menuGroups.length > 1 && !menuGroupView && (
+              <div className="space-y-2">
+                {menuGroups.map((g) => {
+                  const inGroup = items.filter((i) => i.menuGroup === g);
+                  const catCount = new Set(inGroup.map((i) => i.category)).size;
+                  return (
+                    <button
+                      key={g}
+                      onClick={() => setMenuGroupView(g)}
+                      className="w-full text-right bg-[#16181c] border border-[#22252b] rounded-xl p-3.5 hover:border-[#6d5efc]/50 transition flex items-center justify-between gap-3"
+                    >
+                      <span className="min-w-0">
+                        <span className="block text-sm font-black text-[#eef0f6]">{g}</span>
+                        <span className="block text-[11px] text-[#8a8aa0] mt-0.5">{catCount} קטגוריות · {inGroup.length} פריטים</span>
+                      </span>
+                      <ChevronLeft size={18} className="text-[#8a8aa0] flex-shrink-0" />
+                    </button>
+                  );
+                })}
+                <p className="text-[11px] text-[#5a5a6e] text-center leading-relaxed pt-1">
+                  מבנה התפריטים מוגדר מראש. לשינוי — שלחו לנו בקשה מהתיבה למעלה.
+                </p>
+              </div>
+            )}
+
+            {menuGroupView && (
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={() => setMenuGroupView(null)}
+                  title="חזרה לכל התפריטים"
+                  className="w-10 h-10 rounded-xl bg-[#16181c] border border-[#22252b] flex items-center justify-center text-[#eef0f6] flex-shrink-0"
+                >
+                  <ChevronRight size={19} />
+                </button>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold text-[#5a5a6e]">התפריטים</p>
+                  <p className="text-sm font-black text-[#eef0f6] line-clamp-1">{menuGroupView}</p>
+                </div>
+              </div>
+            )}
+
             {existingCategories.length === 0 && items.length === 0 && (
               <p className="text-sm text-[#8a8aa0] text-center py-6">התפריט שלכם בהכנה אצלנו ויופיע כאן בקרוב. אפשר גם להוסיף מנות ידנית בכל רגע.</p>
             )}
 
-            {existingCategories.map((cat) => {
+            {(menuGroups.length > 1 && !menuGroupView ? [] : shownCategories).map((cat) => {
               const vis = categoryVisual(cat);
               return (
               <div key={cat} className="space-y-2">
