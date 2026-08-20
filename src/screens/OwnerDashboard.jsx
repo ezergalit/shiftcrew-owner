@@ -4,6 +4,7 @@ import LearningStatus from "../components/LearningStatus";
 import SignOutButton from "../components/SignOutButton";
 import TasksManager from "../components/TasksManager";
 import TeamRoster from "../components/TeamRoster";
+import MemberSheet, { MemberRow } from "../components/MemberSheet";
 import OperatorLine from "../components/OperatorLine";
 import SmartSuggestions from "../components/SmartSuggestions";
 import { categoryVisual } from "../lib/categoryVisual";
@@ -230,7 +231,7 @@ async function downscaleImage(file, maxDim = 2576) {
 }
 
 export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpdated }) {
-  const [tab, setTab] = useState("home"); // home | menu | tasks | settings
+  const [tab, setTab] = useState("home"); // home | menu | settings
   // The team tab is gone (user, 2026-08-20). It held two unrelated things: the numbers the
   // owner checks daily, and the joining code they touch once. The numbers moved to the home
   // screen, the code and roster into settings — so the nav carries four destinations that
@@ -239,7 +240,16 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // Home is collapsed by the same rule as settings: every card states what's inside on its
   // own header, and only one opens at a time. Before this the home screen was a single
   // scroll of six full-height panels ("עמוד הבית ארוך מדי").
-  const [openHome, setOpenHome] = useState(null);
+  //
+  // "מי למד היום" starts open — it's the question the owner opens the app with, and the
+  // user asked for it to be expanded by default (2026-08-20).
+  const [openHome, setOpenHome] = useState("today");
+  // Which waiter's full detail sheet is open. Holds the LearningStatus row when the tap
+  // came from there (it knows today's minutes and the weekly bars), or just an id.
+  const [sheetFor, setSheetFor] = useState(null);
+  // Today's study rows, computed by LearningStatus and shared so the detail sheet is
+  // identical no matter which home list opened it.
+  const [liveByMember, setLiveByMember] = useState({});
   const [menuGroupView, setMenuGroupView] = useState(null); // open menu (menu_group) or null
   const [editingBrief, setEditingBrief] = useState(false);
   const [onboarding, setOnboarding] = useState(false); // true if first time setup needed
@@ -269,6 +279,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const [snapshotsByMember, setSnapshotsByMember] = useState({}); // id -> [{taken_at, pct}]
   const [briefReadsToday, setBriefReadsToday] = useState(new Set());
   const [activeTaskCount, setActiveTaskCount] = useState(null);
+  const [taskDoneByMember, setTaskDoneByMember] = useState({}); // id -> tasks ticked today
 
   // Daily brief
   const [dailyBrief, setDailyBrief] = useState({ missing_items: [], new_items: [], oven_items: [], notes: "" });
@@ -479,12 +490,21 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
         .select("id, name, created_at").eq("restaurant_id", restaurant.id).order("created_at");
       if (alive && usersData) setOwnerUsers(usersData);
 
-      // Just the count, for the home tile and the tasks tab badge. The tab itself loads
-      // the full rows when it mounts.
-      const { count } = await db.from("shift_tasks")
-        .select("id", { count: "exact", head: true })
-        .eq("restaurant_id", restaurant.id).eq("active", true);
-      if (alive && typeof count === "number") setActiveTaskCount(count);
+      // Shift tasks feed two places on the home screen: the count tile, and each waiter's
+      // "משימות משמרת 3/7" line in their detail sheet. TasksManager still loads the full
+      // rows itself when its panel opens — this is only what the summaries need.
+      const { data: taskRows } = await db.from("shift_tasks")
+        .select("id").eq("restaurant_id", restaurant.id).eq("active", true);
+      if (alive) setActiveTaskCount((taskRows || []).length);
+      if (alive && taskRows?.length) {
+        const { data: doneRows } = await db.from("shift_task_done")
+          .select("team_member_id").in("task_id", taskRows.map((t) => t.id)).eq("done_date", today);
+        if (alive && doneRows) {
+          const map = {};
+          doneRows.forEach((r) => { map[r.team_member_id] = (map[r.team_member_id] || 0) + 1; });
+          setTaskDoneByMember(map);
+        }
+      }
     })();
     return () => { alive = false; };
   }, [restaurant?.id]);
@@ -520,6 +540,46 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const weakestMember = teamMembers.length
     ? [...teamMembers].sort((a, b) => memberPct(a.id) - memberPct(b.id))[0]
     : null;
+
+  // Everything known about one waiter, assembled in one place for the detail sheet. Both
+  // home lists hand their tap here, so the two of them can stay one line per person.
+  // `live` is the LearningStatus row when the tap came from that list — it carries today's
+  // study minutes and the weekly bars, which the dashboard's own queries don't compute.
+  const buildMemberDetail = (sel) => {
+    if (!sel) return null;
+    const m = teamMembers.find((x) => x.id === sel.id);
+    if (!m) return null;
+    const rows = progressByMember[m.id] || [];
+    const byItem = Object.fromEntries(rows.map((r) => [r.source_item_id, r.mastery ?? 0]));
+    const pct = memberPct(m.id);
+    const lb = leaderboardByMember[m.id];
+    return {
+      id: m.id,
+      name: m.name,
+      pct,
+      pctColor: pct >= 80 ? "#22c08c" : pct >= 50 ? "#f3a712" : "#e0315a",
+      mastered: lb?.mastered_count || 0,
+      dishCount: items.length,
+      weak: items.filter((it) => byItem[it.id] > 0 && byItem[it.id] <= 2).map((it) => it.name),
+      untouched: items.filter((it) => !byItem[it.id]).length,
+      baseline: m.baseline_pct,
+      totalSeconds: m.total_seconds,
+      snapshots: snapshotsByMember[m.id],
+      // Latest attempt per category — earlier ones stay in the table for history, but the
+      // owner cares about where they stand now.
+      exams: Object.values(
+        (examsByMember[m.id] || []).reduce((acc, e) => {
+          if (!acc[e.category]) acc[e.category] = e; // list is newest-first
+          return acc;
+        }, {})
+      ).map((e) => ({ ...e, label: CAT_LABELS[e.category] || e.category })),
+      readBrief: briefReadsToday.has(m.id),
+      didChallenge: lb?.last_study_date === today && (lb?.today_count || 0) >= 3,
+      tasksDone: taskDoneByMember[m.id] || 0,
+      tasksTotal: activeTaskCount || 0,
+      live: sel.studiedToday !== undefined ? sel : liveByMember[m.id] || null,
+    };
+  };
 
   // Menus are the level above categories (menu_group, 2026-08-20): a restaurant has a food
   // menu, a bar menu, and seasonal ones. Finding one dish is two taps instead of scrolling
@@ -966,13 +1026,13 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 carried no information the tiles don't. */}
             <div className="grid grid-cols-3 gap-2">
               {[
-                { n: items.length, label: "מנות בתפריט", go: "menu" },
-                { n: teamMembers.length, label: "חברי צוות", go: "settings" },
-                { n: activeTaskCount ?? "–", label: "משימות פעילות", go: "tasks" },
+                { n: items.length, label: "מנות בתפריט", go: () => setTab("menu") },
+                { n: teamMembers.length, label: "חברי צוות", go: () => { setTab("settings"); setOpenSetting("team"); } },
+                { n: activeTaskCount ?? "–", label: "משימות פעילות", go: () => setOpenHome("tasks") },
               ].map((t) => (
                 <button
                   key={t.label}
-                  onClick={() => setTab(t.go)}
+                  onClick={t.go}
                   className="bg-[#16181c] rounded-xl p-2.5 border border-[#22252b] text-right hover:border-[#6d5efc]/40 transition"
                 >
                   <p className="text-xl font-black text-[#6d5efc] leading-none tabular-nums">{t.n}</p>
@@ -1032,33 +1092,26 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 fourth on the team tab — which is what made this page a scroll. Each one
                 queries on mount, so leaving them closed also stops four requests the owner
                 didn't ask for. */}
+            {/* Order follows the question the owner actually asks, in order: who learned
+                today, then how the team is doing overall, then the shift itself, then who
+                read the update. Everything except the first is collapsed. */}
             <div className="bg-[#16181c] border border-[#22252b] rounded-2xl overflow-hidden">
-              <SettingsSection
-                icon={<Eye size={15} className="text-[#38bdf8]" />}
-                title="מי קרא את העדכון היומי"
-                summary={
-                  !briefSent ? "עוד לא נשלח עדכון היום"
-                    : teamMembers.length ? `${briefReadsToday.size} מתוך ${teamMembers.length} אישרו קריאה`
-                      : "אין עדיין חברי צוות"
-                }
-                open={openHome === "reads"}
-                onToggle={() => setOpenHome(openHome === "reads" ? null : "reads")}
-              >
-                <BriefReadBoard restaurant={restaurant} brief={dailyBrief} />
-              </SettingsSection>
-
               <SettingsSection
                 icon={<Flame size={15} className="text-[#f3a712]" />}
                 title="מי למד היום"
                 summary={
                   teamMembers.length
-                    ? `${studiedToday} מתוך ${teamMembers.length} למדו היום · מי נכנס ולא למד`
+                    ? `${studiedToday} מתוך ${teamMembers.length} למדו היום · ואחריהם מי שלא`
                     : "אין עדיין חברי צוות"
                 }
                 open={openHome === "today"}
                 onToggle={() => setOpenHome(openHome === "today" ? null : "today")}
               >
-                <LearningStatus restaurant={restaurant} />
+                <LearningStatus
+                  restaurant={restaurant}
+                  onSelectMember={setSheetFor}
+                  onRows={(rows) => setLiveByMember(Object.fromEntries(rows.map((r) => [r.id, r])))}
+                />
               </SettingsSection>
 
               <SettingsSection
@@ -1074,20 +1127,47 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
               >
                 <TeamProgressList
                   teamMembers={teamMembers}
-                  items={items}
-                  progressByMember={progressByMember}
-                  leaderboardByMember={leaderboardByMember}
-                  examsByMember={examsByMember}
-                  snapshotsByMember={snapshotsByMember}
-                  briefReadsToday={briefReadsToday}
-                  today={today}
+                  memberPct={memberPct}
+                  taskDoneByMember={taskDoneByMember}
+                  activeTaskCount={activeTaskCount}
+                  onSelectMember={setSheetFor}
                 />
+              </SettingsSection>
+
+              {/* The tasks tab folded into home (user, 2026-08-20). It is set up once and
+                  then adjusted rarely, so it never earned a permanent slot in the nav —
+                  but its numbers do belong next to the team's, which is why each waiter's
+                  ticked-off count shows up in their own detail sheet. */}
+              <SettingsSection
+                icon={<ListChecks size={15} className="text-[#a79bff]" />}
+                title="משימות המשמרת"
+                summary={
+                  activeTaskCount
+                    ? `${activeTaskCount === 1 ? "משימה פעילה אחת" : `${activeTaskCount} משימות פעילות`} · פתיחה · משמרת · סגירה · לימוד`
+                    : "עוד לא הוגדרו משימות — ספרייה מוכנה בפנים"
+                }
+                open={openHome === "tasks"}
+                onToggle={() => setOpenHome(openHome === "tasks" ? null : "tasks")}
+              >
+                <TasksManager restaurant={restaurant} teamCount={teamMembers.length} />
+              </SettingsSection>
+
+              <SettingsSection
+                icon={<Eye size={15} className="text-[#38bdf8]" />}
+                title="מי קרא את העדכון היומי"
+                summary={
+                  !briefSent ? "עוד לא נשלח עדכון היום"
+                    : teamMembers.length ? `${briefReadsToday.size} מתוך ${teamMembers.length} אישרו קריאה`
+                      : "אין עדיין חברי צוות"
+                }
+                open={openHome === "reads"}
+                onToggle={() => setOpenHome(openHome === "reads" ? null : "reads")}
+              >
+                <BriefReadBoard restaurant={restaurant} brief={dailyBrief} />
               </SettingsSection>
             </div>
           </div>
         )}
-
-        {tab === "tasks" && <TasksManager restaurant={restaurant} teamCount={teamMembers.length} />}
 
         {tab === "menu" && (
           <div className="space-y-3">
@@ -1421,12 +1501,13 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       <div className="border-t border-[#22252b] bg-[#16181c]">
         {/* pb keeps the tabs clear of the iPhone home indicator once packaged with
             Capacitor. On the web the inset is 0 and this stays the plain p-2. */}
-        <div className="grid grid-cols-4 gap-1 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <div className="grid grid-cols-3 gap-1 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           <NavButton icon={<Home size={18} />} label="בית" active={tab === "home"} onClick={() => setTab("home")} />
           <NavButton icon={<BookOpen size={18} />} label="תפריט" active={tab === "menu"} onClick={() => setTab("menu")} />
-          <NavButton icon={<ListChecks size={18} />} label="משימות" active={tab === "tasks"} onClick={() => setTab("tasks")} />
           <NavButton icon={<Settings size={18} />} label="הגדרות" active={tab === "settings"} onClick={() => setTab("settings")} />
         </div>
+      {/* One waiter's full detail, opened from either home list. */}
+      {sheetFor && <MemberSheet detail={buildMemberDetail(sheetFor)} onClose={() => setSheetFor(null)} />}
       {tourActive && (
         <GuidedTour
           onNavigate={setTab}
@@ -1457,12 +1538,16 @@ function NavButton({ icon, label, active, onClick }) {
   );
 }
 
-// Where every waiter stands — lifted out of the deleted team tab, unchanged in substance.
-// It lives inside a collapsed home card now, so it only mounts when the owner opens it.
-function TeamProgressList({
-  teamMembers, items, progressByMember, leaderboardByMember, examsByMember,
-  snapshotsByMember, briefReadsToday, today,
-}) {
+// Where every waiter stands — one line each, weakest first.
+//
+// This started as a full card per person: progress chart, the dishes they get wrong, exam
+// chips and two status pills. That is a reasonable amount of detail and a hopeless amount
+// of screen — at fifty waiters the owner scrolls past forty-nine people to find one (user,
+// 2026-08-20: "אני בחיים לא אצליח לעקוב"). All of it still exists, one tap away, in
+// MemberSheet; the list itself is now scannable.
+//
+// Sorted weakest-first because this list is a to-do, not a leaderboard.
+function TeamProgressList({ teamMembers, memberPct, taskDoneByMember, activeTaskCount, onSelectMember }) {
   if (teamMembers.length === 0) {
     return (
       <p className="text-sm text-[#8a8aa0] text-center py-3 leading-relaxed">
@@ -1470,99 +1555,28 @@ function TeamProgressList({
       </p>
     );
   }
+  const ranked = [...teamMembers]
+    .map((m) => ({ m, pct: memberPct(m.id) }))
+    .sort((a, b) => a.pct - b.pct);
+
   return (
-    <div className="space-y-2">
-      {teamMembers.map((member) => {
-        const lb = leaderboardByMember[member.id];
-        const didChallenge = lb?.last_study_date === today && (lb?.today_count || 0) >= 3;
-        const readBrief = briefReadsToday.has(member.id);
-
-        // Same measure the waiter app shows: earned score over available score, across the
-        // whole menu. A dish never studied counts as 0, so this is "how much of the menu do
-        // they actually know", not "how many did they pass".
-        const rows = progressByMember[member.id] || [];
-        const byItem = Object.fromEntries(rows.map((r) => [r.source_item_id, r.mastery ?? 0]));
-        const pct = items.length
-          ? Math.round((items.reduce((s, it) => s + (byItem[it.id] || 0), 0) / (items.length * 5)) * 100)
-          : 0;
-        // Dishes they've actually answered wrong (2 or below), named — so the owner knows
-        // what to send them back to study, not just that they're low.
-        const weak = items.filter((it) => byItem[it.id] > 0 && byItem[it.id] <= 2);
-        const untouched = items.filter((it) => !byItem[it.id]).length;
-        const pctColor = pct >= 80 ? "#22c08c" : pct >= 50 ? "#f3a712" : "#e0315a";
-
+    <div>
+      {ranked.map(({ m, pct }) => {
+        const done = taskDoneByMember[m.id] || 0;
         return (
-          <div key={member.id} className="bg-[#0c0d10] rounded-lg p-3 border border-[#22252b]">
-            <div className="flex items-center justify-between mb-2">
-              <p className="font-bold text-[#eef0f6]">{member.name}</p>
-              <div className="text-left">
-                <p className="text-lg font-black leading-none" style={{ color: pctColor }}>{pct}%</p>
-                <p className="text-[10px] text-[#8a8aa0] mt-0.5">{lb?.mastered_count || 0}/{items.length} מנות נלמדו</p>
-              </div>
-            </div>
-
-            <div className="h-1.5 bg-[#22252b] rounded-full overflow-hidden mb-2">
-              <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pctColor }} />
-            </div>
-
-            {/* Where they started vs where they are — a 55% who began at 15% is a different
-                story from a 55% who began at 60%. */}
-            <ProgressChart
-              baseline={member.baseline_pct}
-              current={pct}
-              seconds={member.total_seconds}
-              snapshots={snapshotsByMember[member.id]}
-            />
-
-            {weak.length > 0 && (
-              <div className="bg-[#3a1d22] border border-[#e0315a]/30 rounded-lg p-2 mb-2">
-                <p className="text-[10px] font-black text-[#e0315a] mb-0.5">טועה ב-{weak.length} מנות</p>
-                <p className="text-[11px] text-[#eef0f6] leading-snug">
-                  {weak.slice(0, 4).map((it) => it.name).join(", ")}
-                  {weak.length > 4 ? ` ועוד ${weak.length - 4}` : ""}
-                </p>
-              </div>
-            )}
-            {untouched > 0 && (
-              <p className="text-[10px] text-[#8a8aa0] mb-2">עוד לא למד/ה {untouched} מנות</p>
-            )}
-
-            {(examsByMember[member.id] || []).length > 0 && (
-              <div className="mb-2">
-                <p className="text-[10px] font-bold text-[#8a8aa0] mb-1">מבחנים</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {/* Latest attempt per category — earlier ones stay in the table for
-                      history, but the owner cares about where they stand now. */}
-                  {Object.values(
-                    (examsByMember[member.id] || []).reduce((acc, e) => {
-                      if (!acc[e.category]) acc[e.category] = e; // list is newest-first
-                      return acc;
-                    }, {})
-                  ).map((e) => (
-                    <span
-                      key={e.category}
-                      className={`text-[10px] font-bold px-2 py-1 rounded-full ${
-                        e.passed ? "bg-[#1aa376]/15 text-[#22c08c]" : "bg-[#e0315a]/15 text-[#e0315a]"
-                      }`}
-                    >
-                      {CAT_LABELS[e.category] || e.category} {e.score}% {e.passed ? "✓" : "✗"}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${didChallenge ? "bg-[#1aa376]/15 text-[#22c08c]" : "bg-[#22252b] text-[#8a8aa0]"}`}>
-                {didChallenge ? "✓ אתגר יומי הושלם" : "אתגר יומי לא הושלם"}
-              </span>
-              <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${readBrief ? "bg-[#1aa376]/15 text-[#22c08c]" : "bg-[#22252b] text-[#8a8aa0]"}`}>
-                {readBrief ? "✓ קרא/ה עדכון יומי" : "לא קרא/ה עדכון יומי"}
-              </span>
-            </div>
-          </div>
+          <MemberRow
+            key={m.id}
+            name={m.name}
+            pct={pct}
+            color={pct >= 80 ? "#22c08c" : pct >= 50 ? "#f3a712" : pct > 0 ? "#e0315a" : "#5a5a6e"}
+            // The shift tasks they ticked off today, so the list carries both halves of
+            // the job — what they know, and what they did.
+            note={activeTaskCount ? `משימות ${done}/${activeTaskCount}` : null}
+            onClick={() => onSelectMember({ id: m.id })}
+          />
         );
       })}
+      <p className="text-[10px] text-[#5a5a6e] text-center pt-2">לחצו על עובד לפרטים מלאים</p>
     </div>
   );
 }

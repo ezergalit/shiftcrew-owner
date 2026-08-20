@@ -250,7 +250,7 @@ export default function TasksManager({ restaurant, teamCount = 0 }) {
         </p>
         <div className="flex gap-2 mt-3">
           <span className="text-[11px] font-black text-[#22c08c] bg-[#22c08c]/10 border border-[#22c08c]/25 px-2.5 py-1 rounded-full">
-            {activeCount} משימות פעילות
+            {activeCount === 1 ? "משימה פעילה אחת" : `${activeCount} משימות פעילות`}
           </span>
           {teamCount > 0 && (
             <span className="text-[11px] font-black text-[#8a8aa0] bg-[#20232b] px-2.5 py-1 rounded-full">
@@ -290,7 +290,7 @@ export default function TasksManager({ restaurant, teamCount = 0 }) {
                 <span className="flex-1 min-w-0">
                   <span className="block text-[13px] font-black text-[#eef0f6]">{g.label}</span>
                   <span className={`block text-[10.5px] mt-0.5 leading-snug ${open ? "text-[#a79bff]" : "text-[#5a5a6e] truncate"}`}>
-                    {on > 0 ? `${on} משימות פעילות · ${g.hint}` : g.hint}
+                    {on === 0 ? g.hint : on === 1 ? `משימה אחת · ${g.hint}` : `${on} משימות · ${g.hint}`}
                   </span>
                 </span>
                 <ChevronDown size={15} className={`flex-shrink-0 transition-transform ${open ? "rotate-180 text-[#a79bff]" : "text-[#5a5a6e]"}`} />
@@ -523,7 +523,11 @@ export default function TasksManager({ restaurant, teamCount = 0 }) {
                 disabled={picked.size === 0 || busy}
                 className="w-full bg-[#6d5efc] text-white font-black py-3 min-h-[44px] rounded-xl text-sm disabled:opacity-40"
               >
-                {picked.size === 0 ? "בחרו משימות להוספה" : `הוספת ${picked.size} משימות`}
+                {/* Hebrew counts one thing in the singular — "הוספת 1 משימות" reads as a
+                    string-concatenation bug, because it is one. */}
+                {picked.size === 0 ? "בחרו משימות להוספה"
+                  : picked.size === 1 ? "הוספת משימה אחת"
+                    : `הוספת ${picked.size} משימות`}
               </button>
             </div>
           </div>

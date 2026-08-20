@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Flame, Clock, TrendingUp, AlertCircle, Eye, CheckCircle2 } from "lucide-react";
+import { Clock, AlertCircle, Eye, CheckCircle2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { MemberRow } from "./MemberSheet";
 
 const db = supabase.schema("menu_app");
 
@@ -28,26 +29,8 @@ const fmtMins = (secs) => {
 
 const pctColor = (p) => (p >= 75 ? "#22c08c" : p >= 45 ? "#f3c14b" : "#e0315a");
 
-// Seven-day sparkline. Deliberately not a chart library — one more dependency for a
-// 60px graphic that has to work inside a card.
-function Spark({ values, color }) {
-  const max = Math.max(1, ...values);
-  return (
-    <div className="flex items-end gap-[2px] h-6" title={values.join(" · ")}>
-      {values.map((v, i) => (
-        <div
-          key={i}
-          className="w-[6px] rounded-sm"
-          style={{ height: `${Math.max(8, (v / max) * 100)}%`, background: v ? color : "#2a2d35" }}
-        />
-      ))}
-    </div>
-  );
-}
-
-export default function LearningStatus({ restaurant }) {
+export default function LearningStatus({ restaurant, onSelectMember, onRows }) {
   const [rows, setRows] = useState(null);
-  const [dishCount, setDishCount] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -75,7 +58,6 @@ export default function LearningStatus({ restaurant }) {
       if (!alive) return;
 
       const total = (menu.data || []).length;
-      setDishCount(total);
       const today = startOfDay();
       const byMember = new Map();
       for (const p of progress || []) {
@@ -122,8 +104,13 @@ export default function LearningStatus({ restaurant }) {
         };
       });
       setRows(out);
+      // Today's minutes and the weekly bars are computed only here. Handing them up lets
+      // the detail sheet look the same whichever home list the owner tapped from — two
+      // versions of one person's sheet would just make the owner wonder which is right.
+      onRows?.(out);
     })();
     return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurant?.id]);
 
   const groups = useMemo(() => {
@@ -148,47 +135,27 @@ export default function LearningStatus({ restaurant }) {
   const teamMinutesToday = Math.round(groups.studied.reduce((a, r) => a + r.studiedTodaySeconds, 0) / 60);
   const avgPct = rows.reduce((a, r) => a + r.pct, 0) / rows.length;
 
+  // One line per person. The chart, the wrong dishes and the exam chips that used to sit
+  // in every card moved into MemberSheet, one tap away — at fifty waiters a card each is
+  // a wall nobody reads (user, 2026-08-20).
+  const TONE = { studied: "#22c08c", seen: "#f3c14b", absent: "#5a5a6e" };
   const Row = ({ r, tone }) => (
-    <div className="bg-[#16181c] border border-[#22252b] rounded-xl p-3">
-      <div className="flex items-center gap-2 mb-2">
-        <span
-          className="w-2 h-2 rounded-full flex-shrink-0"
-          style={{ background: tone === "studied" ? "#22c08c" : tone === "seen" ? "#f3c14b" : "#5a5a6e" }}
-        />
-        <p className="text-xs font-black text-[#eef0f6] flex-1 truncate">{r.name}</p>
-        {r.streak > 1 && (
-          <span className="flex items-center gap-0.5 text-[10px] font-bold text-[#f3c14b]">
-            <Flame size={10} /> {r.streak}
-          </span>
-        )}
-        <span className="text-xs font-black" style={{ color: pctColor(r.pct) }}>{Math.round(r.pct)}%</span>
-      </div>
-
-      <div className="h-1.5 bg-[#22252b] rounded-full overflow-hidden mb-2">
-        <div className="h-full rounded-full transition-all"
-             style={{ width: `${Math.min(100, r.pct)}%`, background: pctColor(r.pct) }} />
-      </div>
-
-      <div className="flex items-end justify-between gap-2">
-        <div className="text-[10px] text-[#8a8aa0] font-bold leading-relaxed">
-          {tone === "studied" && <p className="text-[#22c08c]">למד היום {fmtMins(r.studiedTodaySeconds)}</p>}
-          {tone === "seen" && <p className="text-[#f3c14b]">נכנס היום — לא למד</p>}
-          {tone === "absent" && (
-            <p>{r.lastSeen ? `נראה לאחרונה ${new Date(r.lastSeen).toLocaleDateString("he-IL")}` : "עוד לא נכנס"}</p>
-          )}
-          <p>{r.mastered}/{dishCount} מנות · {r.untouched} לא נגע</p>
-          {r.baseline != null && <p>התחיל מ-{Math.round(r.baseline)}% · סה״כ {fmtMins(r.totalSeconds)}</p>}
-        </div>
-        <div className="flex flex-col items-end gap-0.5">
-          <Spark values={r.week} color={tone === "studied" ? "#22c08c" : tone === "seen" ? "#f3c14b" : "#5a5a6e"} />
-          <span className="text-[9px] text-[#8a8aa0] font-bold">{r.weekMinutes} דק׳ השבוע</span>
-        </div>
-      </div>
-    </div>
+    <MemberRow
+      name={r.name}
+      pct={Math.round(r.pct)}
+      color={pctColor(r.pct)}
+      dot={TONE[tone]}
+      note={
+        tone === "studied" ? fmtMins(r.studiedTodaySeconds)
+          : tone === "seen" ? "לא למד/ה"
+            : r.lastSeen ? new Date(r.lastSeen).toLocaleDateString("he-IL") : "טרם נכנס/ה"
+      }
+      onClick={() => onSelectMember?.(r)}
+    />
   );
 
   const Section = ({ icon: Icon, title, count, color, children, empty }) => (
-    <div className="space-y-2">
+    <div className="space-y-1">
       <div className="flex items-center gap-1.5">
         <Icon size={13} style={{ color }} />
         <p className="text-xs font-black" style={{ color }}>{title}</p>
@@ -221,18 +188,20 @@ export default function LearningStatus({ restaurant }) {
         </div>
       </div>
 
+      {/* Who did learn comes first, then who didn't (user, 2026-08-20). The good news is
+          the shorter list on a healthy day, and the order makes the gap obvious. */}
       <Section
         icon={CheckCircle2} title="למדו היום" count={groups.studied.length} color="#22c08c"
         empty="אף אחד עדיין לא למד היום"
       >
-        <div className="space-y-2">{groups.studied.map((r) => <Row key={r.id} r={r} tone="studied" />)}</div>
+        <div>{groups.studied.map((r) => <Row key={r.id} r={r} tone="studied" />)}</div>
       </Section>
 
       <Section
         icon={Eye} title="נכנסו אבל לא למדו" count={groups.seenOnly.length} color="#f3c14b"
         empty="כל מי שנכנס היום גם למד"
       >
-        <div className="space-y-2">{groups.seenOnly.map((r) => <Row key={r.id} r={r} tone="seen" />)}</div>
+        <div>{groups.seenOnly.map((r) => <Row key={r.id} r={r} tone="seen" />)}</div>
       </Section>
 
       <Section
@@ -240,13 +209,13 @@ export default function LearningStatus({ restaurant }) {
         empty="כל הצוות היה פעיל היום 🎉"
       >
         {/* Weakest first: this list is a to-do, so the person who needs it most is on top. */}
-        <div className="space-y-2">{groups.absent.map((r) => <Row key={r.id} r={r} tone="absent" />)}</div>
+        <div>{groups.absent.map((r) => <Row key={r.id} r={r} tone="absent" />)}</div>
       </Section>
 
       <div className="flex items-center gap-1.5 justify-center pt-1">
         <Clock size={10} className="text-[#5a5a6e]" />
         <p className="text-[9px] text-[#5a5a6e] font-bold">
-          הנתונים מתעדכנים בכל כניסה למסך · 7 הימים האחרונים
+          לחצו על עובד לפרטים מלאים · 7 הימים האחרונים
         </p>
       </div>
     </div>
