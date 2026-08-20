@@ -233,6 +233,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const [teamView, setTeamView] = useState("today");
   const [openSetting, setOpenSetting] = useState(null); // one settings section at a time
   const [menuGroupView, setMenuGroupView] = useState(null); // open menu (menu_group) or null
+  const [editingBrief, setEditingBrief] = useState(false);
   const [onboarding, setOnboarding] = useState(false); // true if first time setup needed
   // The paste-a-menu import wizard is an OPERATOR tool now — owners never build their own
   // menu (decision 2026-08-17: "החלטנו שאנחנו עושים את זה"). Reachable only by knowing the
@@ -473,6 +474,16 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   }, [restaurant?.id]);
 
   const existingCategories = [...new Set(items.map((i) => i.category).filter(Boolean))];
+  // Today's brief, as the home screen needs it: whether one is already out, and a
+  // one-line version of it for the collapsed row.
+  const briefSent = !!(dailyBrief?.missing_items?.length || dailyBrief?.new_items?.length ||
+                       dailyBrief?.oven_items?.length || dailyBrief?.notes);
+  const briefSummary = [
+    dailyBrief?.missing_items?.length ? `חסר: ${dailyBrief.missing_items.join(", ")}` : null,
+    dailyBrief?.new_items?.length ? `חדש: ${dailyBrief.new_items.join(", ")}` : null,
+    dailyBrief?.notes || null,
+  ].filter(Boolean).join(" · ") || "נשלח";
+
   // Menus are the level above categories (menu_group, 2026-08-20): a restaurant has a food
   // menu, a bar menu, and seasonal ones. Finding one dish is two taps instead of scrolling
   // the whole list. A menu with no group set keeps the old flat behaviour.
@@ -950,9 +961,74 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                   onDismiss={() => setBriefAssistantOff(true)}
                 />
               )}
-            <DailyBriefEditor draft={briefDraft} onChange={setBriefDraft} onSave={handleSaveBrief} saving={savingBrief} />
+            {/* Once today's brief is sent it collapses to one line (user, 2026-08-20):
+                the owner writes it once in the morning and shouldn't scroll past a full
+                editor every time they open the app. "עריכה" brings it back. */}
+            {briefSent && !editingBrief ? (
+              <button
+                onClick={() => setEditingBrief(true)}
+                className="w-full text-right rounded-xl p-3 flex items-center gap-3 border border-[#22c08c]/40"
+                style={{ background: "linear-gradient(135deg,rgba(34,192,140,0.14),rgba(15,92,70,0.16))" }}
+              >
+                <span className="w-7 h-7 rounded-lg bg-[#22c08c] text-[#06231a] flex items-center justify-center font-black text-sm flex-shrink-0">✓</span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[12.5px] font-black text-[#eef0f6]">העדכון היומי נשלח</span>
+                  <span className="block text-[10.5px] text-[#8a8aa0] mt-0.5 truncate">{briefSummary}</span>
+                </span>
+                <span className="text-[11px] font-black text-[#22c08c] flex-shrink-0">עריכה</span>
+              </button>
+            ) : (
+              <>
+                <DailyBriefEditor draft={briefDraft} onChange={setBriefDraft} onSave={async () => { await handleSaveBrief(); setEditingBrief(false); }} saving={savingBrief} />
+                {briefSent && (
+                  <button onClick={() => setEditingBrief(false)} className="w-full text-[11px] font-bold text-[#8a8aa0] py-1">
+                    סגירה בלי לשנות
+                  </button>
+                )}
+              </>
+            )}
             {/* Who read it — directly under the editor, so writing and checking are one page. */}
             <BriefReadBoard restaurant={restaurant} brief={dailyBrief} />
+
+            {/* Where the team stands, on the home screen (user, 2026-08-20). This used to
+                require switching to the team tab; the one question an owner opens the app
+                with — "is my team actually learning?" — now has an answer on page one.
+                Same percentage formula as the team tab and the waiter app: earned score
+                over available score, so the three screens never disagree. */}
+            {teamMembers.length > 0 && (
+              <div className="bg-[#16181c] rounded-lg p-4 border border-[#22252b]">
+                <div className="flex items-baseline justify-between mb-3">
+                  <p className="font-bold text-[#eef0f6] text-sm">איפה הצוות עומד בלמידה</p>
+                  <button onClick={() => setTab("team")} className="text-[11px] font-black text-[#a79bff]">הכל ←</button>
+                </div>
+                <div className="space-y-2.5">
+                  {teamMembers.slice(0, 5).map((member) => {
+                    const rows = progressByMember[member.id] || [];
+                    const byItem = Object.fromEntries(rows.map((r) => [r.source_item_id, r.mastery ?? 0]));
+                    const pct = items.length
+                      ? Math.round((items.reduce((sum, it) => sum + (byItem[it.id] || 0), 0) / (items.length * 5)) * 100)
+                      : 0;
+                    const color = pct >= 80 ? "#22c08c" : pct >= 50 ? "#f3a712" : pct > 0 ? "#e0315a" : "#5a5a6e";
+                    return (
+                      <div key={member.id} className="flex items-center gap-2.5">
+                        <span className="flex-1 min-w-0">
+                          <span className="flex items-baseline justify-between gap-2">
+                            <span className="text-xs font-bold text-[#eef0f6] truncate">{member.name}</span>
+                            <span className="text-[11px] font-black tabular-nums flex-shrink-0" style={{ color }}>{pct}%</span>
+                          </span>
+                          <span className="block h-1 bg-[#22252b] rounded-full overflow-hidden mt-1.5">
+                            <span className="block h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+                          </span>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {teamMembers.length > 5 && (
+                  <p className="text-[11px] text-[#5a5a6e] mt-2.5">ועוד {teamMembers.length - 5} בטאב הצוות</p>
+                )}
+              </div>
+            )}
           </div>
         )}
 
