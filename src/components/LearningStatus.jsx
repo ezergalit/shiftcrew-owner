@@ -29,7 +29,7 @@ const fmtMins = (secs) => {
 
 const pctColor = (p) => (p >= 75 ? "#22c08c" : p >= 45 ? "#f3c14b" : "#e0315a");
 
-export default function LearningStatus({ restaurant, onSelectMember, onRows }) {
+export default function LearningStatus({ restaurant, onSelectMember, onRows, onMessage, messagedToday }) {
   const [rows, setRows] = useState(null);
 
   useEffect(() => {
@@ -151,6 +151,10 @@ export default function LearningStatus({ restaurant, onSelectMember, onRows }) {
             : r.lastSeen ? new Date(r.lastSeen).toLocaleDateString("he-IL") : "טרם נכנס/ה"
       }
       onClick={() => onSelectMember?.(r)}
+      // The nudge button appears only next to someone who did not study today — that is
+      // the whole point of the button, and the group it belongs to.
+      onMessage={tone === "studied" ? undefined : () => onMessage?.(r)}
+      messaged={!!messagedToday?.[r.id]}
     />
   );
 

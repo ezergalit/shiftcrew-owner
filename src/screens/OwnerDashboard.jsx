@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
-import { Home, BookOpen, Users, Settings, ListChecks, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Star, Target, Stethoscope, Store, ShieldCheck, Compass, ChevronLeft, ChevronRight, Flame, TrendingUp, Eye} from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Home, BookOpen, Users, Settings, ListChecks, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Star, Target, Stethoscope, Store, ShieldCheck, Compass, ChevronLeft, ChevronRight, Flame, TrendingUp, Megaphone} from "lucide-react";
 import LearningStatus from "../components/LearningStatus";
 import SignOutButton from "../components/SignOutButton";
 import TasksManager from "../components/TasksManager";
 import TeamRoster from "../components/TeamRoster";
 import MemberSheet, { MemberRow } from "../components/MemberSheet";
+import TeamMessageDialog from "../components/TeamMessageDialog";
+import OwnerDayTasks from "../components/OwnerDayTasks";
 import OperatorLine from "../components/OperatorLine";
 import SmartSuggestions from "../components/SmartSuggestions";
 import { categoryVisual } from "../lib/categoryVisual";
@@ -241,15 +243,21 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // own header, and only one opens at a time. Before this the home screen was a single
   // scroll of six full-height panels ("עמוד הבית ארוך מדי").
   //
-  // "מי למד היום" starts open — it's the question the owner opens the app with, and the
-  // user asked for it to be expanded by default (2026-08-20).
-  const [openHome, setOpenHome] = useState("today");
+  // Which card starts open follows the time of day rather than a fixed choice: until
+  // today's update is written that is the job, and once it's out the question becomes who
+  // is actually learning. Set once on mount — it must not snap shut under the owner the
+  // moment they save the brief.
+  const [openHome, setOpenHome] = useState(null);
+  const homeDefaulted = useRef(false);
+  const [loadDone, setLoadDone] = useState(false); // every dashboard query has returned
   // Which waiter's full detail sheet is open. Holds the LearningStatus row when the tap
   // came from there (it knows today's minutes and the weekly bars), or just an id.
   const [sheetFor, setSheetFor] = useState(null);
   // Today's study rows, computed by LearningStatus and shared so the detail sheet is
   // identical no matter which home list opened it.
   const [liveByMember, setLiveByMember] = useState({});
+  const [messageFor, setMessageFor] = useState(null);          // waiter being nudged
+  const [messagedToday, setMessagedToday] = useState({});      // id -> last message body
   const [menuGroupView, setMenuGroupView] = useState(null); // open menu (menu_group) or null
   const [editingBrief, setEditingBrief] = useState(false);
   const [onboarding, setOnboarding] = useState(false); // true if first time setup needed
@@ -368,6 +376,19 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [menuLoaded, restaurant?.id]);
 
+  // Open the card that matches where the day is, once the first load has told us whether
+  // today's brief already went out. Guarded by a ref so it happens exactly once — without
+  // it, saving the brief would flip the open card out from under the owner mid-edit.
+  // ⚠️ Keyed on `loadDone`, not `menuLoaded`: the menu flag flips right after the FIRST
+  // query in the load effect, while today's brief is fetched several queries later. Reading
+  // briefSent at that point always says "no brief yet" and opens the wrong card.
+  useEffect(() => {
+    if (homeDefaulted.current || !loadDone) return;
+    homeDefaulted.current = true;
+    setOpenHome(briefSent ? "today" : "brief");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadDone]);
+
   const handleTourClose = () => {
     setTourActive(false);
     setTourAutoRun(false);
@@ -470,6 +491,19 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
         setExamsByMember(map);
       }
 
+      // Which waiters were already nudged today — so the button can say so instead of the
+      // manager sending the same reminder three times before lunch.
+      const { data: msgData } = await db.from("team_messages")
+        .select("team_member_id, body, created_at")
+        .eq("restaurant_id", restaurant.id)
+        .gte("created_at", `${today}T00:00:00`)
+        .order("created_at", { ascending: true });
+      if (alive && msgData) {
+        const map = {};
+        msgData.forEach((m) => { map[m.team_member_id] = m.body; }); // last one wins
+        setMessagedToday(map);
+      }
+
       const { data: readsData } = await db.from("daily_brief_reads")
         .select("team_member_id").eq("restaurant_id", restaurant.id).eq("date", today);
       if (alive && readsData) setBriefReadsToday(new Set(readsData.map((r) => r.team_member_id)));
@@ -505,6 +539,8 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           setTaskDoneByMember(map);
         }
       }
+
+      if (alive) setLoadDone(true);
     })();
     return () => { alive = false; };
   }, [restaurant?.id]);
@@ -1021,9 +1057,17 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {tab === "home" && (
           <div className="space-y-3">
-            {/* Three numbers, one row. The old welcome banner said "צוות של N מלצרים חכמים
-                לומדים את התפריט שלך" above a button to another tab — a full card that
-                carried no information the tiles don't. */}
+            {/* The manager's own two jobs, first thing. The waiters open their app to a
+                numbered list of what today needs from them; the manager opened theirs to a
+                wall of other people's numbers. Both rows jump straight to the thing. */}
+            <OwnerDayTasks
+              briefSent={briefSent}
+              briefSummary={briefSummary}
+              taskCount={activeTaskCount || 0}
+              onOpenBrief={() => { setOpenHome("brief"); if (briefSent) setEditingBrief(true); }}
+              onOpenTasks={() => setOpenHome("tasks")}
+            />
+
             <div className="grid grid-cols-3 gap-2">
               {[
                 { n: items.length, label: "מנות בתפריט", go: () => setTab("menu") },
@@ -1047,55 +1091,76 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
               onStarred={(ids) => setItems((prev) => prev.map((i) => (ids.includes(i.id) ? { ...i, starred: true } : i)))}
             />
 
-            {/* The guided builder and the plain form are two ways to write the same brief,
-                and until now both rendered stacked — the single biggest reason the home
-                screen scrolled. The assistant's own dismiss button says "אכתוב לבד", so it
-                is exactly the switch between them. */}
-            {showBriefAssistant && (
-              <BriefAssistant
-                items={items}
-                draft={briefDraft}
-                setDraft={setBriefDraft}
-                onSave={async () => { await handleSaveBrief(); setBriefAssistantOff(true); }}
-                saving={savingBrief}
-                onDismiss={() => setBriefAssistantOff(true)}
-              />
-            )}
-            {/* Once today's brief is sent it collapses to one line (user, 2026-08-20):
-                the owner writes it once in the morning and shouldn't scroll past a full
-                editor every time they open the app. "עריכה" brings it back. */}
-            {showBriefAssistant ? null : briefSent && !editingBrief ? (
-              <button
-                onClick={() => setEditingBrief(true)}
-                className="w-full text-right rounded-xl p-3 flex items-center gap-3 border border-[#22c08c]/40"
-                style={{ background: "linear-gradient(135deg,rgba(34,192,140,0.14),rgba(15,92,70,0.16))" }}
-              >
-                <span className="w-7 h-7 rounded-lg bg-[#22c08c] text-[#06231a] flex items-center justify-center font-black text-sm flex-shrink-0">✓</span>
-                <span className="flex-1 min-w-0">
-                  <span className="block text-[12.5px] font-black text-[#eef0f6]">העדכון היומי נשלח</span>
-                  <span className="block text-[10.5px] text-[#8a8aa0] mt-0.5 truncate">{briefSummary}</span>
-                </span>
-                <span className="text-[11px] font-black text-[#22c08c] flex-shrink-0">עריכה</span>
-              </button>
-            ) : (
-              <>
-                <DailyBriefEditor draft={briefDraft} onChange={setBriefDraft} onSave={async () => { await handleSaveBrief(); setEditingBrief(false); }} saving={savingBrief} />
-                {briefSent && (
-                  <button onClick={() => setEditingBrief(false)} className="w-full text-[11px] font-bold text-[#8a8aa0] py-1">
-                    סגירה בלי לשנות
-                  </button>
-                )}
-              </>
-            )}
-            {/* Everything the owner CHECKS rather than writes, collapsed behind headers that
-                already carry the answer. All three panels used to be open at once — plus a
-                fourth on the team tab — which is what made this page a scroll. Each one
-                queries on mount, so leaving them closed also stops four requests the owner
-                didn't ask for. */}
-            {/* Order follows the question the owner actually asks, in order: who learned
-                today, then how the team is doing overall, then the shift itself, then who
-                read the update. Everything except the first is collapsed. */}
+            {/* Order set by the user (2026-08-20): the update and who read it, then the
+                shift's tasks, then who learned today, then the long-run progress. The first
+                two are what the manager WRITES in the morning; the last two are what they
+                CHECK later, which is why the writing half sits on top. */}
             <div className="bg-[#16181c] border border-[#22252b] rounded-2xl overflow-hidden">
+              <SettingsSection
+                icon={<Megaphone size={15} className="text-[#38bdf8]" />}
+                title="העדכון היומי"
+                summary={
+                  !briefSent ? "עוד לא נשלח עדכון היום — לחצו לכתיבה"
+                    : `${briefSummary} · ${teamMembers.length ? `${briefReadsToday.size} מתוך ${teamMembers.length} קראו` : "אין עדיין צוות"}`
+                }
+                open={openHome === "brief"}
+                onToggle={() => setOpenHome(openHome === "brief" ? null : "brief")}
+              >
+                {/* Writing it and checking who read it are one job, so they are one card. */}
+                <div className="space-y-3">
+                  {/* The guided builder and the plain form are two ways to write the same
+                      brief; the assistant's own dismiss button says "אכתוב לבד", so it is
+                      exactly the switch between them rather than a second panel above. */}
+                  {showBriefAssistant ? (
+                    <BriefAssistant
+                      items={items}
+                      draft={briefDraft}
+                      setDraft={setBriefDraft}
+                      onSave={async () => { await handleSaveBrief(); setBriefAssistantOff(true); }}
+                      saving={savingBrief}
+                      onDismiss={() => setBriefAssistantOff(true)}
+                    />
+                  ) : briefSent && !editingBrief ? (
+                    <button
+                      onClick={() => setEditingBrief(true)}
+                      className="w-full text-right rounded-xl p-3 flex items-center gap-3 border border-[#22c08c]/40"
+                      style={{ background: "linear-gradient(135deg,rgba(34,192,140,0.14),rgba(15,92,70,0.16))" }}
+                    >
+                      <span className="w-7 h-7 rounded-lg bg-[#22c08c] text-[#06231a] flex items-center justify-center font-black text-sm flex-shrink-0">✓</span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-[12.5px] font-black text-[#eef0f6]">העדכון היומי נשלח</span>
+                        <span className="block text-[10.5px] text-[#8a8aa0] mt-0.5 truncate">{briefSummary}</span>
+                      </span>
+                      <span className="text-[11px] font-black text-[#22c08c] flex-shrink-0">עריכה</span>
+                    </button>
+                  ) : (
+                    <>
+                      <DailyBriefEditor draft={briefDraft} onChange={setBriefDraft} onSave={async () => { await handleSaveBrief(); setEditingBrief(false); }} saving={savingBrief} />
+                      {briefSent && (
+                        <button onClick={() => setEditingBrief(false)} className="w-full text-[11px] font-bold text-[#8a8aa0] py-1">
+                          סגירה בלי לשנות
+                        </button>
+                      )}
+                    </>
+                  )}
+                  <BriefReadBoard restaurant={restaurant} brief={dailyBrief} />
+                </div>
+              </SettingsSection>
+
+              <SettingsSection
+                icon={<ListChecks size={15} className="text-[#a79bff]" />}
+                title="משימות המשמרת"
+                summary={
+                  activeTaskCount
+                    ? `${activeTaskCount === 1 ? "משימה פעילה אחת" : `${activeTaskCount} משימות פעילות`} · פתיחה · משמרת · סגירה · לימוד`
+                    : "עוד לא הוגדרו משימות — ספרייה מוכנה בפנים"
+                }
+                open={openHome === "tasks"}
+                onToggle={() => setOpenHome(openHome === "tasks" ? null : "tasks")}
+              >
+                <TasksManager restaurant={restaurant} teamCount={teamMembers.length} />
+              </SettingsSection>
+
               <SettingsSection
                 icon={<Flame size={15} className="text-[#f3a712]" />}
                 title="מי למד היום"
@@ -1111,6 +1176,8 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                   restaurant={restaurant}
                   onSelectMember={setSheetFor}
                   onRows={(rows) => setLiveByMember(Object.fromEntries(rows.map((r) => [r.id, r])))}
+                  onMessage={setMessageFor}
+                  messagedToday={messagedToday}
                 />
               </SettingsSection>
 
@@ -1132,38 +1199,6 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                   activeTaskCount={activeTaskCount}
                   onSelectMember={setSheetFor}
                 />
-              </SettingsSection>
-
-              {/* The tasks tab folded into home (user, 2026-08-20). It is set up once and
-                  then adjusted rarely, so it never earned a permanent slot in the nav —
-                  but its numbers do belong next to the team's, which is why each waiter's
-                  ticked-off count shows up in their own detail sheet. */}
-              <SettingsSection
-                icon={<ListChecks size={15} className="text-[#a79bff]" />}
-                title="משימות המשמרת"
-                summary={
-                  activeTaskCount
-                    ? `${activeTaskCount === 1 ? "משימה פעילה אחת" : `${activeTaskCount} משימות פעילות`} · פתיחה · משמרת · סגירה · לימוד`
-                    : "עוד לא הוגדרו משימות — ספרייה מוכנה בפנים"
-                }
-                open={openHome === "tasks"}
-                onToggle={() => setOpenHome(openHome === "tasks" ? null : "tasks")}
-              >
-                <TasksManager restaurant={restaurant} teamCount={teamMembers.length} />
-              </SettingsSection>
-
-              <SettingsSection
-                icon={<Eye size={15} className="text-[#38bdf8]" />}
-                title="מי קרא את העדכון היומי"
-                summary={
-                  !briefSent ? "עוד לא נשלח עדכון היום"
-                    : teamMembers.length ? `${briefReadsToday.size} מתוך ${teamMembers.length} אישרו קריאה`
-                      : "אין עדיין חברי צוות"
-                }
-                open={openHome === "reads"}
-                onToggle={() => setOpenHome(openHome === "reads" ? null : "reads")}
-              >
-                <BriefReadBoard restaurant={restaurant} brief={dailyBrief} />
               </SettingsSection>
             </div>
           </div>
@@ -1507,7 +1542,22 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           <NavButton icon={<Settings size={18} />} label="הגדרות" active={tab === "settings"} onClick={() => setTab("settings")} />
         </div>
       {/* One waiter's full detail, opened from either home list. */}
-      {sheetFor && <MemberSheet detail={buildMemberDetail(sheetFor)} onClose={() => setSheetFor(null)} />}
+      {sheetFor && (
+        <MemberSheet
+          detail={buildMemberDetail(sheetFor)}
+          onClose={() => setSheetFor(null)}
+          onMessage={() => setMessageFor(sheetFor)}
+        />
+      )}
+      {messageFor && (
+        <TeamMessageDialog
+          member={teamMembers.find((m) => m.id === messageFor.id) || messageFor}
+          restaurantId={restaurant?.id}
+          lastSent={messagedToday[messageFor.id]}
+          onClose={() => setMessageFor(null)}
+          onSent={(id, body) => setMessagedToday((prev) => ({ ...prev, [id]: body }))}
+        />
+      )}
       {tourActive && (
         <GuidedTour
           onNavigate={setTab}

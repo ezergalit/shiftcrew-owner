@@ -1,4 +1,4 @@
-import { X, Flame, Clock } from "lucide-react";
+import { X, Flame, Clock, MessageSquare } from "lucide-react";
 import ProgressChart from "./ProgressChart";
 
 // Everything about one waiter, in one place.
@@ -22,7 +22,7 @@ const Pill = ({ ok, children }) => (
   </span>
 );
 
-export default function MemberSheet({ detail, onClose }) {
+export default function MemberSheet({ detail, onClose, onMessage }) {
   if (!detail) return null;
   const {
     name, pct, pctColor, mastered, dishCount, weak, untouched, baseline, totalSeconds,
@@ -126,8 +126,16 @@ export default function MemberSheet({ detail, onClose }) {
           )}
         </div>
 
-        <div className="p-3 border-t border-[#22252b] flex-shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <button onClick={onClose} className="w-full py-3 min-h-[44px] rounded-xl bg-[#22252b] text-[#eef0f6] text-sm font-black">
+        <div className="p-3 border-t border-[#22252b] flex-shrink-0 flex gap-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          {onMessage && (
+            <button
+              onClick={onMessage}
+              className="flex-1 py-3 min-h-[44px] rounded-xl bg-[#6d5efc] text-white text-sm font-black flex items-center justify-center gap-2"
+            >
+              <MessageSquare size={15} /> שליחת הודעה
+            </button>
+          )}
+          <button onClick={onClose} className={`py-3 min-h-[44px] rounded-xl bg-[#22252b] text-[#eef0f6] text-sm font-black ${onMessage ? "px-5" : "w-full"}`}>
             סגירה
           </button>
         </div>
@@ -138,25 +146,41 @@ export default function MemberSheet({ detail, onClose }) {
 
 // The one-line form both home lists use. Name, a percentage, a hairline bar and a status
 // dot — enough to scan fifty people, and a tap away from everything else.
-export function MemberRow({ name, pct, color, dot, note, onClick }) {
+export function MemberRow({ name, pct, color, dot, note, onClick, onMessage, messaged }) {
   return (
-    <button
-      onClick={onClick}
-      className="w-full text-right flex items-center gap-2 py-1.5 px-1 rounded-lg hover:bg-[#1c1e22] transition min-h-[38px]"
-    >
-      {dot && <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: dot }} />}
-      <span className="flex-1 min-w-0">
-        <span className="flex items-baseline gap-2">
-          <span className="text-[12px] font-bold text-[#eef0f6] truncate">{name}</span>
-          {note && <span className="text-[10px] text-[#8a8aa0] flex-shrink-0 truncate">{note}</span>}
+    <div className="flex items-center gap-1">
+      <button
+        onClick={onClick}
+        className="flex-1 min-w-0 text-right flex items-center gap-2 py-1.5 px-1 rounded-lg hover:bg-[#1c1e22] transition min-h-[38px]"
+      >
+        {dot && <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: dot }} />}
+        <span className="flex-1 min-w-0">
+          <span className="flex items-baseline gap-2">
+            <span className="text-[12px] font-bold text-[#eef0f6] truncate">{name}</span>
+            {note && <span className="text-[10px] text-[#8a8aa0] flex-shrink-0 truncate">{note}</span>}
+          </span>
+          <span className="block h-[3px] bg-[#22252b] rounded-full overflow-hidden mt-1">
+            <span className="block h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+          </span>
         </span>
-        <span className="block h-[3px] bg-[#22252b] rounded-full overflow-hidden mt-1">
-          <span className="block h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+        <span className="text-[11px] font-black tabular-nums flex-shrink-0 w-9 text-left" style={{ color }}>
+          {pct}%
         </span>
-      </span>
-      <span className="text-[11px] font-black tabular-nums flex-shrink-0 w-9 text-left" style={{ color }}>
-        {pct}%
-      </span>
-    </button>
+      </button>
+      {/* Offered only where it makes sense — next to someone who hasn't studied. A nudge
+          button on every row would just be another thing to ignore. */}
+      {onMessage && (
+        <button
+          onClick={onMessage}
+          title={messaged ? "כבר נשלחה הודעה היום" : `שליחת הודעה ל${name}`}
+          aria-label={`שליחת הודעה ל${name}`}
+          className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition ${
+            messaged ? "bg-[#22c08c]/15 text-[#22c08c]" : "bg-[#20232b] text-[#8a8aa0] hover:text-[#a79bff]"
+          }`}
+        >
+          <MessageSquare size={13} />
+        </button>
+      )}
+    </div>
   );
 }
