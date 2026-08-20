@@ -6,7 +6,8 @@ import TasksManager from "../components/TasksManager";
 import TeamRoster from "../components/TeamRoster";
 import MemberSheet, { MemberRow } from "../components/MemberSheet";
 import TeamMessageDialog from "../components/TeamMessageDialog";
-import OwnerDayTasks from "../components/OwnerDayTasks";
+import OwnerDayTasks, { OwnerDayDone } from "../components/OwnerDayTasks";
+import Greeting from "../components/Greeting";
 import OperatorLine from "../components/OperatorLine";
 import SmartSuggestions from "../components/SmartSuggestions";
 import { categoryVisual } from "../lib/categoryVisual";
@@ -573,6 +574,15 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // The guided brief builder replaces the plain editor while it's up, rather than sitting
   // on top of it.
   const showBriefAssistant = !briefAssistantOff && !briefSent;
+  // Shared by the top "what to open the day with" card and the "handled today" footer, so
+  // the two can never disagree about what is still outstanding.
+  const dayTaskProps = {
+    briefSent,
+    briefSummary,
+    taskCount: activeTaskCount || 0,
+    onOpenBrief: () => { setOpenHome("brief"); if (briefSent) setEditingBrief(true); },
+    onOpenTasks: () => setOpenHome("tasks"),
+  };
   const weakestMember = teamMembers.length
     ? [...teamMembers].sort((a, b) => memberPct(a.id) - memberPct(b.id))[0]
     : null;
@@ -1057,16 +1067,15 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {tab === "home" && (
           <div className="space-y-3">
+            {/* Greeted by name and by hour, the way a person would — the manager's own
+                name when a secondary manager is signed in, the restaurant's otherwise. */}
+            <Greeting name={restaurant?.logged_in_as_name || restaurant?.name} />
+
             {/* The manager's own two jobs, first thing. The waiters open their app to a
                 numbered list of what today needs from them; the manager opened theirs to a
-                wall of other people's numbers. Both rows jump straight to the thing. */}
-            <OwnerDayTasks
-              briefSent={briefSent}
-              briefSummary={briefSummary}
-              taskCount={activeTaskCount || 0}
-              onOpenBrief={() => { setOpenHome("brief"); if (briefSent) setEditingBrief(true); }}
-              onOpenTasks={() => setOpenHome("tasks")}
-            />
+                wall of other people's numbers. Both rows jump straight to the thing, and a
+                finished one leaves for OwnerDayDone at the foot of the page. */}
+            <OwnerDayTasks {...dayTaskProps} />
 
             <div className="grid grid-cols-3 gap-2">
               {[
@@ -1152,8 +1161,8 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 title="משימות המשמרת"
                 summary={
                   activeTaskCount
-                    ? `${activeTaskCount === 1 ? "משימה פעילה אחת" : `${activeTaskCount} משימות פעילות`} · פתיחה · משמרת · סגירה · לימוד`
-                    : "עוד לא הוגדרו משימות — ספרייה מוכנה בפנים"
+                    ? `${activeTaskCount === 1 ? "משימה פעילה אחת" : `${activeTaskCount} משימות פעילות`} · יומי · שבועי · חודשי`
+                    : "צ׳קליסט פתיחה, סגירה, שבועי וחודשי — ספרייה מוכנה בפנים"
                 }
                 open={openHome === "tasks"}
                 onToggle={() => setOpenHome(openHome === "tasks" ? null : "tasks")}
@@ -1201,6 +1210,11 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 />
               </SettingsSection>
             </div>
+
+            {/* Already handled today — small, muted, at the foot of the page. It used to
+                sit at the top in green, which meant that by mid-morning the first thing
+                the manager saw was two ticks to scroll past. */}
+            <OwnerDayDone {...dayTaskProps} />
           </div>
         )}
 

@@ -2,11 +2,24 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Sunrise, Utensils, Moon, GraduationCap, ListChecks, Plus, Trash2, X, Check,
   ChevronUp, ChevronDown, Eye, EyeOff, Sparkles, Loader2, AlertTriangle,
+  CalendarDays, CalendarRange, Repeat,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 const db = supabase.schema("menu_app");
-const todayStr = () => new Date().toISOString().slice(0, 10);
+const dateStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const todayStr = () => dateStr(new Date());
+// Sunday, matching the weekly score reset on the waiter side — one week boundary for the
+// whole product, or the two halves would disagree about what "this week" means.
+const startOfWeekStr = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - d.getDay());
+  return dateStr(d);
+};
+const startOfMonthStr = () => {
+  const d = new Date();
+  return dateStr(new Date(d.getFullYear(), d.getMonth(), 1));
+};
 
 // The shift, as the manager hands it over — opening, service, closing, learning.
 //
@@ -39,6 +52,16 @@ const GROUPS = [
   {
     kind: "training", label: "לימוד ותפריט", icon: GraduationCap, color: "#22c08c",
     hint: "מה שהצוות מתרגל באפליקציה",
+  },
+  // Standing checklists. Same table, same editing — only the period they reset over is
+  // different, which is why they are kinds here and not a separate feature.
+  {
+    kind: "weekly", label: "צ׳קליסט שבועי", icon: CalendarDays, color: "#e0a3ff",
+    hint: "חוזר כל שבוע — קבוע, לא צריך להיזכר בו", period: "השבוע",
+  },
+  {
+    kind: "monthly", label: "צ׳קליסט חודשי", icon: CalendarRange, color: "#5eead4",
+    hint: "חוזר כל חודש — מלאי, בטיחות, רישיונות", period: "החודש",
   },
   {
     kind: "other", label: "משימות נוספות", icon: ListChecks, color: "#8a8aa0",
@@ -106,6 +129,30 @@ const LIBRARY = {
     ["לדעת את המחירים של חמש המנות הנמכרות", ""],
     ["לעבור על המנות המודגשות ⭐ של המנהל", ""],
   ],
+  weekly: [
+    ["ניקיון עומק של עמדת הבר", "מתחת למכונות, מגירות, ברזי שטיפה"],
+    ["ספירת מלאי אלכוהול", ""],
+    ["לעבור על מלאי כלים וכוסות ולהזמין חוסרים", ""],
+    ["לבדוק תוקף מוצרים במקררים", "מה שקרוב לתפוגה — להוציא או לשלב במנות היום"],
+    ["ניקוי מסננים ומאווררים במטבח", ""],
+    ["לעבור על ציוני המבחנים של הצוות", "מי נתקע באיזו קטגוריה — ולתת פידבק אישי"],
+    ["לרענן את המנות המודגשות ⭐ בתפריט", "מה שרוצים לדחוף השבוע"],
+    ["לבדוק תקינות ריהוט", "כיסאות מתנדנדים, שולחנות, שמשיות"],
+    ["לעבור על ביקורות אונליין ולהגיב", ""],
+    ["שיחת צוות קצרה לסיכום השבוע", ""],
+  ],
+  monthly: [
+    ["ספירת מלאי מלאה", ""],
+    ["לעבור על התפריט ולעדכן מחירים", "מול עליות במחירי ספקים"],
+    ["לבדוק מחירי ספקים וחוזים", ""],
+    ["תחזוקה למקררים, מזגנים ומנדפים", ""],
+    ["לבדוק תוקף רישיון עסק ותעודת כשרות", ""],
+    ["בדיקת בטיחות", "מטפים, יציאות חירום, ערכת עזרה ראשונה"],
+    ["מבחן תפריט מלא לכל הצוות", "התעודה האמיתית — לא רק תרגול"],
+    ["לעבור על שעות ומשמרות של הצוות", ""],
+    ["צילומי מנות חדשים לרשתות", ""],
+    ["לסכם הכנסות והוצאות של החודש", ""],
+  ],
   other: [],
 };
 
@@ -121,7 +168,9 @@ const AUTOMATIC = [
 
 export default function TasksManager({ restaurant, teamCount = 0 }) {
   const [rows, setRows] = useState(null);        // null = still loading
-  const [doneToday, setDoneToday] = useState({}); // task_id -> count of members
+  // task_id -> members who ticked it, per period. Which one a row reads depends on how
+  // often that checklist repeats.
+  const [doneBy, setDoneBy] = useState({ day: {}, week: {}, month: {} });
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [openGroup, setOpenGroup] = useState("opening");
@@ -147,12 +196,30 @@ export default function TasksManager({ restaurant, teamCount = 0 }) {
 
       const ids = (data || []).map((r) => r.id);
       if (ids.length) {
+        // One query back to the start of the month covers all three periods. A weekly task
+        // ticked on Monday is still "done this week" on Thursday, which is the whole point
+        // of a weekly checklist — counting only today would show it as undone for six days.
+        const since = [startOfMonthStr(), startOfWeekStr()].sort()[0];
         const { data: done } = await db.from("shift_task_done")
-          .select("task_id").in("task_id", ids).eq("done_date", todayStr());
+          .select("task_id, team_member_id, done_date").in("task_id", ids).gte("done_date", since);
         if (!alive) return;
-        const counts = {};
-        (done || []).forEach((d) => { counts[d.task_id] = (counts[d.task_id] || 0) + 1; });
-        setDoneToday(counts);
+        const today = todayStr(), week = startOfWeekStr(), month = startOfMonthStr();
+        // Distinct members per task per period — one waiter ticking a task twice in a week
+        // is one waiter.
+        const buckets = { day: {}, week: {}, month: {} };
+        const seen = { day: new Set(), week: new Set(), month: new Set() };
+        (done || []).forEach((d) => {
+          const add = (p) => {
+            const key = `${d.task_id}|${d.team_member_id}`;
+            if (seen[p].has(key)) return;
+            seen[p].add(key);
+            buckets[p][d.task_id] = (buckets[p][d.task_id] || 0) + 1;
+          };
+          if (d.done_date === today) add("day");
+          if (d.done_date >= week) add("week");
+          if (d.done_date >= month) add("month");
+        });
+        setDoneBy(buckets);
       }
     })();
     return () => { alive = false; };
@@ -231,6 +298,8 @@ export default function TasksManager({ restaurant, teamCount = 0 }) {
   };
 
   const activeCount = (rows || []).filter((r) => r.active).length;
+  const PERIOD_OF = { weekly: "week", monthly: "month" };
+  const doneCount = (kind, taskId) => doneBy[PERIOD_OF[kind] || "day"][taskId] || 0;
 
   if (rows === null) {
     return (
@@ -318,6 +387,20 @@ export default function TasksManager({ restaurant, teamCount = 0 }) {
                     </div>
                   )}
 
+                  {/* The promise the manager is buying: set it once and stop remembering
+                      it. Said out loud, because a checklist you have to re-create every
+                      week is just a note. */}
+                  {g.period && (
+                    <div className="bg-[#0c0d10] border rounded-xl p-2.5 flex items-start gap-2" style={{ borderColor: `${g.color}40` }}>
+                      <Repeat size={12} className="shrink-0 mt-0.5" style={{ color: g.color }} />
+                      <p className="text-[10.5px] leading-relaxed text-[#8a8aa0]">
+                        המשימות האלה <span className="font-black" style={{ color: g.color }}>קבועות</span> — מגדירים פעם אחת והן
+                        חוזרות {g.kind === "weekly" ? "כל שבוע (מיום ראשון)" : "כל חודש (מה-1 בחודש)"} מעצמן.
+                        הסימון מתאפס בתחילת {g.kind === "weekly" ? "השבוע" : "החודש"} הבא.
+                      </p>
+                    </div>
+                  )}
+
                   {list.length === 0 && g.kind !== "other" && (
                     <p className="text-[11.5px] text-[#8a8aa0] text-center py-3 leading-relaxed">
                       אין כאן עדיין משימות. הוסיפו מהספרייה למטה — זה לוקח חצי דקה.
@@ -379,9 +462,9 @@ export default function TasksManager({ restaurant, teamCount = 0 }) {
                             {r.subtitle && (
                               <span className="block text-[10.5px] text-[#8a8aa0] leading-snug mt-0.5">{r.subtitle}</span>
                             )}
-                            {r.active && doneToday[r.id] > 0 && (
+                            {r.active && doneCount(g.kind, r.id) > 0 && (
                               <span className="inline-block text-[10px] font-black text-[#22c08c] mt-1">
-                                ✓ {doneToday[r.id]}{teamCount ? `/${teamCount}` : ""} סימנו היום
+                                ✓ {doneCount(g.kind, r.id)}{teamCount ? `/${teamCount}` : ""} סימנו {g.period || "היום"}
                               </span>
                             )}
                           </button>
