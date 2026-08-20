@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
-import { Home, BookOpen, Users, Settings, LogOut, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Star, Target, Stethoscope, Store, ShieldCheck, Compass, ChevronLeft, ChevronRight} from "lucide-react";
+import { Home, BookOpen, Users, Settings, ListChecks, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Star, Target, Stethoscope, Store, ShieldCheck, Compass, ChevronLeft, ChevronRight, Flame, TrendingUp, Eye} from "lucide-react";
 import LearningStatus from "../components/LearningStatus";
+import SignOutButton from "../components/SignOutButton";
+import TasksManager from "../components/TasksManager";
+import TeamRoster from "../components/TeamRoster";
 import OperatorLine from "../components/OperatorLine";
 import SmartSuggestions from "../components/SmartSuggestions";
 import { categoryVisual } from "../lib/categoryVisual";
@@ -227,11 +230,16 @@ async function downscaleImage(file, maxDim = 2576) {
 }
 
 export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpdated }) {
-  const [tab, setTab] = useState("home"); // home | menu | team | settings
-  // Inside the team tab: "today" = who learned today (the old status board),
-  // "progress" = per-waiter standing, exams and improvement graphs.
-  const [teamView, setTeamView] = useState("today");
+  const [tab, setTab] = useState("home"); // home | menu | tasks | settings
+  // The team tab is gone (user, 2026-08-20). It held two unrelated things: the numbers the
+  // owner checks daily, and the joining code they touch once. The numbers moved to the home
+  // screen, the code and roster into settings — so the nav carries four destinations that
+  // are each opened for a different reason, instead of one tab that was two.
   const [openSetting, setOpenSetting] = useState(null); // one settings section at a time
+  // Home is collapsed by the same rule as settings: every card states what's inside on its
+  // own header, and only one opens at a time. Before this the home screen was a single
+  // scroll of six full-height panels ("עמוד הבית ארוך מדי").
+  const [openHome, setOpenHome] = useState(null);
   const [menuGroupView, setMenuGroupView] = useState(null); // open menu (menu_group) or null
   const [editingBrief, setEditingBrief] = useState(false);
   const [onboarding, setOnboarding] = useState(false); // true if first time setup needed
@@ -260,6 +268,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const [examsByMember, setExamsByMember] = useState({}); // id -> [{category, score, passed, taken_at}]
   const [snapshotsByMember, setSnapshotsByMember] = useState({}); // id -> [{taken_at, pct}]
   const [briefReadsToday, setBriefReadsToday] = useState(new Set());
+  const [activeTaskCount, setActiveTaskCount] = useState(null);
 
   // Daily brief
   const [dailyBrief, setDailyBrief] = useState({ missing_items: [], new_items: [], oven_items: [], notes: "" });
@@ -469,6 +478,13 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       const { data: usersData } = await db.from("owner_users")
         .select("id, name, created_at").eq("restaurant_id", restaurant.id).order("created_at");
       if (alive && usersData) setOwnerUsers(usersData);
+
+      // Just the count, for the home tile and the tasks tab badge. The tab itself loads
+      // the full rows when it mounts.
+      const { count } = await db.from("shift_tasks")
+        .select("id", { count: "exact", head: true })
+        .eq("restaurant_id", restaurant.id).eq("active", true);
+      if (alive && typeof count === "number") setActiveTaskCount(count);
     })();
     return () => { alive = false; };
   }, [restaurant?.id]);
@@ -483,6 +499,27 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     dailyBrief?.new_items?.length ? `חדש: ${dailyBrief.new_items.join(", ")}` : null,
     dailyBrief?.notes || null,
   ].filter(Boolean).join(" · ") || "נשלח";
+
+  // How much of the menu a given waiter actually knows: earned score over available score.
+  // The same formula as the waiter app and LearningStatus — three screens that disagreed
+  // about one person would be worse than a rough number.
+  const memberPct = (memberId) => {
+    if (!items.length) return 0;
+    const rows = progressByMember[memberId] || [];
+    const byItem = Object.fromEntries(rows.map((r) => [r.source_item_id, r.mastery ?? 0]));
+    return Math.round((items.reduce((s, it) => s + (byItem[it.id] || 0), 0) / (items.length * 5)) * 100);
+  };
+  // The headline numbers, so each collapsed card answers its own question without opening.
+  const teamAvgPct = teamMembers.length
+    ? Math.round(teamMembers.reduce((s, m) => s + memberPct(m.id), 0) / teamMembers.length)
+    : 0;
+  const studiedToday = teamMembers.filter((m) => leaderboardByMember[m.id]?.last_study_date === today).length;
+  // The guided brief builder replaces the plain editor while it's up, rather than sitting
+  // on top of it.
+  const showBriefAssistant = !briefAssistantOff && !briefSent;
+  const weakestMember = teamMembers.length
+    ? [...teamMembers].sort((a, b) => memberPct(a.id) - memberPct(b.id))[0]
+    : null;
 
   // Menus are the level above categories (menu_group, 2026-08-20): a restaurant has a food
   // menu, a bar menu, and seasonal ones. Finding one dish is two taps instead of scrolling
@@ -904,10 +941,13 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   return (
     <div className="h-screen max-w-md mx-auto bg-[#0c0d10] text-[#eef0f6] flex flex-col" dir="rtl">
       {/* Header */}
-      <div className="px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-4 border-b border-[#22252b] flex items-start justify-between gap-2">
-        <div>
-          <h1 className="text-xl font-black">{restaurant?.name || "המסעדה שלי"}</h1>
-          <p className="text-xs text-[#8a8aa0]">
+      <div className="px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-4 border-b border-[#22252b] flex items-center justify-between gap-2">
+        {/* Sign-out sits in the top-right corner (first in RTL flow) instead of the bottom
+            nav — far from the tabs the owner taps all day. */}
+        <SignOutButton onSignOut={onSignOut} />
+        <div className="flex-1 min-w-0 text-center">
+          <h1 className="text-lg font-black truncate">{restaurant?.name || "המסעדה שלי"}</h1>
+          <p className="text-[11px] text-[#8a8aa0] truncate">
             קוד בעלים: {restaurant?.owner_code}
             {restaurant?.logged_in_as_name && <> · מחובר/ת כ{restaurant.logged_in_as_name}</>}
           </p>
@@ -920,27 +960,25 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {tab === "home" && (
-          <div className="space-y-4">
-            <div className="bg-[#16181c] rounded-2xl p-4 border border-[#22252b]">
-              <h2 className="font-bold text-lg mb-2">ברוכים הבאים!</h2>
-              <p className="text-sm text-[#8a8aa0] mb-4">צוות של {teamMembers.length} מלצרים חכמים לומדים את התפריט שלך.</p>
-              <button
-                onClick={() => setTab("menu")}
-                className="w-full bg-[#6d5efc] text-white font-bold py-2 rounded-lg text-sm hover:bg-[#5b4ef0] transition"
-              >
-                ניהול תפריט
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-[#16181c] rounded-lg p-3 border border-[#22252b]">
-                <p className="text-2xl font-bold text-[#6d5efc]">{items.length}</p>
-                <p className="text-xs text-[#8a8aa0]">מנות בתפריט</p>
-              </div>
-              <div className="bg-[#16181c] rounded-lg p-3 border border-[#22252b]">
-                <p className="text-2xl font-bold text-[#6d5efc]">{teamMembers.length}</p>
-                <p className="text-xs text-[#8a8aa0]">חברי צוות</p>
-              </div>
+          <div className="space-y-3">
+            {/* Three numbers, one row. The old welcome banner said "צוות של N מלצרים חכמים
+                לומדים את התפריט שלך" above a button to another tab — a full card that
+                carried no information the tiles don't. */}
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { n: items.length, label: "מנות בתפריט", go: "menu" },
+                { n: teamMembers.length, label: "חברי צוות", go: "settings" },
+                { n: activeTaskCount ?? "–", label: "משימות פעילות", go: "tasks" },
+              ].map((t) => (
+                <button
+                  key={t.label}
+                  onClick={() => setTab(t.go)}
+                  className="bg-[#16181c] rounded-xl p-2.5 border border-[#22252b] text-right hover:border-[#6d5efc]/40 transition"
+                >
+                  <p className="text-xl font-black text-[#6d5efc] leading-none tabular-nums">{t.n}</p>
+                  <p className="text-[10px] text-[#8a8aa0] mt-1 leading-snug">{t.label}</p>
+                </button>
+              ))}
             </div>
 
             <SmartSuggestions
@@ -949,22 +987,24 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
               onStarred={(ids) => setItems((prev) => prev.map((i) => (ids.includes(i.id) ? { ...i, starred: true } : i)))}
             />
 
-            {!briefAssistantOff &&
-              !(dailyBrief?.missing_items?.length || dailyBrief?.new_items?.length ||
-                dailyBrief?.oven_items?.length || dailyBrief?.notes) && (
-                <BriefAssistant
-                  items={items}
-                  draft={briefDraft}
-                  setDraft={setBriefDraft}
-                  onSave={async () => { await handleSaveBrief(); setBriefAssistantOff(true); }}
-                  saving={savingBrief}
-                  onDismiss={() => setBriefAssistantOff(true)}
-                />
-              )}
+            {/* The guided builder and the plain form are two ways to write the same brief,
+                and until now both rendered stacked — the single biggest reason the home
+                screen scrolled. The assistant's own dismiss button says "אכתוב לבד", so it
+                is exactly the switch between them. */}
+            {showBriefAssistant && (
+              <BriefAssistant
+                items={items}
+                draft={briefDraft}
+                setDraft={setBriefDraft}
+                onSave={async () => { await handleSaveBrief(); setBriefAssistantOff(true); }}
+                saving={savingBrief}
+                onDismiss={() => setBriefAssistantOff(true)}
+              />
+            )}
             {/* Once today's brief is sent it collapses to one line (user, 2026-08-20):
                 the owner writes it once in the morning and shouldn't scroll past a full
                 editor every time they open the app. "עריכה" brings it back. */}
-            {briefSent && !editingBrief ? (
+            {showBriefAssistant ? null : briefSent && !editingBrief ? (
               <button
                 onClick={() => setEditingBrief(true)}
                 className="w-full text-right rounded-xl p-3 flex items-center gap-3 border border-[#22c08c]/40"
@@ -987,50 +1027,67 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 )}
               </>
             )}
-            {/* Who read it — directly under the editor, so writing and checking are one page. */}
-            <BriefReadBoard restaurant={restaurant} brief={dailyBrief} />
+            {/* Everything the owner CHECKS rather than writes, collapsed behind headers that
+                already carry the answer. All three panels used to be open at once — plus a
+                fourth on the team tab — which is what made this page a scroll. Each one
+                queries on mount, so leaving them closed also stops four requests the owner
+                didn't ask for. */}
+            <div className="bg-[#16181c] border border-[#22252b] rounded-2xl overflow-hidden">
+              <SettingsSection
+                icon={<Eye size={15} className="text-[#38bdf8]" />}
+                title="מי קרא את העדכון היומי"
+                summary={
+                  !briefSent ? "עוד לא נשלח עדכון היום"
+                    : teamMembers.length ? `${briefReadsToday.size} מתוך ${teamMembers.length} אישרו קריאה`
+                      : "אין עדיין חברי צוות"
+                }
+                open={openHome === "reads"}
+                onToggle={() => setOpenHome(openHome === "reads" ? null : "reads")}
+              >
+                <BriefReadBoard restaurant={restaurant} brief={dailyBrief} />
+              </SettingsSection>
 
-            {/* Where the team stands, on the home screen (user, 2026-08-20). This used to
-                require switching to the team tab; the one question an owner opens the app
-                with — "is my team actually learning?" — now has an answer on page one.
-                Same percentage formula as the team tab and the waiter app: earned score
-                over available score, so the three screens never disagree. */}
-            {teamMembers.length > 0 && (
-              <div className="bg-[#16181c] rounded-lg p-4 border border-[#22252b]">
-                <div className="flex items-baseline justify-between mb-3">
-                  <p className="font-bold text-[#eef0f6] text-sm">איפה הצוות עומד בלמידה</p>
-                  <button onClick={() => setTab("team")} className="text-[11px] font-black text-[#a79bff]">הכל ←</button>
-                </div>
-                <div className="space-y-2.5">
-                  {teamMembers.slice(0, 5).map((member) => {
-                    const rows = progressByMember[member.id] || [];
-                    const byItem = Object.fromEntries(rows.map((r) => [r.source_item_id, r.mastery ?? 0]));
-                    const pct = items.length
-                      ? Math.round((items.reduce((sum, it) => sum + (byItem[it.id] || 0), 0) / (items.length * 5)) * 100)
-                      : 0;
-                    const color = pct >= 80 ? "#22c08c" : pct >= 50 ? "#f3a712" : pct > 0 ? "#e0315a" : "#5a5a6e";
-                    return (
-                      <div key={member.id} className="flex items-center gap-2.5">
-                        <span className="flex-1 min-w-0">
-                          <span className="flex items-baseline justify-between gap-2">
-                            <span className="text-xs font-bold text-[#eef0f6] truncate">{member.name}</span>
-                            <span className="text-[11px] font-black tabular-nums flex-shrink-0" style={{ color }}>{pct}%</span>
-                          </span>
-                          <span className="block h-1 bg-[#22252b] rounded-full overflow-hidden mt-1.5">
-                            <span className="block h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
-                          </span>
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-                {teamMembers.length > 5 && (
-                  <p className="text-[11px] text-[#5a5a6e] mt-2.5">ועוד {teamMembers.length - 5} בטאב הצוות</p>
-                )}
-              </div>
-            )}
+              <SettingsSection
+                icon={<Flame size={15} className="text-[#f3a712]" />}
+                title="מי למד היום"
+                summary={
+                  teamMembers.length
+                    ? `${studiedToday} מתוך ${teamMembers.length} למדו היום · מי נכנס ולא למד`
+                    : "אין עדיין חברי צוות"
+                }
+                open={openHome === "today"}
+                onToggle={() => setOpenHome(openHome === "today" ? null : "today")}
+              >
+                <LearningStatus restaurant={restaurant} />
+              </SettingsSection>
+
+              <SettingsSection
+                icon={<TrendingUp size={15} className="text-[#22c08c]" />}
+                title="התקדמות ומבחנים"
+                summary={
+                  teamMembers.length
+                    ? `ידע ממוצע ${teamAvgPct}%${weakestMember ? ` · הכי זקוק/ה לתרגול: ${weakestMember.name}` : ""}`
+                    : "אין עדיין חברי צוות — הקוד בהגדרות"
+                }
+                open={openHome === "progress"}
+                onToggle={() => setOpenHome(openHome === "progress" ? null : "progress")}
+              >
+                <TeamProgressList
+                  teamMembers={teamMembers}
+                  items={items}
+                  progressByMember={progressByMember}
+                  leaderboardByMember={leaderboardByMember}
+                  examsByMember={examsByMember}
+                  snapshotsByMember={snapshotsByMember}
+                  briefReadsToday={briefReadsToday}
+                  today={today}
+                />
+              </SettingsSection>
+            </div>
           </div>
         )}
+
+        {tab === "tasks" && <TasksManager restaurant={restaurant} teamCount={teamMembers.length} />}
 
         {tab === "menu" && (
           <div className="space-y-3">
@@ -1188,134 +1245,6 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           </div>
         )}
 
-        {tab === "team" && (
-          <div className="space-y-3">
-            <div className="bg-[#16181c] rounded-lg p-4 border border-[#22252b]">
-              <p className="text-xs font-bold text-[#8a8aa0] mb-1">קוד הצוות</p>
-              <p className="text-2xl font-black text-[#6d5efc] mb-3">{restaurant?.team_code || "???"}</p>
-              <p className="text-xs text-[#8a8aa0]">שתפו את הקוד הזה עם הצוות שלכם להצטרפות</p>
-            </div>
-
-            {/* One team tab, two lenses on the same people: "who showed up and learned
-                today" (the old status tab) and "where each waiter stands overall". */}
-            <div className="flex gap-1.5 bg-[#16181c] border border-[#22252b] rounded-xl p-1">
-              {[["today", "מי למד היום"], ["progress", "התקדמות ומבחנים"]].map(([v, label]) => (
-                <button key={v} onClick={() => setTeamView(v)}
-                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${
-                    teamView === v ? "bg-[#6d5efc] text-white" : "text-[#8a8aa0]"
-                  }`}>
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {teamView === "today" && <LearningStatus restaurant={restaurant} />}
-
-            {teamView === "progress" && (
-            <div>
-              <p className="text-xs font-bold text-[#8a8aa0] mb-3">התקדמות הצוות ({teamMembers.length} חברי צוות)</p>
-              <div className="space-y-2">
-                {teamMembers.length === 0 ? (
-                  <p className="text-sm text-[#8a8aa0]">עדיין אין חברי צוות. שתפו את הקוד להצטרפות!</p>
-                ) : (
-                  teamMembers.map((member) => {
-                    const lb = leaderboardByMember[member.id];
-                    const didChallenge = lb?.last_study_date === today && (lb?.today_count || 0) >= 3;
-                    const readBrief = briefReadsToday.has(member.id);
-
-                    // Same measure the waiter app shows: earned score over available score,
-                    // across the whole menu. A dish never studied counts as 0, so this is
-                    // "how much of the menu do they actually know", not "how many did they pass".
-                    const rows = progressByMember[member.id] || [];
-                    const byItem = Object.fromEntries(rows.map((r) => [r.source_item_id, r.mastery ?? 0]));
-                    const pct = items.length
-                      ? Math.round((items.reduce((s, it) => s + (byItem[it.id] || 0), 0) / (items.length * 5)) * 100)
-                      : 0;
-                    // Dishes they've actually answered wrong (2 or below), named — so the
-                    // owner knows what to send them back to study, not just that they're low.
-                    const weak = items.filter((it) => byItem[it.id] > 0 && byItem[it.id] <= 2);
-                    const untouched = items.filter((it) => !byItem[it.id]).length;
-                    const pctColor = pct >= 80 ? "#22c08c" : pct >= 50 ? "#f3a712" : "#e0315a";
-
-                    return (
-                      <div key={member.id} className="bg-[#16181c] rounded-lg p-3 border border-[#22252b]">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="font-bold text-[#eef0f6]">{member.name}</p>
-                          <div className="text-left">
-                            <p className="text-lg font-black leading-none" style={{ color: pctColor }}>{pct}%</p>
-                            <p className="text-[10px] text-[#8a8aa0] mt-0.5">{lb?.mastered_count || 0}/{items.length} מנות נלמדו</p>
-                          </div>
-                        </div>
-
-                        <div className="h-1.5 bg-[#22252b] rounded-full overflow-hidden mb-2">
-                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pctColor }} />
-                        </div>
-
-                        {/* Where they started vs where they are — a 55% who began at 15%
-                            is a different story from a 55% who began at 60%. */}
-                        <ProgressChart
-                          baseline={member.baseline_pct}
-                          current={pct}
-                          seconds={member.total_seconds}
-                          snapshots={snapshotsByMember[member.id]}
-                        />
-
-                        {weak.length > 0 && (
-                          <div className="bg-[#3a1d22] border border-[#e0315a]/30 rounded-lg p-2 mb-2">
-                            <p className="text-[10px] font-black text-[#e0315a] mb-0.5">טועה ב-{weak.length} מנות</p>
-                            <p className="text-[11px] text-[#eef0f6] leading-snug">
-                              {weak.slice(0, 4).map((it) => it.name).join(", ")}
-                              {weak.length > 4 ? ` ועוד ${weak.length - 4}` : ""}
-                            </p>
-                          </div>
-                        )}
-                        {untouched > 0 && (
-                          <p className="text-[10px] text-[#8a8aa0] mb-2">עוד לא למד/ה {untouched} מנות</p>
-                        )}
-
-                        {(examsByMember[member.id] || []).length > 0 && (
-                          <div className="mb-2">
-                            <p className="text-[10px] font-bold text-[#8a8aa0] mb-1">מבחנים</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {/* Latest attempt per category — earlier ones stay in the table
-                                  for history, but the owner cares about where they stand now. */}
-                              {Object.values(
-                                (examsByMember[member.id] || []).reduce((acc, e) => {
-                                  if (!acc[e.category]) acc[e.category] = e; // list is newest-first
-                                  return acc;
-                                }, {})
-                              ).map((e) => (
-                                <span
-                                  key={e.category}
-                                  className={`text-[10px] font-bold px-2 py-1 rounded-full ${
-                                    e.passed ? "bg-[#1aa376]/15 text-[#22c08c]" : "bg-[#e0315a]/15 text-[#e0315a]"
-                                  }`}
-                                >
-                                  {CAT_LABELS[e.category] || e.category} {e.score}% {e.passed ? "✓" : "✗"}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="flex gap-2">
-                          <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${didChallenge ? "bg-[#1aa376]/15 text-[#22c08c]" : "bg-[#22252b] text-[#8a8aa0]"}`}>
-                            {didChallenge ? "✓ אתגר יומי הושלם" : "אתגר יומי לא הושלם"}
-                          </span>
-                          <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${readBrief ? "bg-[#1aa376]/15 text-[#22c08c]" : "bg-[#22252b] text-[#8a8aa0]"}`}>
-                            {readBrief ? "✓ קרא/ה עדכון יומי" : "לא קרא/ה עדכון יומי"}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-            )}
-          </div>
-        )}
-
         {tab === "settings" && (
           <div className="space-y-3">
             <p className="text-[11px] text-[#8a8aa0] px-1 leading-relaxed">
@@ -1334,6 +1263,22 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 <div id="learning-path-settings">
               <LearningPathSettings restaurant={restaurant} items={items} />
             </div>
+              </SettingsSection>
+
+              {/* Joining code + roster. Used when someone is hired or leaves — not daily,
+                  which is why it stopped being a tab of its own. */}
+              <SettingsSection
+                icon={<Users size={15} className="text-[#6d5efc]" />}
+                title="הצוות שלי"
+                summary={`קוד הצטרפות ${restaurant?.team_code || "???"} · ${teamMembers.length} חברי צוות`}
+                open={openSetting === "team"}
+                onToggle={() => setOpenSetting(openSetting === "team" ? null : "team")}
+              >
+                <TeamRoster
+                  restaurant={restaurant}
+                  members={teamMembers}
+                  onRemoved={(id) => setTeamMembers((prev) => prev.filter((m) => m.id !== id))}
+                />
               </SettingsSection>
 
               <SettingsSection
@@ -1476,12 +1421,11 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       <div className="border-t border-[#22252b] bg-[#16181c]">
         {/* pb keeps the tabs clear of the iPhone home indicator once packaged with
             Capacitor. On the web the inset is 0 and this stays the plain p-2. */}
-        <div className="grid grid-cols-5 gap-1 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <div className="grid grid-cols-4 gap-1 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           <NavButton icon={<Home size={18} />} label="בית" active={tab === "home"} onClick={() => setTab("home")} />
           <NavButton icon={<BookOpen size={18} />} label="תפריט" active={tab === "menu"} onClick={() => setTab("menu")} />
-          <NavButton icon={<Users size={18} />} label="צוות" active={tab === "team"} onClick={() => setTab("team")} />
+          <NavButton icon={<ListChecks size={18} />} label="משימות" active={tab === "tasks"} onClick={() => setTab("tasks")} />
           <NavButton icon={<Settings size={18} />} label="הגדרות" active={tab === "settings"} onClick={() => setTab("settings")} />
-          <NavButton icon={<LogOut size={18} />} label="יציאה" onClick={onSignOut} />
         </div>
       {tourActive && (
         <GuidedTour
@@ -1510,6 +1454,116 @@ function NavButton({ icon, label, active, onClick }) {
       {icon}
       <span className="text-[9px] font-bold">{label}</span>
     </button>
+  );
+}
+
+// Where every waiter stands — lifted out of the deleted team tab, unchanged in substance.
+// It lives inside a collapsed home card now, so it only mounts when the owner opens it.
+function TeamProgressList({
+  teamMembers, items, progressByMember, leaderboardByMember, examsByMember,
+  snapshotsByMember, briefReadsToday, today,
+}) {
+  if (teamMembers.length === 0) {
+    return (
+      <p className="text-sm text-[#8a8aa0] text-center py-3 leading-relaxed">
+        עדיין אין חברי צוות. קוד ההצטרפות מחכה בהגדרות → הצוות שלי.
+      </p>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      {teamMembers.map((member) => {
+        const lb = leaderboardByMember[member.id];
+        const didChallenge = lb?.last_study_date === today && (lb?.today_count || 0) >= 3;
+        const readBrief = briefReadsToday.has(member.id);
+
+        // Same measure the waiter app shows: earned score over available score, across the
+        // whole menu. A dish never studied counts as 0, so this is "how much of the menu do
+        // they actually know", not "how many did they pass".
+        const rows = progressByMember[member.id] || [];
+        const byItem = Object.fromEntries(rows.map((r) => [r.source_item_id, r.mastery ?? 0]));
+        const pct = items.length
+          ? Math.round((items.reduce((s, it) => s + (byItem[it.id] || 0), 0) / (items.length * 5)) * 100)
+          : 0;
+        // Dishes they've actually answered wrong (2 or below), named — so the owner knows
+        // what to send them back to study, not just that they're low.
+        const weak = items.filter((it) => byItem[it.id] > 0 && byItem[it.id] <= 2);
+        const untouched = items.filter((it) => !byItem[it.id]).length;
+        const pctColor = pct >= 80 ? "#22c08c" : pct >= 50 ? "#f3a712" : "#e0315a";
+
+        return (
+          <div key={member.id} className="bg-[#0c0d10] rounded-lg p-3 border border-[#22252b]">
+            <div className="flex items-center justify-between mb-2">
+              <p className="font-bold text-[#eef0f6]">{member.name}</p>
+              <div className="text-left">
+                <p className="text-lg font-black leading-none" style={{ color: pctColor }}>{pct}%</p>
+                <p className="text-[10px] text-[#8a8aa0] mt-0.5">{lb?.mastered_count || 0}/{items.length} מנות נלמדו</p>
+              </div>
+            </div>
+
+            <div className="h-1.5 bg-[#22252b] rounded-full overflow-hidden mb-2">
+              <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pctColor }} />
+            </div>
+
+            {/* Where they started vs where they are — a 55% who began at 15% is a different
+                story from a 55% who began at 60%. */}
+            <ProgressChart
+              baseline={member.baseline_pct}
+              current={pct}
+              seconds={member.total_seconds}
+              snapshots={snapshotsByMember[member.id]}
+            />
+
+            {weak.length > 0 && (
+              <div className="bg-[#3a1d22] border border-[#e0315a]/30 rounded-lg p-2 mb-2">
+                <p className="text-[10px] font-black text-[#e0315a] mb-0.5">טועה ב-{weak.length} מנות</p>
+                <p className="text-[11px] text-[#eef0f6] leading-snug">
+                  {weak.slice(0, 4).map((it) => it.name).join(", ")}
+                  {weak.length > 4 ? ` ועוד ${weak.length - 4}` : ""}
+                </p>
+              </div>
+            )}
+            {untouched > 0 && (
+              <p className="text-[10px] text-[#8a8aa0] mb-2">עוד לא למד/ה {untouched} מנות</p>
+            )}
+
+            {(examsByMember[member.id] || []).length > 0 && (
+              <div className="mb-2">
+                <p className="text-[10px] font-bold text-[#8a8aa0] mb-1">מבחנים</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {/* Latest attempt per category — earlier ones stay in the table for
+                      history, but the owner cares about where they stand now. */}
+                  {Object.values(
+                    (examsByMember[member.id] || []).reduce((acc, e) => {
+                      if (!acc[e.category]) acc[e.category] = e; // list is newest-first
+                      return acc;
+                    }, {})
+                  ).map((e) => (
+                    <span
+                      key={e.category}
+                      className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                        e.passed ? "bg-[#1aa376]/15 text-[#22c08c]" : "bg-[#e0315a]/15 text-[#e0315a]"
+                      }`}
+                    >
+                      {CAT_LABELS[e.category] || e.category} {e.score}% {e.passed ? "✓" : "✗"}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${didChallenge ? "bg-[#1aa376]/15 text-[#22c08c]" : "bg-[#22252b] text-[#8a8aa0]"}`}>
+                {didChallenge ? "✓ אתגר יומי הושלם" : "אתגר יומי לא הושלם"}
+              </span>
+              <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${readBrief ? "bg-[#1aa376]/15 text-[#22c08c]" : "bg-[#22252b] text-[#8a8aa0]"}`}>
+                {readBrief ? "✓ קרא/ה עדכון יומי" : "לא קרא/ה עדכון יומי"}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
