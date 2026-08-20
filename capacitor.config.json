@@ -2,6 +2,9 @@
   "appId": "il.co.crewmenu.owner",
   "appName": "CrewMenu ניהול",
   "webDir": "dist",
+  "server": {
+    "url": "https://shiftcrew-owner.vercel.app"
+  },
   "ios": {
     "contentInset": "never",
     "backgroundColor": "#0c0d10",

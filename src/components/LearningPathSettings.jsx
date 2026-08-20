@@ -49,6 +49,7 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
         pass_threshold: data?.pass_threshold ?? DEFAULT_PATH.pass_threshold,
         gate_games: data?.gate_games ?? DEFAULT_PATH.gate_games,
         daily_goal_minutes: data?.daily_goal_minutes ?? DEFAULT_PATH.daily_goal_minutes,
+        general_exam_questions: data?.general_exam_questions ?? DEFAULT_PATH.general_exam_questions,
         baseline_enabled: data?.baseline_enabled ?? DEFAULT_PATH.baseline_enabled,
         baseline_minutes: data?.baseline_minutes ?? DEFAULT_PATH.baseline_minutes,
       });
@@ -93,6 +94,7 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
     path.pass_threshold === DEFAULT_PATH.pass_threshold &&
     path.gate_games === DEFAULT_PATH.gate_games &&
     path.daily_goal_minutes === DEFAULT_PATH.daily_goal_minutes &&
+    path.general_exam_questions === DEFAULT_PATH.general_exam_questions &&
     path.baseline_enabled === DEFAULT_PATH.baseline_enabled &&
     path.baseline_minutes === DEFAULT_PATH.baseline_minutes;
 
@@ -239,6 +241,23 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
                 className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold ${
                   path.daily_goal_minutes === v ? "bg-[#6d5efc] text-white" : "bg-[#22252b] text-[#8a8aa0]"}`}>
                 {v}{v === 10 && " ★"}
+              </button>
+            ))}
+          </div>
+        </Setting>
+
+        {/* The whole-menu final exam: how many timed questions it asks. This is the goal
+            the team's tutorial points at — everything else is training for it. */}
+        <Setting
+          title="מבחן התפריט המלא"
+          desc={`המבחן המסכם על כל התפריט — ${path.general_exam_questions} שאלות עם שעון. זו המטרה שהצוות מתאמן לקראתה.`}
+        >
+          <div className="flex gap-1.5">
+            {[20, 30, 40, 60].map((v) => (
+              <button key={v} onClick={() => { setPath({ ...path, general_exam_questions: v }); setSavedAt(null); }}
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold ${
+                  path.general_exam_questions === v ? "bg-[#6d5efc] text-white" : "bg-[#22252b] text-[#8a8aa0]"}`}>
+                {v}{v === 40 && " ★"}
               </button>
             ))}
           </div>

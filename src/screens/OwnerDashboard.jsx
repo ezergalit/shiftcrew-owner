@@ -12,6 +12,7 @@ import LearningPathSettings from "../components/LearningPathSettings";
 import ProgressChart from "../components/ProgressChart";
 import MenuHealthReview from "../components/MenuHealthReview";
 import AccountSecurity from "../components/AccountSecurity";
+import WaiterPreview from "../components/WaiterPreview";
 import { FLAG_GROUPS, FLAG_GROUP_BY_KEY, effectiveTrackedFlags } from "../lib/dishFlags";
 import { supabase } from "../lib/supabase";
 
@@ -134,7 +135,7 @@ const KASHRUT = FLAG_GROUP_BY_KEY.kashrut.values;
 // exam_results.category stores whatever the menu uses. Older seeded menus use these fixed
 // English keys; menus built through the paste/AI import use free-text Hebrew names, which
 // need no translation and fall through unchanged.
-const CAT_LABELS = { starters: "ראשונות", mains: "עיקריות", desserts: "קינוחים", drinks: "שתייה" };
+const CAT_LABELS = { starters: "ראשונות", mains: "עיקריות", desserts: "קינוחים", drinks: "שתייה", general: "מבחן התפריט המלא" };
 
 // Service style / hospitality tone — phrased respectfully, no value judgment ("cheap" vs "expensive"),
 // just how formal vs. relaxed the team's approach to guests should feel.
@@ -881,12 +882,17 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   return (
     <div className="h-screen max-w-md mx-auto bg-[#0c0d10] text-[#eef0f6] flex flex-col" dir="rtl">
       {/* Header */}
-      <div className="px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-4 border-b border-[#22252b]">
-        <h1 className="text-xl font-black">{restaurant?.name || "המסעדה שלי"}</h1>
-        <p className="text-xs text-[#8a8aa0]">
-          קוד בעלים: {restaurant?.owner_code}
-          {restaurant?.logged_in_as_name && <> · מחובר/ת כ{restaurant.logged_in_as_name}</>}
-        </p>
+      <div className="px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-4 border-b border-[#22252b] flex items-start justify-between gap-2">
+        <div>
+          <h1 className="text-xl font-black">{restaurant?.name || "המסעדה שלי"}</h1>
+          <p className="text-xs text-[#8a8aa0]">
+            קוד בעלים: {restaurant?.owner_code}
+            {restaurant?.logged_in_as_name && <> · מחובר/ת כ{restaurant.logged_in_as_name}</>}
+          </p>
+        </div>
+        {/* Always within reach, on every tab — the owner should never wonder what the
+            team is actually seeing. */}
+        <WaiterPreview teamCode={restaurant?.team_code} />
       </div>
 
       {/* Content */}

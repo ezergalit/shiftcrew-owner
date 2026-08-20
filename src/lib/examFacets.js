@@ -82,6 +82,8 @@ export const DEFAULT_PATH = {
   // DEFAULT_DAILY_MINUTES — if you change one, change both or a restaurant that never
   // opened the setting will see a different goal than the one this screen claims.
   daily_goal_minutes: 10,
+  // Question count for the whole-menu exam (exam_config.general_exam_questions).
+  general_exam_questions: 40,
   baseline_enabled: true,
   baseline_minutes: 7,
 };

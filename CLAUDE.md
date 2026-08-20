@@ -357,3 +357,12 @@ xcodebuild -exportArchive -archivePath <path>.xcarchive \
 בתוך `ios/App`, ואז **לשחזר** את `Info.plist` (`git checkout`) — agvtool דורס את
 `$(CURRENT_PROJECT_VERSION)` בערך קשיח, וה-pbxproj לבדו מספיק. נכון לעכשיו: **6**
 בשני הריפואים (committed).
+
+## 📱 2026-08-20 — תצוגת מלצר (WaiterPreview, טרם committed)
+
+`src/components/WaiterPreview.jsx` — כפתור "תצוגת מלצר" קבוע ב-header של הדשבורד
+(בכל הטאבים): overlay מסך-מלא עם iframe של אפליקציית הצוות בתוך מסגרת טלפון.
+ב-dev מצביע על `localhost:5176`, בפרודקשן על `shiftcrew-waiter.vercel.app` —
+זו האפליקציה האמיתית, לא עותק, אז אין דריפט. המנהל נכנס בתוכה עם קוד הצוות שלו
+(ה-session חי בתוך ה-iframe, לא נוגע ב-session של המנהל). רענון = remount של
+ה-iframe (key), כי cross-origin לא מאפשר reload פנימי.
