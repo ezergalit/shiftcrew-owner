@@ -74,19 +74,22 @@ const groupOf = (kind) => (GROUP_KINDS.includes(kind) ? kind : "other");
 // The library. Deliberately long — an owner should find their own restaurant in here and
 // tick boxes, not stare at an empty field and invent a checklist.
 const LIBRARY = {
+  // ⚠️ Core-first ordering matters: CORE_COUNT below takes the first N of each list as
+  // "the short checklist that already works". Adding a niche item at the top quietly
+  // promotes it into every restaurant's starter set.
   opening: [
-    ["להדליק אורות, מוזיקה ומיזוג", "לוודא שהאזור נעים לסועדים לפני הפתיחה"],
-    ["לנגב ולסדר את כל השולחנות", "כולל הרגליים והכיסאות — לא רק המשטח"],
+    ["לנגב ולסדר את כל השולחנות", "כולל הכיסאות, לא רק המשטח"],
     ["לפרוס סטים: סכו״ם, מפיות וכוסות", ""],
-    ["לבדוק את התפריטים", "נקיים, שלמים, בלי דפים חסרים או קרועים"],
     ["למלא מלח, פלפל ושמן זית", ""],
-    ["להכין קנקני מים וקרח", ""],
     ["לסדר ולמלא את עמדת המלצרים", "מפיות, קשים, תחתיות, פנקסים"],
+    ["לקבל מהמטבח את החוסרים והמנות המיוחדות", "זה מה שנכנס לעדכון היומי"],
+    ["לבדוק שהמסופון והקופה עובדים", "כולל נייר לקבלות ועודף בקופה"],
+    ["להדליק אורות, מוזיקה ומיזוג", "לוודא שהאזור נעים לסועדים לפני הפתיחה"],
+    ["לבדוק את התפריטים", "נקיים, שלמים, בלי דפים חסרים או קרועים"],
+    ["להכין קנקני מים וקרח", ""],
     ["לבדוק מלאי כוסות וכלים", "להביא מהמחסן מה שחסר לפני שמתמלאים"],
     ["לעבור על עמדת הבר", "לימונים, קרח, קשיות, בקבוקים פתוחים"],
     ["לוודא ששירותי האורחים נקיים ומצוידים", ""],
-    ["לבדוק שהמסופון והקופה עובדים", "כולל נייר לקבלות ועודף בקופה"],
-    ["לקבל מהמטבח את החוסרים והמנות המיוחדות", "זה מה שנכנס לעדכון היומי"],
     ["לסדר את הכניסה ואת שילוט החוץ", ""],
     ["לעבור על שיבוץ השולחנות וההזמנות של הערב", ""],
   ],
@@ -106,17 +109,15 @@ const LIBRARY = {
   ],
   closing: [
     ["לנקות ולסדר את כל השולחנות", ""],
-    ["לאסוף מפות ומפיות לכביסה", ""],
-    ["לנגב ולמלא מלח, פלפל ושמן זית לקראת מחר", ""],
     ["לרוקן ולנקות את עמדת המלצרים", ""],
     ["להחזיר כלים, מגשים וכוסות למטבח", ""],
     ["לספור קופה ולסגור משמרת במסופון", ""],
     ["לרוקן פחים ולהוציא אשפה", ""],
+    ["לכבות ציוד, אורות ומיזוג, ולנעול", "דלתות, חלונות, מקררים סגורים"],
+    ["לאסוף מפות ומפיות לכביסה", ""],
+    ["לנגב ולמלא מלח, פלפל ושמן זית לקראת מחר", ""],
     ["לנגב את הבר ולסדר בקבוקים", ""],
-    ["לבדוק שהמקררים סגורים", ""],
-    ["לכבות ציוד, אורות ומיזוג", ""],
     ["לרשום למנהל חוסרים ותקלות מהערב", ""],
-    ["לוודא שדלתות וחלונות נעולים", ""],
     ["לסדר כיסאות ולהכין את המקום למחר", ""],
   ],
   training: [
@@ -156,6 +157,11 @@ const LIBRARY = {
   other: [],
 };
 
+// How many of each list make up the short version — "the checklist that already works".
+// Six lines a waiter actually reads beats fourteen they scroll past, and the rest stay one
+// tap away behind "עוד אפשרויות".
+const CORE_COUNT = { opening: 6, shift: 5, closing: 6, training: 4, weekly: 5, monthly: 5, other: 0 };
+
 // What the waiter app closes on its own, from real progress. Listed here so the tasks
 // screen tells the whole truth: the owner sees the full shift, not only the part they
 // typed. Read-only on purpose — a tick the app awards for reaching a goal is worth more
@@ -176,6 +182,7 @@ export default function TasksManager({ restaurant, teamCount = 0 }) {
   const [openGroup, setOpenGroup] = useState("opening");
   const [picker, setPicker] = useState(null);    // kind whose library sheet is open
   const [picked, setPicked] = useState(new Set());
+  const [showAllLibrary, setShowAllLibrary] = useState(false);
   const [editing, setEditing] = useState(null);  // { id, title, subtitle }
   const [customFor, setCustomFor] = useState(null);
   const [custom, setCustom] = useState({ title: "", subtitle: "" });
@@ -301,6 +308,15 @@ export default function TasksManager({ restaurant, teamCount = 0 }) {
   const PERIOD_OF = { weekly: "week", monthly: "month" };
   const doneCount = (kind, taskId) => doneBy[PERIOD_OF[kind] || "day"][taskId] || 0;
 
+  // Library sheet: the short list by default, the rest behind one tap.
+  const pickerGroup = GROUPS.find((g) => g.kind === picker);
+  const fullLibrary = picker ? LIBRARY[picker] : [];
+  const visibleLibrary = showAllLibrary ? fullLibrary : fullLibrary.slice(0, CORE_COUNT[picker] || 0);
+  const hiddenCount = fullLibrary.length - visibleLibrary.length;
+  const coreLeft = fullLibrary
+    .slice(0, CORE_COUNT[picker] || 0)
+    .filter(([t]) => !(rows || []).some((r) => r.title === t)).length;
+
   if (rows === null) {
     return (
       <div className="flex items-center justify-center gap-2 py-10 text-[#8a8aa0]">
@@ -407,73 +423,88 @@ export default function TasksManager({ restaurant, teamCount = 0 }) {
                     </p>
                   )}
 
+                  {/* One line per task: a number and the text, the way a checklist looks
+                      on paper. Every row used to carry four controls (↑ ↓ 👁 🗑) plus its
+                      subtitle, so a fourteen-line opening routine read as a control panel
+                      rather than a list ("נראה ארוך ומסובך"). The controls moved inside the
+                      row — tap a task to edit, reorder, hide or delete it. */}
+                  <div className={`rounded-xl overflow-hidden ${list.length ? "border border-[#22252b]" : ""}`}>
                   {list.map((r, i) => (
                     <div
                       key={r.id}
-                      className={`rounded-xl border p-2.5 ${r.active ? "bg-[#16181c] border-[#22252b]" : "bg-[#131519] border-[#1e2128]"}`}
+                      className={`border-b border-[#1e2128] last:border-b-0 ${
+                        editing?.id === r.id ? "bg-[#1a1d23]" : r.active ? "bg-[#16181c]" : "bg-[#131519]"
+                      }`}
                     >
-                      {editing?.id === r.id ? (
-                        <div className="space-y-2">
+                      <button
+                        onClick={() => setEditing(editing?.id === r.id ? null : { id: r.id, title: r.title, subtitle: r.subtitle || "" })}
+                        className="w-full text-right flex items-center gap-2.5 px-2.5 py-2 min-h-[40px]"
+                      >
+                        <span
+                          className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black flex-shrink-0 tabular-nums"
+                          style={{ background: r.active ? `${g.color}22` : "#20232b", color: r.active ? g.color : "#5a5a6e" }}
+                        >
+                          {i + 1}
+                        </span>
+                        <span className={`flex-1 min-w-0 text-[12.5px] font-bold leading-snug truncate ${r.active ? "text-[#eef0f6]" : "text-[#5a5a6e] line-through"}`}>
+                          {r.title}
+                        </span>
+                        {r.active && doneCount(g.kind, r.id) > 0 && (
+                          <span className="text-[10px] font-black text-[#22c08c] flex-shrink-0">
+                            ✓{doneCount(g.kind, r.id)}{teamCount ? `/${teamCount}` : ""}
+                          </span>
+                        )}
+                        <ChevronDown
+                          size={13}
+                          className={`flex-shrink-0 transition-transform ${editing?.id === r.id ? "rotate-180 text-[#a79bff]" : "text-[#3a3d46]"}`}
+                        />
+                      </button>
+
+                      {editing?.id === r.id && (
+                        <div className="px-2.5 pb-2.5 space-y-2">
                           <input
                             value={editing.title}
                             onChange={(e) => setEditing({ ...editing, title: e.target.value })}
-                            className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-2.5 py-2 text-[13px] text-[#eef0f6] focus:outline-none focus:border-[#6d5efc]"
+                            className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-2.5 py-2 text-[12.5px] text-[#eef0f6] focus:outline-none focus:border-[#6d5efc]"
                             dir="rtl"
                           />
                           <input
                             value={editing.subtitle}
                             onChange={(e) => setEditing({ ...editing, subtitle: e.target.value })}
                             placeholder="פירוט (לא חובה) — מה שהמלצר יראה כשיפתח את המשימה"
-                            className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-2.5 py-2 text-[11.5px] text-[#eef0f6] placeholder:text-[#5a5a6e] focus:outline-none focus:border-[#6d5efc]"
+                            className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-2.5 py-2 text-[11px] text-[#eef0f6] placeholder:text-[#5a5a6e] focus:outline-none focus:border-[#6d5efc]"
                             dir="rtl"
                           />
-                          <div className="flex gap-2">
-                            <button onClick={saveEdit} className="flex-1 bg-[#6d5efc] text-white text-[11px] font-black py-2 rounded-lg">שמירה</button>
-                            <button onClick={() => setEditing(null)} className="px-4 bg-[#22252b] text-[#8a8aa0] text-[11px] font-black py-2 rounded-lg">ביטול</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-start gap-2">
-                          <span className="flex flex-col gap-0.5 flex-shrink-0 pt-0.5">
+                          {r.active && doneCount(g.kind, r.id) > 0 && (
+                            <p className="text-[10px] font-black text-[#22c08c]">
+                              ✓ {doneCount(g.kind, r.id)}{teamCount ? ` מתוך ${teamCount}` : ""} סימנו {g.period || "היום"}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={saveEdit} className="flex-1 bg-[#6d5efc] text-white text-[11px] font-black py-2 min-h-[34px] rounded-lg">
+                              שמירה
+                            </button>
                             <button
                               onClick={() => move(g.kind, i, -1)}
                               disabled={i === 0}
                               aria-label="הזזה למעלה"
-                              className="w-6 h-5 rounded bg-[#20232b] text-[#8a8aa0] flex items-center justify-center disabled:opacity-25"
+                              className="w-8 h-[34px] rounded-lg bg-[#20232b] text-[#8a8aa0] flex items-center justify-center disabled:opacity-25"
                             >
-                              <ChevronUp size={12} />
+                              <ChevronUp size={13} />
                             </button>
                             <button
                               onClick={() => move(g.kind, i, 1)}
                               disabled={i === list.length - 1}
                               aria-label="הזזה למטה"
-                              className="w-6 h-5 rounded bg-[#20232b] text-[#8a8aa0] flex items-center justify-center disabled:opacity-25"
+                              className="w-8 h-[34px] rounded-lg bg-[#20232b] text-[#8a8aa0] flex items-center justify-center disabled:opacity-25"
                             >
-                              <ChevronDown size={12} />
+                              <ChevronDown size={13} />
                             </button>
-                          </span>
-                          <button
-                            onClick={() => setEditing({ id: r.id, title: r.title, subtitle: r.subtitle || "" })}
-                            className="flex-1 min-w-0 text-right"
-                          >
-                            <span className={`block text-[12.5px] font-bold leading-snug ${r.active ? "text-[#eef0f6]" : "text-[#5a5a6e] line-through"}`}>
-                              {r.title}
-                            </span>
-                            {r.subtitle && (
-                              <span className="block text-[10.5px] text-[#8a8aa0] leading-snug mt-0.5">{r.subtitle}</span>
-                            )}
-                            {r.active && doneCount(g.kind, r.id) > 0 && (
-                              <span className="inline-block text-[10px] font-black text-[#22c08c] mt-1">
-                                ✓ {doneCount(g.kind, r.id)}{teamCount ? `/${teamCount}` : ""} סימנו {g.period || "היום"}
-                              </span>
-                            )}
-                          </button>
-                          <span className="flex items-center gap-1 flex-shrink-0">
                             <button
                               onClick={() => toggleActive(r)}
                               title={r.active ? "להסתיר מהצוות" : "להציג לצוות"}
                               aria-label={r.active ? "להסתיר מהצוות" : "להציג לצוות"}
-                              className={`w-7 h-7 rounded-lg flex items-center justify-center ${r.active ? "bg-[#20232b] text-[#8a8aa0]" : "bg-[#20232b] text-[#5a5a6e]"}`}
+                              className="w-8 h-[34px] rounded-lg bg-[#20232b] text-[#8a8aa0] flex items-center justify-center"
                             >
                               {r.active ? <Eye size={13} /> : <EyeOff size={13} />}
                             </button>
@@ -481,20 +512,21 @@ export default function TasksManager({ restaurant, teamCount = 0 }) {
                               onClick={() => removeTask(r.id)}
                               title="מחיקה"
                               aria-label="מחיקת המשימה"
-                              className="w-7 h-7 rounded-lg bg-[#20232b] text-[#e0315a] flex items-center justify-center"
+                              className="w-8 h-[34px] rounded-lg bg-[#20232b] text-[#e0315a] flex items-center justify-center"
                             >
                               <Trash2 size={13} />
                             </button>
-                          </span>
+                          </div>
                         </div>
                       )}
                     </div>
                   ))}
+                  </div>
 
                   {g.kind !== "other" && (
                     <div className="flex gap-2 pt-1">
                       <button
-                        onClick={() => { setPicker(g.kind); setPicked(new Set()); }}
+                        onClick={() => { setPicker(g.kind); setPicked(new Set()); setShowAllLibrary(false); }}
                         className="flex-1 text-[11.5px] font-black py-2.5 rounded-xl border transition"
                         style={{ color: g.color, borderColor: `${g.color}55`, background: `${g.color}12` }}
                       >
@@ -563,8 +595,34 @@ export default function TasksManager({ restaurant, teamCount = 0 }) {
               </p>
               <button onClick={() => setPicker(null)} className="text-[#8a8aa0]" aria-label="סגירה"><X size={18} /></button>
             </div>
+            {/* One tap to a working checklist. Ticking fourteen boxes to set up an opening
+                routine is the kind of chore a manager starts once and abandons ("זה נראה
+                ארוך ומסובך"), so the short version is a button and the full list is opt-in. */}
+            <div className="p-3 pb-0 flex-shrink-0">
+              <button
+                onClick={async () => {
+                  const core = LIBRARY[picker]
+                    .slice(0, CORE_COUNT[picker] || 0)
+                    .filter(([t]) => !(rows || []).some((r) => r.title === t));
+                  const kind = picker;
+                  setPicker(null);
+                  await addTasks(kind, core);
+                }}
+                disabled={busy || coreLeft === 0}
+                className="w-full rounded-xl py-3 min-h-[44px] text-[12.5px] font-black border disabled:opacity-40"
+                style={{ color: pickerGroup?.color, borderColor: `${pickerGroup?.color}66`, background: `${pickerGroup?.color}14` }}
+              >
+                {coreLeft === 0
+                  ? "הצ׳קליסט המומלץ כבר אצלכם ✓"
+                  : `הוספת הצ׳קליסט המומלץ (${coreLeft}) — לחיצה אחת`}
+              </button>
+              <p className="text-[10px] text-[#5a5a6e] text-center mt-1.5 leading-relaxed">
+                מספיק כדי להתחיל. אפשר להוסיף, לערוך או למחוק בכל רגע.
+              </p>
+            </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-              {LIBRARY[picker].map(([title, sub]) => {
+              <p className="text-[10.5px] font-black text-[#5a5a6e] px-1 pt-1">או בחרו בעצמכם</p>
+              {visibleLibrary.map(([title, sub]) => {
                 const taken = (rows || []).some((r) => r.title === title);
                 const on = picked.has(title);
                 return (
@@ -594,6 +652,14 @@ export default function TasksManager({ restaurant, teamCount = 0 }) {
                   </button>
                 );
               })}
+              {hiddenCount > 0 && (
+                <button
+                  onClick={() => setShowAllLibrary(true)}
+                  className="w-full text-[11px] font-black text-[#a79bff] py-2.5 rounded-xl bg-[#0c0d10] border border-[#22252b]"
+                >
+                  עוד {hiddenCount} אפשרויות ↓
+                </button>
+              )}
             </div>
             <div className="p-3 border-t border-[#22252b] flex-shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
               <button

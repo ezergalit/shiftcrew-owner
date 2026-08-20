@@ -19,9 +19,11 @@ export default function Greeting({ name }) {
 
   return (
     <div className="px-1">
-      {/* One line, always. Restaurant names run long ("מסעדת הדגמה — CrewMenu") and a
-          greeting that wraps onto a second line stops reading as a greeting. */}
-      <p className="text-[19px] font-black text-[#eef0f6] leading-tight truncate">
+      {/* Wraps rather than truncates. A long name clipped in RTL cuts the START of any
+          Latin word — "מסעדת הדגמה — CrewMenu" came out as "…wMenu", which reads as a bug
+          rather than as an abbreviation. Two lines is the lesser evil, and most names fit
+          on one anyway. */}
+      <p className="text-[19px] font-black text-[#eef0f6] leading-tight line-clamp-2">
         {greetingFor(now)}{name ? <>, {name}</> : ""}
       </p>
       <p className="text-[11px] text-[#8a8aa0] mt-0.5">{date}</p>
