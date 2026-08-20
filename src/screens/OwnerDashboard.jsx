@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Home, BookOpen, Users, Settings, LogOut, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Star } from "lucide-react";
+import { Home, BookOpen, Users, Settings, LogOut, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Star, Target, Stethoscope, Store, ShieldCheck, Compass} from "lucide-react";
 import LearningStatus from "../components/LearningStatus";
 import OperatorLine from "../components/OperatorLine";
 import SmartSuggestions from "../components/SmartSuggestions";
@@ -12,6 +12,7 @@ import LearningPathSettings from "../components/LearningPathSettings";
 import ProgressChart from "../components/ProgressChart";
 import MenuHealthReview from "../components/MenuHealthReview";
 import AccountSecurity from "../components/AccountSecurity";
+import SettingsSection from "../components/SettingsSection";
 import WaiterPreview from "../components/WaiterPreview";
 import { FLAG_GROUPS, FLAG_GROUP_BY_KEY, effectiveTrackedFlags } from "../lib/dishFlags";
 import { supabase } from "../lib/supabase";
@@ -229,6 +230,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // Inside the team tab: "today" = who learned today (the old status board),
   // "progress" = per-waiter standing, exams and improvement graphs.
   const [teamView, setTeamView] = useState("today");
+  const [openSetting, setOpenSetting] = useState(null); // one settings section at a time
   const [onboarding, setOnboarding] = useState(false); // true if first time setup needed
   // The paste-a-menu import wizard is an OPERATOR tool now — owners never build their own
   // menu (decision 2026-08-17: "החלטנו שאנחנו עושים את זה"). Reachable only by knowing the
@@ -1186,17 +1188,43 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
         )}
 
         {tab === "settings" && (
-          <div className="space-y-4">
-            <button
-              onClick={() => { setTourActive(true); setTab("home"); }}
-              className="w-full bg-[#16181c] border border-[#22252b] text-[#a79bff] font-bold py-2.5 rounded-lg text-xs hover:border-[#6d5efc]/50 transition"
-            >
-              🧭 סיור מודרך באפליקציה — מה יש בכל טאב
-            </button>
+          <div className="space-y-3">
+            <p className="text-[11px] text-[#8a8aa0] px-1 leading-relaxed">
+              כל כותרת מראה מה מוגדר שם עכשיו — אפשר לסרוק את הכל בלי לפתוח כלום.
+            </p>
+            {/* One grouped surface with hairline separators rather than eight floating
+                cards: scanning stays vertical and uninterrupted. */}
+            <div className="bg-[#16181c] border border-[#22252b] rounded-2xl overflow-hidden">
+              <SettingsSection
+                icon={<Target size={15} className="text-[#a79bff]" />}
+                title="מה הצוות נבחן עליו ואיך לומדים"
+                summary="דירוג הנושאים, סדר הקטגוריות, סף המעבר, יעד יומי ואורך המבחן"
+                open={openSetting === "path"}
+                onToggle={() => setOpenSetting(openSetting === "path" ? null : "path")}
+              >
+                <div id="learning-path-settings">
+              <LearningPathSettings restaurant={restaurant} items={items} />
+            </div>
+              </SettingsSection>
 
-            {/* Restaurant details moved here from their own tab — they're set once and
-                rarely touched, which is exactly what settings is for. */}
-            {!editingDetails ? (
+              <SettingsSection
+                icon={<Stethoscope size={15} className="text-[#f3a712]" />}
+                title="בדיקת בריאות התפריט"
+                summary="מנות עם מידע חסר — תיקון קבוצות שלמות במכה"
+                open={openSetting === "health"}
+                onToggle={() => setOpenSetting(openSetting === "health" ? null : "health")}
+              >
+                <MenuHealthReview items={items} categories={existingCategories} onChanged={loadMenuItems} />
+              </SettingsSection>
+
+              <SettingsSection
+                icon={<Store size={15} className="text-[#22c08c]" />}
+                title="פרטי המסעדה"
+                summary={[details?.name, ...(details?.cuisineTypes || [])].filter(Boolean).join(" · ") || "לא מוגדר"}
+                open={openSetting === "details"}
+                onToggle={() => setOpenSetting(openSetting === "details" ? null : "details")}
+              >
+                {!editingDetails ? (
               <div className="bg-[#16181c] rounded-lg p-4 border border-[#22252b] space-y-3">
                 <p className="font-bold text-[#eef0f6]">פרטי המסעדה</p>
                 <div className="grid grid-cols-2 gap-3">
@@ -1234,18 +1262,16 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 onCancel={() => setEditingDetails(false)}
               />
             )}
+              </SettingsSection>
 
-            {/* Fixing the menu comes before configuring what to test on it: what this
-                screen reports missing is exactly what limits the questions below. */}
-            <MenuHealthReview items={items} categories={existingCategories} onChanged={loadMenuItems} />
-
-            {/* What the team is tested on and how the path is paced. Lives above the
-                account admin because it is the thing an owner comes here to change. */}
-            <div id="learning-path-settings">
-              <LearningPathSettings restaurant={restaurant} items={items} />
-            </div>
-
-            <div className="bg-[#16181c] rounded-lg p-4 border border-[#22252b] space-y-3">
+              <SettingsSection
+                icon={<UserPlus size={15} className="text-[#a79bff]" />}
+                title="משתמשי ניהול נוספים"
+                summary={ownerUsers.length ? `${ownerUsers.length} משתמשים נוספים` : "רק אתם"}
+                open={openSetting === "managers"}
+                onToggle={() => setOpenSetting(openSetting === "managers" ? null : "managers")}
+              >
+                <div className="bg-[#16181c] rounded-lg p-4 border border-[#22252b] space-y-3">
               <p className="font-bold text-[#eef0f6] mb-1">משתמשי ניהול נוספים</p>
               <p className="text-xs text-[#8a8aa0] mb-2">כל משתמש שתוסיפו כאן יוכל להתחבר עם קוד הבעלים + הסיסמה האישית שלו, ולקבל גישה מלאה לניהול המסעדה.</p>
 
@@ -1286,11 +1312,33 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 </button>
               </div>
             </div>
+              </SettingsSection>
 
-            {/* Password change + account deletion (the latter is a store requirement:
-                Google Play UserData policy and App Store 5.1.1(v) both block apps
-                that offer accounts without an in-app way to delete them). */}
-            <AccountSecurity ownerCode={restaurant?.owner_code} secondaryName={restaurant?.logged_in_as_name || null} onDeleted={onSignOut} />
+              <SettingsSection
+                icon={<ShieldCheck size={15} className="text-[#e0315a]" />}
+                title="חשבון ואבטחה"
+                summary="החלפת סיסמה ומחיקת החשבון"
+                open={openSetting === "security"}
+                onToggle={() => setOpenSetting(openSetting === "security" ? null : "security")}
+              >
+                <AccountSecurity ownerCode={restaurant?.owner_code} secondaryName={restaurant?.logged_in_as_name || null} onDeleted={onSignOut} />
+              </SettingsSection>
+
+              <SettingsSection
+                icon={<Compass size={15} className="text-[#38bdf8]" />}
+                title="סיור מודרך באפליקציה"
+                summary="לעבור שוב על מה שיש בכל טאב"
+                open={openSetting === "tour"}
+                onToggle={() => setOpenSetting(openSetting === "tour" ? null : "tour")}
+              >
+                <button
+              onClick={() => { setTourActive(true); setTab("home"); }}
+              className="w-full bg-[#16181c] border border-[#22252b] text-[#a79bff] font-bold py-2.5 rounded-lg text-xs hover:border-[#6d5efc]/50 transition"
+            >
+              🧭 סיור מודרך באפליקציה — מה יש בכל טאב
+            </button>
+              </SettingsSection>
+            </div>
           </div>
         )}
       </div>
