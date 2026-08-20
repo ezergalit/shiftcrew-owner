@@ -75,9 +75,9 @@ export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, 
   if (welcome) {
     return (
       <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-6" dir="rtl">
-        <div className="w-full max-w-sm bg-[#1c1e24] border border-[#6d5efc]/60 rounded-2xl p-6 shadow-2xl shadow-black/60 text-center space-y-4">
-          <div className="w-14 h-14 rounded-2xl bg-[#6d5efc]/15 flex items-center justify-center mx-auto">
-            <Compass size={28} className="text-[#a79bff]" />
+        <div className="w-full max-w-sm bg-[#15202b] border border-[#38bdf8]/60 rounded-2xl p-6 shadow-2xl shadow-black/60 text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-[#38bdf8]/15 flex items-center justify-center mx-auto">
+            <Compass size={28} className="text-[#7dd3fc]" />
           </div>
           <div>
             <p className="text-lg font-black text-[#eef0f6]">ברוכים הבאים!</p>
@@ -89,7 +89,7 @@ export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, 
           </div>
           <button
             onClick={() => { setWelcome(false); onNavigate(STEPS[0].tab); }}
-            className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#5b4ef0] transition"
+            className="w-full bg-[#0ea5e9] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#0284c7] transition"
           >
             התחילו את הסיור המודרך
           </button>
@@ -106,10 +106,10 @@ export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, 
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 max-w-md mx-auto px-3 pb-20 pointer-events-none">
-      <div className="pointer-events-auto bg-[#1c1e24] border border-[#6d5efc]/60 rounded-2xl p-4 shadow-2xl shadow-black/60 space-y-3">
+      <div className="pointer-events-auto bg-[#15202b] border border-[#38bdf8]/60 rounded-2xl p-4 shadow-2xl shadow-black/60 space-y-3">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-[#a79bff] bg-[#6d5efc]/15 px-2 py-0.5 rounded-full">
+            <span className="text-[10px] font-bold text-[#7dd3fc] bg-[#38bdf8]/15 px-2 py-0.5 rounded-full">
               סיור מודרך · {step + 1}/{STEPS.length}
             </span>
           </div>
@@ -128,7 +128,7 @@ export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, 
           <div className="space-y-2">
             <button
               onClick={() => (onSetupNow || onClose)()}
-              className="w-full bg-[#6d5efc] text-white font-bold py-2.5 rounded-lg text-xs hover:bg-[#5b4ef0] transition"
+              className="w-full bg-[#0ea5e9] text-white font-bold py-2.5 rounded-lg text-xs hover:bg-[#0284c7] transition"
             >
               הגדירו את המסעדה שלכם עכשיו ←
             </button>
@@ -159,7 +159,7 @@ export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, 
             )}
             <button
               onClick={() => go(step + 1)}
-              className="flex-1 bg-[#6d5efc] text-white font-bold py-2 rounded-lg text-xs hover:bg-[#5b4ef0] transition flex items-center justify-center gap-1"
+              className="flex-1 bg-[#0ea5e9] text-white font-bold py-2 rounded-lg text-xs hover:bg-[#0284c7] transition flex items-center justify-center gap-1"
             >
               הבא <ChevronLeft size={14} />
             </button>
@@ -167,7 +167,7 @@ export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, 
         )}
         <div className="flex justify-center gap-1">
           {STEPS.map((_, i) => (
-            <span key={i} className={`w-1.5 h-1.5 rounded-full ${i === step ? "bg-[#6d5efc]" : "bg-[#3a3d46]"}`} />
+            <span key={i} className={`w-1.5 h-1.5 rounded-full ${i === step ? "bg-[#38bdf8]" : "bg-[#3a3d46]"}`} />
           ))}
         </div>
       </div>
