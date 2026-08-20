@@ -74,9 +74,18 @@ export default function TeamMessageDialog({ member, restaurantId, lastSent, onCl
           {/* Sending the same reminder twice in one day reads as noise, so say it plainly
               rather than letting the manager find out from the waiter. */}
           {lastSent && (
-            <p className="text-[11px] font-bold text-[#f3a712] bg-[#f3a712]/10 border border-[#f3a712]/25 rounded-lg p-2.5 leading-relaxed">
-              כבר נשלחה הודעה היום: "{lastSent}"
-            </p>
+            <div
+              className={`rounded-lg p-2.5 border leading-relaxed ${
+                lastSent.readAt
+                  ? "text-[#22c08c] bg-[#22c08c]/10 border-[#22c08c]/25"
+                  : "text-[#f3a712] bg-[#f3a712]/10 border-[#f3a712]/25"
+              }`}
+            >
+              <p className="text-[11px] font-black">
+                {lastSent.readAt ? "✓ ההודעה של היום נקראה" : "נשלחה הודעה היום — טרם נקראה"}
+              </p>
+              <p className="text-[11px] font-bold mt-0.5 opacity-80">"{lastSent.body}"</p>
+            </div>
           )}
 
           <div className="space-y-1.5">

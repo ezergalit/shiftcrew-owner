@@ -168,17 +168,26 @@ export function MemberRow({ name, pct, color, dot, note, onClick, onMessage, mes
         </span>
       </button>
       {/* Offered only where it makes sense — next to someone who hasn't studied. A nudge
-          button on every row would just be another thing to ignore. */}
+          button on every row would just be another thing to ignore.
+          Three states, because "sent" and "landed" are different facts: untouched, sent
+          but unread (amber), and read by the waiter (green ✓). */}
       {onMessage && (
         <button
           onClick={onMessage}
-          title={messaged ? "כבר נשלחה הודעה היום" : `שליחת הודעה ל${name}`}
+          title={
+            !messaged ? `שליחת הודעה ל${name}`
+              : messaged.readAt ? "ההודעה של היום נקראה" : "נשלחה הודעה היום — טרם נקראה"
+          }
           aria-label={`שליחת הודעה ל${name}`}
-          className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition ${
-            messaged ? "bg-[#22c08c]/15 text-[#22c08c]" : "bg-[#20232b] text-[#8a8aa0] hover:text-[#a79bff]"
+          className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition relative ${
+            !messaged ? "bg-[#20232b] text-[#8a8aa0] hover:text-[#a79bff]"
+              : messaged.readAt ? "bg-[#22c08c]/15 text-[#22c08c]" : "bg-[#f3a712]/15 text-[#f3a712]"
           }`}
         >
           <MessageSquare size={13} />
+          {messaged?.readAt && (
+            <span className="absolute -top-0.5 -left-0.5 text-[9px] font-black leading-none">✓</span>
+          )}
         </button>
       )}
     </div>

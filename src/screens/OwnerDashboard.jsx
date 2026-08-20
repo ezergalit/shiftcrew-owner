@@ -258,7 +258,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // identical no matter which home list opened it.
   const [liveByMember, setLiveByMember] = useState({});
   const [messageFor, setMessageFor] = useState(null);          // waiter being nudged
-  const [messagedToday, setMessagedToday] = useState({});      // id -> last message body
+  const [messagedToday, setMessagedToday] = useState({});      // id -> { body, readAt }
   const [menuGroupView, setMenuGroupView] = useState(null); // open menu (menu_group) or null
   const [editingBrief, setEditingBrief] = useState(false);
   const [onboarding, setOnboarding] = useState(false); // true if first time setup needed
@@ -494,14 +494,17 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
       // Which waiters were already nudged today — so the button can say so instead of the
       // manager sending the same reminder three times before lunch.
+      //
+      // `read_at` is filled by the waiter app when they tap "קראתי" on the message, so the
+      // manager sees whether the nudge actually landed rather than only that it was sent.
       const { data: msgData } = await db.from("team_messages")
-        .select("team_member_id, body, created_at")
+        .select("team_member_id, body, created_at, read_at")
         .eq("restaurant_id", restaurant.id)
         .gte("created_at", `${today}T00:00:00`)
         .order("created_at", { ascending: true });
       if (alive && msgData) {
         const map = {};
-        msgData.forEach((m) => { map[m.team_member_id] = m.body; }); // last one wins
+        msgData.forEach((m) => { map[m.team_member_id] = { body: m.body, readAt: m.read_at }; }); // last one wins
         setMessagedToday(map);
       }
 
@@ -1569,7 +1572,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           restaurantId={restaurant?.id}
           lastSent={messagedToday[messageFor.id]}
           onClose={() => setMessageFor(null)}
-          onSent={(id, body) => setMessagedToday((prev) => ({ ...prev, [id]: body }))}
+          onSent={(id, body) => setMessagedToday((prev) => ({ ...prev, [id]: { body, readAt: null } }))}
         />
       )}
       {tourActive && (

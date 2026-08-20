@@ -154,7 +154,9 @@ export default function LearningStatus({ restaurant, onSelectMember, onRows, onM
       // The nudge button appears only next to someone who did not study today — that is
       // the whole point of the button, and the group it belongs to.
       onMessage={tone === "studied" ? undefined : () => onMessage?.(r)}
-      messaged={!!messagedToday?.[r.id]}
+      // The record itself, not a boolean: MemberRow needs `readAt` to tell "sent" from
+      // "read". `!!` here quietly collapsed that distinction and every nudge read as unread.
+      messaged={messagedToday?.[r.id]}
     />
   );
 
