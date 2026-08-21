@@ -176,14 +176,17 @@ const AUTOMATIC = [
   ["להשלים את יעד הדקות היומי", "היעד נקבע בהגדרות → מה הצוות נבחן עליו"],
 ];
 
-export default function TasksManager({ restaurant, teamCount = 0 }) {
+// `initialGroup` opens straight into one checklist — a task row that says "משימות פתיחת
+// משמרת" must land on that checklist, not on a grid the manager then has to navigate.
+// `onExit` is what the back arrow does once there is nowhere further back to go.
+export default function TasksManager({ restaurant, teamCount = 0, initialGroup = null, onExit }) {
   const [rows, setRows] = useState(null);        // null = still loading
   // task_id -> members who ticked it, per period. Which one a row reads depends on how
   // often that checklist repeats.
   const [doneBy, setDoneBy] = useState({ day: {}, week: {}, month: {} });
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const [groupView, setGroupView] = useState(null); // which checklist is open, null = overview
+  const [groupView, setGroupView] = useState(initialGroup); // which checklist is open, null = overview
   const [picker, setPicker] = useState(null);    // kind whose library sheet is open
   const [picked, setPicked] = useState(new Set());
   const [showAllLibrary, setShowAllLibrary] = useState(false);
@@ -399,7 +402,12 @@ export default function TasksManager({ restaurant, teamCount = 0 }) {
     <div className="space-y-3">
       <div className="flex items-center gap-2.5">
         <button
-          onClick={() => { setGroupView(null); setEditing(null); setCustomFor(null); }}
+          onClick={() => {
+            setEditing(null); setCustomFor(null);
+            // Opened directly into this checklist ⇒ back means "out", not "up to a grid
+            // the manager never came from".
+            if (initialGroup) onExit?.(); else setGroupView(null);
+          }}
           aria-label="חזרה לכל הצ׳קליסטים"
           className="w-9 h-9 rounded-xl bg-[#0c0d10] border border-[#22252b] flex items-center justify-center text-[#eef0f6] flex-shrink-0"
         >

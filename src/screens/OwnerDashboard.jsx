@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from "react";
-import { Home, BookOpen, Users, Settings, ListChecks, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Star, Target, Stethoscope, Store, ShieldCheck, Compass, ChevronLeft, ChevronRight, Flame, TrendingUp, Megaphone} from "lucide-react";
+import { Home, BookOpen, Users, Settings, ListChecks, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Star, Target, Stethoscope, Store, ShieldCheck, Compass, ChevronLeft, ChevronRight, Flame, TrendingUp, Megaphone, BarChart3} from "lucide-react";
 import LearningStatus from "../components/LearningStatus";
 import SignOutButton from "../components/SignOutButton";
 import TasksManager from "../components/TasksManager";
 import TeamRoster from "../components/TeamRoster";
 import MemberSheet, { MemberRow } from "../components/MemberSheet";
 import TeamMessageDialog from "../components/TeamMessageDialog";
-import OwnerDayTasks, { OwnerDayDone } from "../components/OwnerDayTasks";
+import OwnerTasksList from "../components/OwnerTasksList";
+import TeamScreen from "../components/TeamScreen";
 import Greeting from "../components/Greeting";
 import OperatorLine from "../components/OperatorLine";
 import SmartSuggestions from "../components/SmartSuggestions";
@@ -25,6 +26,10 @@ import { FLAG_GROUPS, FLAG_GROUP_BY_KEY, effectiveTrackedFlags } from "../lib/di
 import { supabase } from "../lib/supabase";
 
 const db = supabase.schema("menu_app");
+
+// Hebrew counts one thing in the singular. "1 משימות" reads as a string-concatenation
+// bug, because it is one.
+const countLabel = (n, one, many) => (n === 1 ? `${one} אחת` : `${n} ${many}`);
 export const RESTAURANT_COLUMNS = "id, name, owner_code, team_code, created_at, phone, address, description, cuisine_types, important_allergens, service_style, service_notes, onboarding_completed, onboarding_step, tracked_flags";
 
 function fromDbRestaurant(r) {
@@ -248,8 +253,11 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // today's update is written that is the job, and once it's out the question becomes who
   // is actually learning. Set once on mount — it must not snap shut under the owner the
   // moment they save the brief.
-  const [openHome, setOpenHome] = useState(null);
+  const [openHome, setOpenHome] = useState("today");
   const homeDefaulted = useRef(false);
+  // Home is a task list; a row opens a view over it. null = the list itself.
+  const [homeView, setHomeView] = useState(null);      // null | "brief" | "checklist:<kind>"
+  const [showTeam, setShowTeam] = useState(false);     // the 📊 team screen
   const [loadDone, setLoadDone] = useState(false); // every dashboard query has returned
   // Which waiter's full detail sheet is open. Holds the LearningStatus row when the tap
   // came from there (it knows today's minutes and the weekly bars), or just an id.
@@ -289,6 +297,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const [briefReadsToday, setBriefReadsToday] = useState(new Set());
   const [activeTaskCount, setActiveTaskCount] = useState(null);
   const [taskDoneByMember, setTaskDoneByMember] = useState({}); // id -> tasks ticked today
+  const [taskCountByKind, setTaskCountByKind] = useState({});   // kind -> active task count
 
   // Daily brief
   const [dailyBrief, setDailyBrief] = useState({ missing_items: [], new_items: [], oven_items: [], notes: "" });
@@ -389,6 +398,19 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     setOpenHome(briefSent ? "today" : "brief");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadDone]);
+
+  // The checklist editor writes straight to shift_tasks; the task list reads counts the
+  // dashboard loaded once. Re-read them when the editor closes, or the row still says
+  // "להגדרה" over a checklist that now exists.
+  const reloadTaskCounts = async () => {
+    if (!restaurant?.id) return;
+    const { data } = await db.from("shift_tasks")
+      .select("id, kind").eq("restaurant_id", restaurant.id).eq("active", true);
+    setActiveTaskCount((data || []).length);
+    const byKind = {};
+    (data || []).forEach((t) => { byKind[t.kind] = (byKind[t.kind] || 0) + 1; });
+    setTaskCountByKind(byKind);
+  };
 
   const handleTourClose = () => {
     setTourActive(false);
@@ -532,8 +554,13 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       // "משימות משמרת 3/7" line in their detail sheet. TasksManager still loads the full
       // rows itself when its panel opens — this is only what the summaries need.
       const { data: taskRows } = await db.from("shift_tasks")
-        .select("id").eq("restaurant_id", restaurant.id).eq("active", true);
-      if (alive) setActiveTaskCount((taskRows || []).length);
+        .select("id, kind").eq("restaurant_id", restaurant.id).eq("active", true);
+      if (alive) {
+        setActiveTaskCount((taskRows || []).length);
+        const byKind = {};
+        (taskRows || []).forEach((t) => { byKind[t.kind] = (byKind[t.kind] || 0) + 1; });
+        setTaskCountByKind(byKind);
+      }
       if (alive && taskRows?.length) {
         const { data: doneRows } = await db.from("shift_task_done")
           .select("team_member_id").in("task_id", taskRows.map((t) => t.id)).eq("done_date", today);
@@ -577,15 +604,68 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // The guided brief builder replaces the plain editor while it's up, rather than sitting
   // on top of it.
   const showBriefAssistant = !briefAssistantOff && !briefSent;
-  // Shared by the top "what to open the day with" card and the "handled today" footer, so
-  // the two can never disagree about what is still outstanding.
-  const dayTaskProps = {
-    briefSent,
-    briefSummary,
-    taskCount: activeTaskCount || 0,
-    onOpenBrief: () => { setOpenHome("brief"); if (briefSent) setEditingBrief(true); },
-    onOpenTasks: () => setOpenHome("tasks"),
-  };
+  // The manager's day, as a list. Built the way the waiter's is: a row exists only when
+  // there is something behind it, and every row opens the thing rather than ticking a box.
+  const missingDesc = items.filter((d) => !String(d.description || "").trim()).length;
+  const missingAllergens = items.filter((d) => !(d.allergens || []).length).length;
+  const missingIngredients = items.filter((d) => (d.ingredients || []).length < 3).length;
+
+  const openingCount = taskCountByKind.opening || 0;
+  const closingCount = taskCountByKind.closing || 0;
+  const shiftCount = taskCountByKind.shift || 0;
+
+  const ownerTasks = [];
+  ownerTasks.push({
+    id: "brief", group: "daily",
+    title: "לכתוב את העדכון היומי",
+    subtitle: "מה חסר, מה חדש ומה להמליץ — הצוות רואה את זה לפני המשמרת",
+    done: briefSent, cta: briefSent ? "עריכה" : "לכתיבה",
+    onOpen: () => { setHomeView("brief"); if (briefSent) setEditingBrief(true); },
+  });
+  ownerTasks.push({
+    id: "opening", group: "daily",
+    title: "משימות פתיחת משמרת",
+    subtitle: openingCount ? `${countLabel(openingCount, "משימה", "משימות")} · לעריכה` : "צ׳קליסט פתיחה — בוחרים מספרייה מוכנה, לוקח דקה",
+    done: openingCount > 0, cta: openingCount ? "עריכה" : "להגדרה",
+    onOpen: () => setHomeView("checklist:opening"),
+  });
+  ownerTasks.push({
+    id: "closing", group: "daily",
+    title: "משימות סגירת משמרת",
+    subtitle: closingCount ? `${countLabel(closingCount, "משימה", "משימות")} · לעריכה` : "צ׳קליסט סגירה — בוחרים מספרייה מוכנה",
+    done: closingCount > 0, cta: closingCount ? "עריכה" : "להגדרה",
+    onOpen: () => setHomeView("checklist:closing"),
+  });
+  ownerTasks.push({
+    id: "shift", group: "daily",
+    title: "כללי השירות במשמרת",
+    subtitle: shiftCount ? `${countLabel(shiftCount, "משימה", "משימות")} · לעריכה` : "מה חוזר על עצמו בכל שולחן",
+    done: shiftCount > 0, cta: shiftCount ? "עריכה" : "להגדרה",
+    onOpen: () => setHomeView("checklist:shift"),
+  });
+
+  // Menu group: only what is actually missing. Nothing missing ⇒ no rows ⇒ no group.
+  if (missingDesc > 0) ownerTasks.push({
+    id: "desc", group: "menu",
+    title: `${countLabel(missingDesc, "מנה", "מנות")} בלי תיאור`,
+    subtitle: "בלי תיאור הצוות לומד רק שם ומחיר, ואי אפשר לשאול עליה",
+    done: false, cta: "לתפריט",
+    onOpen: () => { setTab("settings"); setOpenSetting("health"); },
+  });
+  if (missingAllergens > 0) ownerTasks.push({
+    id: "allerg", group: "menu",
+    title: `${countLabel(missingAllergens, "מנה", "מנות")} בלי אלרגנים`,
+    subtitle: "השדה היחיד בתפריט שיכול לשלוח אורח לבית חולים",
+    done: false, cta: "להשלמה",
+    onOpen: () => { setTab("settings"); setOpenSetting("health"); },
+  });
+  if (missingIngredients > 0) ownerTasks.push({
+    id: "ingr", group: "menu",
+    title: `${countLabel(missingIngredients, "מנה", "מנות")} בלי מספיק מרכיבים`,
+    subtitle: "צריך 3 ומעלה כדי לבנות מהן שאלות",
+    done: false, cta: "להשלמה",
+    onOpen: () => { setTab("settings"); setOpenSetting("health"); },
+  });
   const weakestMember = teamMembers.length
     ? [...teamMembers].sort((a, b) => memberPct(a.id) - memberPct(b.id))[0]
     : null;
@@ -1061,164 +1141,65 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             {restaurant?.logged_in_as_name && <> · מחובר/ת כ{restaurant.logged_in_as_name}</>}
           </p>
         </div>
-        {/* Always within reach, on every tab — the owner should never wonder what the
-            team is actually seeing. */}
-        <WaiterPreview teamCode={restaurant?.team_code} />
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* The team's numbers live behind this button now that home is a task list —
+              the same move the waiter app makes with its own 📊 screen. */}
+          <button
+            onClick={() => setShowTeam(true)}
+            title="איך הצוות מתקדם"
+            aria-label="איך הצוות מתקדם"
+            className="w-9 h-9 rounded-lg bg-[#191b1f] border border-[#22252b] flex items-center justify-center text-[#8a8aa0] hover:text-[#eef0f6] transition"
+          >
+            <BarChart3 size={16} />
+          </button>
+          {/* Always within reach, on every tab — the owner should never wonder what the
+              team is actually seeing. */}
+          <WaiterPreview teamCode={restaurant?.team_code} />
+        </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
-        {tab === "home" && (
+        {tab === "home" && homeView === null && (
           <div className="space-y-3">
-            {/* Greeted by name and by hour, the way a person would — the manager's own
-                name when a secondary manager is signed in, the restaurant's otherwise. */}
             <Greeting name={restaurant?.logged_in_as_name || restaurant?.name} />
-
-            {/* The manager's own two jobs, first thing. The waiters open their app to a
-                numbered list of what today needs from them; the manager opened theirs to a
-                wall of other people's numbers. Both rows jump straight to the thing, and a
-                finished one leaves for OwnerDayDone at the foot of the page. */}
-            <OwnerDayTasks {...dayTaskProps} />
-
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { n: items.length, label: "מנות בתפריט", go: () => setTab("menu") },
-                { n: teamMembers.length, label: "חברי צוות", go: () => { setTab("settings"); setOpenSetting("team"); } },
-                { n: activeTaskCount ?? "–", label: "משימות פעילות", go: () => setOpenHome("tasks") },
-              ].map((t) => (
-                <button
-                  key={t.label}
-                  onClick={t.go}
-                  className="bg-[#16181c] rounded-xl p-2.5 border border-[#22252b] text-right hover:border-[#6d5efc]/40 transition"
-                >
-                  <p className="text-xl font-black text-[#6d5efc] leading-none tabular-nums">{t.n}</p>
-                  <p className="text-[10px] text-[#8a8aa0] mt-1 leading-snug">{t.label}</p>
-                </button>
-              ))}
-            </div>
-
-            <SmartSuggestions
-              restaurant={restaurant}
-              items={items}
-              onStarred={(ids) => setItems((prev) => prev.map((i) => (ids.includes(i.id) ? { ...i, starred: true } : i)))}
-            />
-
-            {/* Order set by the user (2026-08-20): the update and who read it, then the
-                shift's tasks, then who learned today, then the long-run progress. The first
-                two are what the manager WRITES in the morning; the last two are what they
-                CHECK later, which is why the writing half sits on top. */}
-            <div className="bg-[#16181c] border border-[#22252b] rounded-2xl overflow-hidden">
-              <SettingsSection
-                icon={<Megaphone size={15} className="text-[#38bdf8]" />}
-                title="העדכון היומי"
-                summary={
-                  !briefSent ? "עוד לא נשלח עדכון היום — לחצו לכתיבה"
-                    : `${briefSummary} · ${teamMembers.length ? `${briefReadsToday.size} מתוך ${teamMembers.length} קראו` : "אין עדיין צוות"}`
-                }
-                open={openHome === "brief"}
-                onToggle={() => setOpenHome(openHome === "brief" ? null : "brief")}
-              >
-                {/* Writing it and checking who read it are one job, so they are one card. */}
-                <div className="space-y-3">
-                  {/* The guided builder and the plain form are two ways to write the same
-                      brief; the assistant's own dismiss button says "אכתוב לבד", so it is
-                      exactly the switch between them rather than a second panel above. */}
-                  {showBriefAssistant ? (
-                    <BriefAssistant
-                      items={items}
-                      draft={briefDraft}
-                      setDraft={setBriefDraft}
-                      onSave={async () => { await handleSaveBrief(); setBriefAssistantOff(true); }}
-                      saving={savingBrief}
-                      onDismiss={() => setBriefAssistantOff(true)}
-                    />
-                  ) : briefSent && !editingBrief ? (
-                    <button
-                      onClick={() => setEditingBrief(true)}
-                      className="w-full text-right rounded-xl p-3 flex items-center gap-3 border border-[#22c08c]/40"
-                      style={{ background: "linear-gradient(135deg,rgba(34,192,140,0.14),rgba(15,92,70,0.16))" }}
-                    >
-                      <span className="w-7 h-7 rounded-lg bg-[#22c08c] text-[#06231a] flex items-center justify-center font-black text-sm flex-shrink-0">✓</span>
-                      <span className="flex-1 min-w-0">
-                        <span className="block text-[12.5px] font-black text-[#eef0f6]">העדכון היומי נשלח</span>
-                        <span className="block text-[10.5px] text-[#8a8aa0] mt-0.5 truncate">{briefSummary}</span>
-                      </span>
-                      <span className="text-[11px] font-black text-[#22c08c] flex-shrink-0">עריכה</span>
-                    </button>
-                  ) : (
-                    <>
-                      <DailyBriefEditor draft={briefDraft} onChange={setBriefDraft} onSave={async () => { await handleSaveBrief(); setEditingBrief(false); }} saving={savingBrief} />
-                      {briefSent && (
-                        <button onClick={() => setEditingBrief(false)} className="w-full text-[11px] font-bold text-[#8a8aa0] py-1">
-                          סגירה בלי לשנות
-                        </button>
-                      )}
-                    </>
-                  )}
-                  <BriefReadBoard restaurant={restaurant} brief={dailyBrief} />
-                </div>
-              </SettingsSection>
-
-              <SettingsSection
-                icon={<ListChecks size={15} className="text-[#a79bff]" />}
-                title="משימות המשמרת"
-                summary={
-                  activeTaskCount
-                    ? `${activeTaskCount === 1 ? "משימה פעילה אחת" : `${activeTaskCount} משימות פעילות`} · יומי · שבועי · חודשי`
-                    : "צ׳קליסט פתיחה, סגירה, שבועי וחודשי — ספרייה מוכנה בפנים"
-                }
-                open={openHome === "tasks"}
-                onToggle={() => setOpenHome(openHome === "tasks" ? null : "tasks")}
-              >
-                <TasksManager restaurant={restaurant} teamCount={teamMembers.length} />
-              </SettingsSection>
-
-              <SettingsSection
-                icon={<Flame size={15} className="text-[#f3a712]" />}
-                title="מי למד היום"
-                summary={
-                  teamMembers.length
-                    ? `${studiedToday} מתוך ${teamMembers.length} למדו היום · ואחריהם מי שלא`
-                    : "אין עדיין חברי צוות"
-                }
-                open={openHome === "today"}
-                onToggle={() => setOpenHome(openHome === "today" ? null : "today")}
-              >
-                <LearningStatus
-                  restaurant={restaurant}
-                  onSelectMember={setSheetFor}
-                  onRows={(rows) => setLiveByMember(Object.fromEntries(rows.map((r) => [r.id, r])))}
-                  onMessage={setMessageFor}
-                  messagedToday={messagedToday}
-                />
-              </SettingsSection>
-
-              <SettingsSection
-                icon={<TrendingUp size={15} className="text-[#22c08c]" />}
-                title="התקדמות ומבחנים"
-                summary={
-                  teamMembers.length
-                    ? `ידע ממוצע ${teamAvgPct}%${weakestMember ? ` · הכי זקוק/ה לתרגול: ${weakestMember.name}` : ""}`
-                    : "אין עדיין חברי צוות — הקוד בהגדרות"
-                }
-                open={openHome === "progress"}
-                onToggle={() => setOpenHome(openHome === "progress" ? null : "progress")}
-              >
-                <TeamProgressList
-                  teamMembers={teamMembers}
-                  memberPct={memberPct}
-                  taskDoneByMember={taskDoneByMember}
-                  activeTaskCount={activeTaskCount}
-                  onSelectMember={setSheetFor}
-                />
-              </SettingsSection>
-            </div>
-
-            {/* Already handled today — small, muted, at the foot of the page. It used to
-                sit at the top in green, which meant that by mid-morning the first thing
-                the manager saw was two ticks to scroll past. */}
-            <OwnerDayDone {...dayTaskProps} />
+            <OwnerTasksList tasks={ownerTasks} />
           </div>
+        )}
+
+        {/* Each task row opens a real screen rather than expanding a panel in place —
+            same rule as the waiter's list. The back arrow returns to the list. */}
+        {tab === "home" && homeView === "brief" && (
+          <div className="space-y-3">
+            <ViewHeader title="העדכון היומי" subtitle="מה חסר, מה חדש ומה להמליץ" onBack={() => setHomeView(null)} />
+            {showBriefAssistant ? (
+              <BriefAssistant
+                items={items}
+                draft={briefDraft}
+                setDraft={setBriefDraft}
+                onSave={async () => { await handleSaveBrief(); setBriefAssistantOff(true); }}
+                saving={savingBrief}
+                onDismiss={() => setBriefAssistantOff(true)}
+              />
+            ) : (
+              <DailyBriefEditor
+                draft={briefDraft}
+                onChange={setBriefDraft}
+                onSave={async () => { await handleSaveBrief(); setEditingBrief(false); }}
+                saving={savingBrief}
+              />
+            )}
+            <BriefReadBoard restaurant={restaurant} brief={dailyBrief} />
+          </div>
+        )}
+
+        {tab === "home" && String(homeView).startsWith("checklist") && (
+          <TasksManager
+            restaurant={restaurant}
+            teamCount={teamMembers.length}
+            initialGroup={homeView.split(":")[1] || null}
+            onExit={() => { setHomeView(null); reloadTaskCounts(); }}
+          />
         )}
 
         {tab === "menu" && (
@@ -1558,6 +1539,41 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           <NavButton icon={<BookOpen size={18} />} label="תפריט" active={tab === "menu"} onClick={() => setTab("menu")} />
           <NavButton icon={<Settings size={18} />} label="הגדרות" active={tab === "settings"} onClick={() => setTab("settings")} />
         </div>
+      {showTeam && (
+        <TeamScreen
+          restaurant={restaurant}
+          teamMembers={teamMembers}
+          dailyBrief={dailyBrief}
+          briefSent={briefSent}
+          briefReadsToday={briefReadsToday}
+          studiedToday={studiedToday}
+          teamAvgPct={teamAvgPct}
+          weakestMember={weakestMember}
+          open={openHome}
+          onToggle={setOpenHome}
+          onSelectMember={setSheetFor}
+          onRows={(rows) => setLiveByMember(Object.fromEntries(rows.map((r) => [r.id, r])))}
+          onMessage={setMessageFor}
+          messagedToday={messagedToday}
+          onClose={() => setShowTeam(false)}
+        >
+          <>
+            <SmartSuggestions
+              restaurant={restaurant}
+              items={items}
+              onStarred={(ids) => setItems((prev) => prev.map((i) => (ids.includes(i.id) ? { ...i, starred: true } : i)))}
+            />
+            <TeamProgressList
+              teamMembers={teamMembers}
+              memberPct={memberPct}
+              taskDoneByMember={taskDoneByMember}
+              activeTaskCount={activeTaskCount}
+              onSelectMember={setSheetFor}
+            />
+          </>
+        </TeamScreen>
+      )}
+
       {/* One waiter's full detail, opened from either home list. */}
       {sheetFor && (
         <MemberSheet
@@ -1584,6 +1600,26 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           withWelcome={tourAutoRun}
         />
       )}
+      </div>
+    </div>
+  );
+}
+
+// The back row every home sub-view opens with, so "where am I and how do I get out"
+// is answered the same way each time.
+function ViewHeader({ title, subtitle, onBack }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <button
+        onClick={onBack}
+        aria-label="חזרה למשימות"
+        className="w-9 h-9 rounded-xl bg-[#16181c] border border-[#22252b] flex items-center justify-center text-[#eef0f6] flex-shrink-0"
+      >
+        <ChevronRight size={18} />
+      </button>
+      <div className="min-w-0">
+        <p className="text-[13.5px] font-black text-[#eef0f6]">{title}</p>
+        {subtitle && <p className="text-[10.5px] text-[#5a5a6e] leading-snug">{subtitle}</p>}
       </div>
     </div>
   );
