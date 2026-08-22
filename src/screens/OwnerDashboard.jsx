@@ -132,8 +132,8 @@ const NEW_DISH_QUIET_HOURS = 48;
 // DEFAULT_PATH in src/lib/examFacets.js — keep the two in sync. The choice only seeds
 // exam_config; everything stays adjustable later in LearningPathSettings.
 const DIFFICULTY_PROFILES = {
-  easy:        { label: "קליל",  desc: "סף מעבר 40%, המשחקים פתוחים מההתחלה",           pass_threshold: 40, gate_games: false },
-  recommended: { label: "מומלץ", desc: "סף מעבר 50%, קטגוריות נפתחות בהדרגה",            pass_threshold: 50, gate_games: true },
+  easy:        { label: "קליל",  desc: "סף מעבר 40% — התרגול מושך מכל התפריט",           pass_threshold: 40, gate_games: false },
+  recommended: { label: "מומלץ", desc: "סף מעבר 50% — התרגול מתמקד במה שכבר נבחן",            pass_threshold: 50, gate_games: true },
   strict:      { label: "קפדני", desc: "סף מעבר 70% — לצוות שרוצים לדייק בו",             pass_threshold: 70, gate_games: true },
 };
 function isStandaloneNewDish(existingItems) {
@@ -499,7 +499,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       const { data: teamData, error: teamErr } = await db.from("team_members")
         .select("*").eq("restaurant_id", restaurant.id)
         .order("created_at");
-      if (teamErr) console.error("could not load team members:", teamErr);
+      if (teamErr) console.error("could not load team members:", teamErr.message, teamErr.code);
       if (alive && !teamErr) setTeamMembers(teamData || []);
 
       const { data: lbData } = await db.from("leaderboard")
@@ -657,6 +657,16 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const shiftCount = taskCountByKind.shift || 0;
 
   const ownerTasks = [];
+  // A brand-new restaurant's single most important task: get the team in. Without this
+  // row, the path from "menu imported" to "waiters learning" ran through settings — a
+  // place a first-time owner has no reason to open. Disappears the moment someone joins.
+  if (loadDone && teamMembers.length === 0) ownerTasks.push({
+    id: "invite", group: "daily",
+    title: "לצרף את הצוות",
+    subtitle: "שתפו את קוד ההצטרפות — כל מלצר נכנס עם הקוד והשם שלו, בלי סיסמאות",
+    done: false, cta: "לקוד",
+    onOpen: () => { setTab("settings"); setOpenSetting("team"); },
+  });
   ownerTasks.push({
     id: "brief", group: "daily",
     title: "לכתוב את העדכון היומי",
@@ -983,11 +993,11 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const handleAddManager = async () => {
     setManagerErr("");
     if (!newManagerName.trim() || !newManagerPassword.trim()) {
-      setManagerErr("חובה למלא שם וסיסמא.");
+      setManagerErr("חובה למלא שם וסיסמה.");
       return;
     }
     if (newManagerPassword.length < 4) {
-      setManagerErr("סיסמא חייבת להיות לפחות 4 תווים.");
+      setManagerErr("הסיסמה חייבת להיות באורך 4 תווים לפחות.");
       return;
     }
     setAddingManager(true);
@@ -1050,7 +1060,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 <textarea
                   value={onboardingForm.description}
                   onChange={(e) => setOnboardingForm({ ...onboardingForm, description: e.target.value })}
-                  placeholder="ספרו לנו על המסעדה שלכם..."
+                  placeholder="ספרו לנו על המסעדה שלכם…"
                   className="w-full bg-[#16181c] border border-[#22252b] rounded-xl px-3 py-3 text-[#eef0f6] placeholder:text-[#8a8aa0] focus:outline-none focus:border-[#6d5efc] resize-none"
                   rows="3"
                   dir="rtl"
@@ -1101,7 +1111,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 <textarea
                   value={onboardingForm.serviceNotes}
                   onChange={(e) => setOnboardingForm({ ...onboardingForm, serviceNotes: e.target.value })}
-                  placeholder="לדוגמה: לפנות ללקוחות בשמם הפרטי, להציע יין מומלץ, לוודא שהילדים מקבלים תשומת לב מיוחדת..."
+                  placeholder="לדוגמה: לפנות ללקוחות בשמם הפרטי, להציע יין מומלץ, לוודא שהילדים מקבלים תשומת לב מיוחדת…"
                   className="w-full bg-[#16181c] border border-[#22252b] rounded-xl px-3 py-3 text-[#eef0f6] placeholder:text-[#8a8aa0] focus:outline-none focus:border-[#6d5efc] resize-none"
                   rows="3"
                   dir="rtl"
@@ -1157,7 +1167,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 disabled={savingStep}
                 className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-lg hover:bg-[#5b4ef0] transition disabled:opacity-40"
               >
-                {savingStep ? "שומר..." : "הבא"}
+                {savingStep ? "שומר…" : "הבא"}
               </button>
               {onboardingStep > 1 && (
                 <button
@@ -1189,26 +1199,35 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       {/* Header */}
       <div className="px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-4 border-b border-[#22252b] flex items-center justify-between gap-2">
         {/* Sign-out sits in the top-right corner (first in RTL flow) instead of the bottom
-            nav — far from the tabs the owner taps all day. */}
-        <SignOutButton onSignOut={onSignOut} />
+            nav — far from the tabs the owner taps all day.
+            ⚠️ The owner code is GONE from the header: it is login trivia, not daily work,
+            and it sat there permanently while the restaurant name got truncated. It lives
+            in settings → פרטי המסעדה now. And every icon button carries a caption — a
+            first-time visitor should never have to guess what 📊 opens. */}
+        <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+          <SignOutButton onSignOut={onSignOut} />
+          <span className="text-[8.5px] font-bold text-[#5a5a6e]">יציאה</span>
+        </div>
         <div className="flex-1 min-w-0 text-center">
           <h1 className="text-lg font-black truncate">{restaurant?.name || "המסעדה שלי"}</h1>
-          <p className="text-[11px] text-[#8a8aa0] truncate">
-            קוד בעלים: {restaurant?.owner_code}
-            {restaurant?.logged_in_as_name && <> · מחובר/ת כ{restaurant.logged_in_as_name}</>}
-          </p>
+          {restaurant?.logged_in_as_name && (
+            <p className="text-[11px] text-[#8a8aa0] truncate">מחובר/ת כ{restaurant.logged_in_as_name}</p>
+          )}
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="flex items-start gap-1.5 flex-shrink-0">
           {/* The team's numbers live behind this button now that home is a task list —
               the same move the waiter app makes with its own 📊 screen. */}
-          <button
-            onClick={() => setShowTeam(true)}
-            title="איך הצוות מתקדם"
-            aria-label="איך הצוות מתקדם"
-            className="w-9 h-9 rounded-lg bg-[#191b1f] border border-[#22252b] flex items-center justify-center text-[#8a8aa0] hover:text-[#eef0f6] transition"
-          >
-            <BarChart3 size={16} />
-          </button>
+          <div className="flex flex-col items-center gap-0.5">
+            <button
+              onClick={() => setShowTeam(true)}
+              title="איך הצוות מתקדם"
+              aria-label="איך הצוות מתקדם"
+              className="w-9 h-9 rounded-lg bg-[#191b1f] border border-[#22252b] flex items-center justify-center text-[#8a8aa0] hover:text-[#eef0f6] transition"
+            >
+              <BarChart3 size={16} />
+            </button>
+            <span className="text-[8.5px] font-bold text-[#5a5a6e]">הצוות</span>
+          </div>
           {/* Always within reach, on every tab — the owner should never wonder what the
               team is actually seeing. */}
           <WaiterPreview teamCode={restaurant?.team_code} />
@@ -1289,6 +1308,11 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 onChange={setEditingItem}
                 onSave={handleSaveDish}
                 onCancel={() => { setShowAddForm(false); setEditingItem(null); }}
+                onDelete={editingItem?.id ? async () => {
+                  await handleDeleteDish(editingItem.id);
+                  setShowAddForm(false);
+                  setEditingItem(null);
+                } : undefined}
                 existingCategories={existingCategories}
               />
             )}
@@ -1356,7 +1380,18 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                   <p className="text-xs font-bold text-[#8a8aa0]">{cat}</p>
                 </div>
                 {items.filter((i) => i.category === cat).map((item) => (
-                  <div key={item.id} className={`bg-[#16181c] rounded-lg p-3 border ${item.starred ? "border-[#f3a712]/50" : "border-[#22252b]"}`}>
+                  <div
+                    key={item.id}
+                    /* One tap target: the card IS the edit button. The star is the only
+                       other control (stopPropagation keeps it from opening the editor), and
+                       delete moved INTO the editor behind a confirmation — an unconfirmed
+                       delete on every card was an accident waiting to happen. */
+                    onClick={() => openDishEditor(item)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === "Enter") openDishEditor(item); }}
+                    className={`bg-[#16181c] rounded-lg p-3 border cursor-pointer hover:border-[#6d5efc]/40 transition ${item.starred ? "border-[#f3a712]/50" : "border-[#22252b]"}`}
+                  >
                     <div className="flex justify-between items-start mb-1">
                       <div className="flex items-center gap-2 min-w-0">
                         {/* Real photo wins; until one exists, the category visual stands in. */}
@@ -1372,10 +1407,10 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                           </span>
                         )}
                         <button
-                          onClick={() => toggleStar(item)}
-                          title={item.starred ? "מנה מודגשת — הצוות מתרגל אותה בעדיפות. לחצו להסרת הדגש." : "הדגישו מנה שחשוב במיוחד שהצוות ידע — היא תקבל עדיפות בלימוד."}
-                          aria-label={item.starred ? "הסרת דגש מהמנה" : "הדגשת המנה"}
-                          className={`shrink-0 transition ${item.starred ? "text-[#f3a712]" : "text-[#3a3d46] hover:text-[#8a8aa0]"}`}
+                          onClick={(e) => { e.stopPropagation(); toggleStar(item); }}
+                          title={item.starred ? "מנה מודגשת — הצוות מתרגל אותה בעדיפות. לחצו להסרת ההדגשה." : "הדגישו מנה שחשוב במיוחד שהצוות ידע — היא תקבל עדיפות בלימוד."}
+                          aria-label={item.starred ? "הסרת הדגשה מהמנה" : "הדגשת המנה"}
+                          className={`shrink-0 p-1 -m-1 transition ${item.starred ? "text-[#f3a712]" : "text-[#3a3d46] hover:text-[#8a8aa0]"}`}
                         >
                           <Star size={16} fill={item.starred ? "currentColor" : "none"} />
                         </button>
@@ -1383,37 +1418,19 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                       </div>
                       <p className="font-bold text-[#6d5efc] shrink-0">₪{item.price}</p>
                     </div>
-                    {/* Always visible — the description is what the team learns, and after a
-                        photo import it's exactly where a misread word hides. A missing one is
-                        called out instead of silently blank, and either state opens the editor. */}
-                    <button
-                      onClick={() => openDishEditor(item)}
-                      className="block w-full text-right mb-1.5"
-                      title="לחצו לעריכת התיאור"
-                    >
-                      {item.description ? (
-                        <p className="text-xs text-[#8a8aa0] leading-relaxed">{item.description}</p>
-                      ) : (
-                        <p className="text-xs text-[#6a6a7e] italic">אין תיאור — לחצו להוספה. בלי תיאור, הצוות לומד רק שם ומחיר.</p>
-                      )}
-                    </button>
-                    {item.allergens?.length > 0 && (
-                      <p className="text-xs text-[#ff7a59] mb-2">אלרגנים: {item.allergens.join(", ")}</p>
+                    {/* The description is what the team learns; a missing one is called out
+                        instead of silently blank. */}
+                    {item.description ? (
+                      <p className="text-xs text-[#8a8aa0] leading-relaxed mb-1.5">{item.description}</p>
+                    ) : (
+                      <p className="text-xs text-[#6a6a7e] italic mb-1.5">אין תיאור — לחצו להוספה. בלי תיאור, הצוות לומד רק שם ומחיר.</p>
                     )}
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => openDishEditor(item)}
-                        className="flex-1 bg-[#22252b] text-[#6d5efc] py-1 rounded text-xs hover:bg-[#2c2e35] transition"
-                      >
-                        <Edit2 size={14} className="inline mr-1" /> עריכה
-                      </button>
-                      <button
-                        onClick={() => handleDeleteDish(item.id)}
-                        className="flex-1 bg-[#22252b] text-[#e0315a] py-1 rounded text-xs hover:bg-[#2c2e35] transition"
-                      >
-                        <Trash2 size={14} className="inline mr-1" /> מחיקה
-                      </button>
-                    </div>
+                    {item.allergens?.length > 0 && (
+                      <p className="text-xs text-[#ff7a59] mb-1.5">אלרגנים: {item.allergens.join(", ")}</p>
+                    )}
+                    <p className="text-[10px] font-bold text-[#5a5a6e] flex items-center gap-1">
+                      <Edit2 size={10} /> לחצו לעריכה
+                    </p>
                   </div>
                 ))}
               </div>
@@ -1485,6 +1502,11 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                   <div>
                     <p className="text-xs font-bold text-[#8a8aa0]">סגנון האירוח</p>
                     <p className="text-sm text-[#eef0f6]">{SERVICE_STYLES.find((s) => s.id === details?.serviceStyle)?.title || "לא מוגדר"}</p>
+                  </div>
+                  {/* Moved here from the header — it is needed at login, not all day. */}
+                  <div>
+                    <p className="text-xs font-bold text-[#8a8aa0]">קוד בעלים (לכניסה)</p>
+                    <p className="text-sm text-[#a79bff] font-black tracking-wide">{restaurant?.owner_code}</p>
                   </div>
                 </div>
                 {details?.cuisineTypes?.length > 0 && (
@@ -1558,7 +1580,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                   disabled={addingManager}
                   className="w-full bg-[#6d5efc] text-white font-bold py-2 rounded-lg text-sm hover:bg-[#5b4ef0] transition disabled:opacity-60"
                 >
-                  {addingManager ? "מוסיף..." : "הוספת משתמש"}
+                  {addingManager ? "מוסיף…" : "הוספת משתמש"}
                 </button>
               </div>
             </div>
@@ -1802,7 +1824,7 @@ function DailyBriefEditor({ items, draft, onChange, onSave, saving }) {
         <textarea
           value={draft.notes}
           onChange={(e) => onChange({ ...draft, notes: e.target.value })}
-          placeholder="כל דבר נוסף שהצוות צריך לדעת היום..."
+          placeholder="כל דבר נוסף שהצוות צריך לדעת היום…"
           className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-3 py-2 text-[#eef0f6] placeholder:text-[#8a8aa0] focus:outline-none focus:border-[#6d5efc] text-sm resize-none"
           rows="2"
           dir="rtl"
@@ -1814,7 +1836,7 @@ function DailyBriefEditor({ items, draft, onChange, onSave, saving }) {
         disabled={saving}
         className="w-full bg-[#6d5efc] text-white font-bold py-2.5 min-h-[44px] rounded-lg text-sm hover:bg-[#5b4ef0] transition disabled:opacity-60"
       >
-        {saving ? "שומר..." : "שמירת העדכון היומי"}
+        {saving ? "שומר…" : "שמירת העדכון היומי"}
       </button>
     </div>
   );
@@ -2047,7 +2069,7 @@ function MenuSetupTutorial({ restaurant, onDone }) {
   //
   // ⚠️ Except marked transcripts. A pasted text that carries our transcription markers
   // (## heading, ~ subtitle, > description) is a photo transcript being re-imported —
-  // the price parser doesn't know the markers, so a "~ ניחוחות של פסטה..." subtitle
+  // the price parser doesn't know the markers, so a "~ ניחוחות של פסטה…" subtitle
   // line leaked into the menu as a dish. Marked text goes down the smart path, which
   // understands the markers and falls back to parseMarkedTranscript if the AI fails.
   const handleParse = async () => {
@@ -2287,7 +2309,7 @@ function MenuSetupTutorial({ restaurant, onDone }) {
               disabled={!rawText.trim() || aiBusy}
               className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-lg hover:bg-[#5b4ef0] transition disabled:opacity-40"
             >
-              {aiBusy ? "מפענח..." : "פענוח אוטומטי"}
+              {aiBusy ? "מפענח…" : "פענוח אוטומטי"}
             </button>
             <label className={`w-full bg-[#22252b] text-[#eef0f6] font-bold py-3 rounded-lg hover:bg-[#2c2e35] transition flex items-center justify-center gap-2 cursor-pointer ${aiBusy ? "opacity-40 pointer-events-none" : ""}`}>
               <Camera size={16} /> צילום של התפריט
@@ -2345,7 +2367,7 @@ function MenuSetupTutorial({ restaurant, onDone }) {
                   type="text"
                   value={(q.options || []).includes(answers[q.id]) ? "" : answers[q.id] || ""}
                   onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
-                  placeholder="או כתבו תשובה משלכם..."
+                  placeholder="או כתבו תשובה משלכם…"
                   className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-3 py-2 text-[#eef0f6] placeholder:text-[#8a8aa0] focus:outline-none focus:border-[#6d5efc] text-xs"
                   dir="rtl"
                 />
@@ -2359,7 +2381,7 @@ function MenuSetupTutorial({ restaurant, onDone }) {
               disabled={aiBusy || !aiQuestions.every((q) => (answers[q.id] || "").trim())}
               className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-lg hover:bg-[#5b4ef0] transition disabled:opacity-40"
             >
-              {aiBusy ? "מפענח..." : "המשך לפענוח סופי"}
+              {aiBusy ? "מפענח…" : "המשך לפענוח סופי"}
             </button>
             <button onClick={() => setPhase("review")} disabled={aiBusy} className="w-full bg-[#22252b] text-[#8a8aa0] font-bold py-3 rounded-lg hover:bg-[#2c2e35] transition disabled:opacity-40">
               דלגו — אסדר בעצמי במסך הבא
@@ -2457,7 +2479,7 @@ function MenuSetupTutorial({ restaurant, onDone }) {
               disabled={saving}
               className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-lg hover:bg-[#5b4ef0] transition disabled:opacity-60"
             >
-              {saving ? "שומר..." : `שמירה — ${totalDishes} מנות`}
+              {saving ? "שומר…" : `שמירה — ${totalDishes} מנות`}
             </button>
             <button onClick={() => setPhase("paste")} className="w-full bg-[#22252b] text-[#8a8aa0] font-bold py-3 rounded-lg hover:bg-[#2c2e35] transition">
               חזרה להדבקה
@@ -2524,7 +2546,10 @@ function CategoryComposer({ categories, onMerge }) {
   );
 }
 
-function DishForm({ item, onChange, onSave, onCancel, existingCategories }) {
+function DishForm({ item, onChange, onSave, onCancel, onDelete, existingCategories }) {
+  // Two taps to delete, both inside the editor — the card itself no longer carries a
+  // delete button at all.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   return (
     <div id="dish-form" className="bg-[#16181c] rounded-lg p-4 border border-[#22252b] space-y-3">
       <input
@@ -2714,17 +2739,42 @@ function DishForm({ item, onChange, onSave, onCancel, existingCategories }) {
       <div className="flex gap-2">
         <button
           onClick={onSave}
-          className="flex-1 bg-[#6d5efc] text-white font-bold py-2 rounded-lg text-sm hover:bg-[#5b4ef0] transition"
+          className="flex-1 bg-[#6d5efc] text-white font-bold py-2.5 min-h-[44px] rounded-lg text-sm hover:bg-[#5b4ef0] transition"
         >
-          <Check size={14} className="inline mr-1" /> שמור
+          <Check size={14} className="inline mr-1" /> שמירה
         </button>
         <button
           onClick={onCancel}
-          className="flex-1 bg-[#22252b] text-[#8a8aa0] font-bold py-2 rounded-lg text-sm hover:bg-[#2c2e35] transition"
+          className="flex-1 bg-[#22252b] text-[#8a8aa0] font-bold py-2.5 min-h-[44px] rounded-lg text-sm hover:bg-[#2c2e35] transition"
         >
-          בטל
+          ביטול
         </button>
       </div>
+
+      {onDelete && (
+        !confirmingDelete ? (
+          <button
+            onClick={() => setConfirmingDelete(true)}
+            className="w-full text-[11px] font-bold text-[#8a8aa0] py-1.5 hover:text-[#e0315a] transition"
+          >
+            <Trash2 size={11} className="inline ml-1" /> מחיקת המנה מהתפריט
+          </button>
+        ) : (
+          <div className="bg-[#3a1d22] border border-[#e0315a]/40 rounded-lg p-3 space-y-2">
+            <p className="text-[11px] text-[#eef0f6] leading-relaxed">
+              למחוק את ״{item.name}״? המנה תוסר גם מאפליקציית הצוות, וההתקדמות עליה תימחק.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={onDelete} className="flex-1 bg-[#e0315a] text-white text-[11px] font-black py-2 rounded-lg">
+                כן, למחוק
+              </button>
+              <button onClick={() => setConfirmingDelete(false)} className="px-4 bg-[#22252b] text-[#8a8aa0] text-[11px] font-black py-2 rounded-lg">
+                ביטול
+              </button>
+            </div>
+          </div>
+        )
+      )}
     </div>
   );
 }
@@ -2809,7 +2859,7 @@ function FlagGroupPicker({ value, onChange, onContinue, busy }) {
           disabled={busy || value.length === 0}
           className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-lg hover:bg-[#5b4ef0] transition disabled:opacity-40"
         >
-          {busy ? "שומר..." : value.length ? "המשך לייבוא התפריט" : "בחרו לפחות אחד"}
+          {busy ? "שומר…" : value.length ? "המשך לייבוא התפריט" : "בחרו לפחות אחד"}
         </button>
       </div>
     </>
@@ -2866,7 +2916,7 @@ function PhotoTray({ photos, onAdd, onRemove, onBack, onSend, busy, error }) {
           disabled={busy || photos.length === 0}
           className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-lg hover:bg-[#5b4ef0] transition disabled:opacity-40"
         >
-          {busy ? "קורא..." : `שליחה — ${photos.length} ${photos.length === 1 ? "תמונה" : "תמונות"}`}
+          {busy ? "קורא…" : `שליחה — ${photos.length} ${photos.length === 1 ? "תמונה" : "תמונות"}`}
         </button>
         <button onClick={onBack} disabled={busy} className="w-full bg-[#22252b] text-[#8a8aa0] font-bold py-3 rounded-lg hover:bg-[#2c2e35] transition disabled:opacity-40">
           ביטול
@@ -3052,7 +3102,7 @@ function TranscriptReview({ value, onChange, busy, error, onConfirm }) {
           disabled={busy || !draft.trim()}
           className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-lg hover:bg-[#5b4ef0] transition disabled:opacity-40"
         >
-          {busy ? "מפענח..." : edited ? "שמרו את התיקונים והמשיכו" : "הכל נכון — המשך"}
+          {busy ? "מפענח…" : edited ? "שמרו את התיקונים והמשיכו" : "הכל נכון — המשך"}
         </button>
         {!edited && (
           <p className="text-[10px] text-[#6a6a7e] text-center leading-relaxed">
@@ -3171,17 +3221,42 @@ function DetailsForm({ form, onChange, onSave, onCancel }) {
       <div className="flex gap-2">
         <button
           onClick={onSave}
-          className="flex-1 bg-[#6d5efc] text-white font-bold py-2 rounded-lg text-sm hover:bg-[#5b4ef0] transition"
+          className="flex-1 bg-[#6d5efc] text-white font-bold py-2.5 min-h-[44px] rounded-lg text-sm hover:bg-[#5b4ef0] transition"
         >
-          <Check size={14} className="inline mr-1" /> שמור
+          <Check size={14} className="inline mr-1" /> שמירה
         </button>
         <button
           onClick={onCancel}
-          className="flex-1 bg-[#22252b] text-[#8a8aa0] font-bold py-2 rounded-lg text-sm hover:bg-[#2c2e35] transition"
+          className="flex-1 bg-[#22252b] text-[#8a8aa0] font-bold py-2.5 min-h-[44px] rounded-lg text-sm hover:bg-[#2c2e35] transition"
         >
-          בטל
+          ביטול
         </button>
       </div>
+
+      {onDelete && (
+        !confirmingDelete ? (
+          <button
+            onClick={() => setConfirmingDelete(true)}
+            className="w-full text-[11px] font-bold text-[#8a8aa0] py-1.5 hover:text-[#e0315a] transition"
+          >
+            <Trash2 size={11} className="inline ml-1" /> מחיקת המנה מהתפריט
+          </button>
+        ) : (
+          <div className="bg-[#3a1d22] border border-[#e0315a]/40 rounded-lg p-3 space-y-2">
+            <p className="text-[11px] text-[#eef0f6] leading-relaxed">
+              למחוק את ״{item.name}״? המנה תוסר גם מאפליקציית הצוות, וההתקדמות עליה תימחק.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={onDelete} className="flex-1 bg-[#e0315a] text-white text-[11px] font-black py-2 rounded-lg">
+                כן, למחוק
+              </button>
+              <button onClick={() => setConfirmingDelete(false)} className="px-4 bg-[#22252b] text-[#8a8aa0] text-[11px] font-black py-2 rounded-lg">
+                ביטול
+              </button>
+            </div>
+          </div>
+        )
+      )}
     </div>
   );
 }

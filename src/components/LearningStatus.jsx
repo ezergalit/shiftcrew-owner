@@ -127,7 +127,7 @@ export default function LearningStatus({ restaurant, onSelectMember, onRows, onM
   if (!rows.length)
     return (
       <div className="bg-[#16181c] border border-[#22252b] rounded-xl p-6 text-center">
-        <p className="text-sm font-black text-[#eef0f6] mb-1">אין עדיין אנשי צוות</p>
+        <p className="text-sm font-black text-[#eef0f6] mb-1">אין עדיין חברי צוות</p>
         <p className="text-xs text-[#8a8aa0]">שתפו את קוד הצוות כדי שיתחילו ללמוד</p>
       </div>
     );

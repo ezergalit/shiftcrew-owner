@@ -35,6 +35,11 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
   // than a flag someone forgot to clear. Toggling a setting off and back on correctly
   // reports nothing to save.
   const [persisted, setPersisted] = useState("");
+  // The scariest screen in the app, folded to one sentence for the common case: when the
+  // config matches our recommendation there is nothing to decide, so show that — the
+  // ranking and reorder tools open only on request. A CUSTOMIZED config always shows in
+  // full; hiding an owner's own choices behind a button would misreport their setup.
+  const [advanced, setAdvanced] = useState(false);
   const [ranked, setRanked] = useState([]);     // ordered facet keys the owner tests on
   const [disabled, setDisabled] = useState([]); // supported but deliberately switched off
   const [catOrder, setCatOrder] = useState([]);
@@ -141,6 +146,33 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
         <p className="font-bold text-[#eef0f6] mb-1">מסלול הלמידה של הצוות</p>
         <p className="text-xs text-[#8a8aa0]">קודם צריך תפריט. הוסיפו מנות בטאב "תפריט" ואז אפשר להגדיר על מה לבחון.</p>
       </Card>
+    );
+  }
+
+  const showFull = advanced || !isRecommended;
+
+  if (!showFull) {
+    return (
+      <div className="space-y-3">
+        <div className="bg-[#0d1f19] border border-[#22c08c]/40 rounded-xl p-4 space-y-2">
+          <p className="text-sm font-black text-[#22c08c] flex items-center gap-1.5">
+            <Check size={15} /> הכל מוגדר לפי ההמלצה שלנו
+          </p>
+          <p className="text-xs text-[#c4c4d4] leading-relaxed">
+            הצוות נבחן על: {ranked.map((k) => FACET_META[k].label).join(" · ")}.
+          </p>
+          <p className="text-[11px] text-[#8a8aa0] leading-relaxed">
+            סף מעבר {path.pass_threshold}% · יעד יומי {path.daily_goal_minutes} דק׳ ·
+            מבחן התפריט המלא {path.general_exam_questions} שאלות.
+          </p>
+        </div>
+        <button
+          onClick={() => setAdvanced(true)}
+          className="w-full py-2.5 min-h-[44px] rounded-xl bg-[#16181c] border border-[#22252b] text-[#a79bff] text-xs font-black"
+        >
+          שינוי מתקדם — דירוג נושאים, סדר לימוד וספים
+        </button>
+      </div>
     );
   }
 

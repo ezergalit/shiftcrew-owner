@@ -19,9 +19,9 @@ const COMMON_PASSWORDS = new Set([
 ]);
 
 export function passwordProblem(pw) {
-  if (pw.length < 8) return "הסיסמא צריכה להיות באורך 8 תווים לפחות.";
-  if (COMMON_PASSWORDS.has(pw.toLowerCase())) return "הסיסמא הזו נפוצה מדי — בחרו משהו אחר.";
-  if (/^(.)\1+$/.test(pw)) return "הסיסמא לא יכולה להיות אותו תו שחוזר על עצמו.";
+  if (pw.length < 8) return "הסיסמה צריכה להיות באורך 8 תווים לפחות.";
+  if (COMMON_PASSWORDS.has(pw.toLowerCase())) return "הסיסמה הזו נפוצה מדי — בחרו משהו אחר.";
+  if (/^(.)\1+$/.test(pw)) return "הסיסמה לא יכולה להיות אותו תו שחוזר על עצמו.";
   return null;
 }
 
@@ -64,7 +64,7 @@ export default function OwnerLogin({ onGranted }) {
       setErr("");
     } catch (e2) {
       console.error("forgot password:", e2);
-      setErr("משהו השתבש. נסה/י שוב.");
+      setErr("משהו השתבש. נסו שוב.");
     } finally { setBusy(false); }
   };
 
@@ -76,7 +76,7 @@ export default function OwnerLogin({ onGranted }) {
     if (mode === "enter") {
       try {
         if (!code.trim() || !password.trim()) {
-          setErr("חובה למלא קוד וסיסמא.");
+          setErr("חובה למלא קוד וסיסמה.");
           setBusy(false);
           return;
         }
@@ -88,13 +88,13 @@ export default function OwnerLogin({ onGranted }) {
         });
         if (error) {
           console.error("Login error:", error);
-          setErr("משהו השתבש. נסה/י שוב.");
+          setErr("משהו השתבש. נסו שוב.");
           setBusy(false);
           return;
         }
         const restaurant = data?.restaurant;
         if (!restaurant) {
-          setErr("קוד או סיסמא שגויים.");
+          setErr("קוד או סיסמה שגויים.");
           setBusy(false);
           return;
         }
@@ -103,13 +103,13 @@ export default function OwnerLogin({ onGranted }) {
         onGranted(restaurant);
       } catch (e2) {
         console.error("Login error:", e2);
-        setErr("משהו השתבש. נסה/י שוב.");
+        setErr("משהו השתבש. נסו שוב.");
       } finally { setBusy(false); }
     } else {
       // Create new restaurant — fully open self-serve, no admin gate.
       try {
         if (!name.trim() || !password.trim() || !newCode.trim()) {
-          setErr("חובה למלא שם מסעדה, קוד כניסה וסיסמא.");
+          setErr("חובה למלא שם מסעדה, קוד כניסה וסיסמה.");
           setBusy(false);
           return;
         }
@@ -172,8 +172,8 @@ export default function OwnerLogin({ onGranted }) {
                 the account and hands over the code. The create tab stays in the code for
                 the operator (open the page with ?signup=1); owners only ever see הכנסה. */}
             {(new URLSearchParams(window.location.search).has("signup")
-              ? [["enter", "הכנסה"], ["create", "יצירה"]]
-              : [["enter", "הכנסה"]]
+              ? [["enter", "כניסה"], ["create", "יצירה"]]
+              : [["enter", "כניסה"]]
             ).map(([m, label]) => (
               <button key={m} type="button" onClick={() => { setMode(m); setErr(""); }}
                 className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors ${
@@ -193,7 +193,7 @@ export default function OwnerLogin({ onGranted }) {
                   className="w-full bg-[#0c0d10] border border-[#22252b] rounded-2xl px-3.5 py-3 text-sm font-bold text-[#eef0f6] text-center placeholder:text-[#b4b4c4] focus:outline-none focus:border-[#6d5efc]" />
               </div>
               <div>
-                <p className="text-[12px] font-bold text-[#8a8aa0] mb-1.5 px-1">סיסמא</p>
+                <p className="text-[12px] font-bold text-[#8a8aa0] mb-1.5 px-1">סיסמה</p>
                 <div className="relative">
                   <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••" autoComplete="off"
@@ -208,7 +208,7 @@ export default function OwnerLogin({ onGranted }) {
                 className={`w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 transition-colors ${
                   code.trim() && password.trim() && !busy ? "bg-[#6d5efc] text-white active:bg-[#5b4ef0] shadow-[0_6px_18px_rgba(109,94,252,0.35)]" : "bg-[#22252b] text-[#b4b4c4] cursor-not-allowed"
                 }`}>
-                {busy ? <><Loader2 size={18} className="animate-spin" /> בדוק</> : "הכנסה"}
+                {busy ? <><Loader2 size={18} className="animate-spin" /> מתחבר…</> : "כניסה"}
               </button>
               {forgot === "sent" ? (
                 <p className="text-[11px] text-[#22c08c] font-bold text-center leading-relaxed">
@@ -239,7 +239,7 @@ export default function OwnerLogin({ onGranted }) {
                 </p>
               </div>
               <div>
-                <p className="text-[12px] font-bold text-[#8a8aa0] mb-1.5 px-1">סיסמא של בעלים</p>
+                <p className="text-[12px] font-bold text-[#8a8aa0] mb-1.5 px-1">סיסמת בעלים</p>
                 <div className="relative">
                   <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
                     placeholder="לפחות 8 תווים" autoComplete="new-password"
@@ -259,7 +259,7 @@ export default function OwnerLogin({ onGranted }) {
                 className={`w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 transition-colors ${
                   name.trim() && !pwProblem && newCode.trim() && !busy ? "bg-[#6d5efc] text-white active:bg-[#5b4ef0] shadow-[0_6px_18px_rgba(109,94,252,0.35)]" : "bg-[#22252b] text-[#b4b4c4] cursor-not-allowed"
                 }`}>
-                {busy ? <><Loader2 size={18} className="animate-spin" /> יוצר</> : "יצירה"}
+                {busy ? <><Loader2 size={18} className="animate-spin" /> יוצר…</> : "יצירה"}
               </button>
             </>
           )}

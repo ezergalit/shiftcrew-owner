@@ -11,11 +11,13 @@ const db = supabase.schema("menu_app");
 // Suggested wordings first, free text second — the same rule as the tasks library. A
 // manager staring at an empty box at 11am writes nothing, and the nudge that matters most
 // is the one that actually gets sent.
+// Written to work for anyone on the team — second-person past ("הספקת", "נכנסת") reads
+// the same for every gender in Hebrew, so the notes stay personal without misgendering.
 const SUGGESTIONS = [
-  "היי, לא הספקת ללמוד היום — 5 דקות לפני המשמרת ואתה מסודר 👌",
-  "שים לב שיש מנות חדשות בתפריט, שווה לעבור עליהן לפני הערב.",
-  "אני רואה שלא נכנסת כמה ימים. בוא נסגר על 10 דקות תרגול היום.",
-  "יש לך כמה מנות שאתה טועה בהן — עבור עליהן ונדבר במשמרת.",
+  "היי, לא הספקת ללמוד היום — 5 דקות לפני המשמרת והכול מסודר 👌",
+  "יש מנות חדשות בתפריט — שווה לעבור עליהן לפני הערב.",
+  "ראיתי שלא נכנסת כמה ימים — 10 דקות תרגול היום וסוגרים פער 💪",
+  "יש כמה מנות שיוצא לך לטעות בהן — שווה לחזור עליהן, ונדבר במשמרת.",
 ];
 
 export default function TeamMessageDialog({ member, restaurantId, lastSent, onClose, onSent }) {

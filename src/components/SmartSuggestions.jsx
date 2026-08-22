@@ -135,7 +135,7 @@ export default function SmartSuggestions({ restaurant, items, onStarred }) {
             disabled={busyId === s.id}
             className="mt-2 w-full bg-[#f3a712] text-black font-bold py-2 rounded-lg text-xs hover:bg-[#e09a0e] transition disabled:opacity-50 flex items-center justify-center gap-1.5"
           >
-            <Star size={13} fill="currentColor" /> {busyId === s.id ? "שומר..." : "כן — הדגישו"}
+            <Star size={13} fill="currentColor" /> {busyId === s.id ? "שומר…" : "כן — הדגישו"}
           </button>
         </div>
       ))}
