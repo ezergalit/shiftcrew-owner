@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Sunrise, Utensils, Moon, GraduationCap, ListChecks, Plus, Trash2, X, Check,
-  ChevronUp, ChevronDown, ChevronRight, Eye, EyeOff, Sparkles, Loader2, AlertTriangle,
+  ChevronUp, ChevronDown, ChevronRight, Eye, EyeOff, Sparkles, Loader2, AlertTriangle, Pencil,
   CalendarDays, CalendarRange, Repeat,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
@@ -193,20 +193,25 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
   const [editing, setEditing] = useState(null);  // { id, title, subtitle }
   const [customFor, setCustomFor] = useState(null);
   const [custom, setCustom] = useState({ title: "", subtitle: "" });
+  // Custom task lifetime: standing (shows every day — the default, and what the library
+  // adds) or today-only, which expires quietly at midnight.
+  const [customScope, setCustomScope] = useState("standing");
 
   useEffect(() => {
     let alive = true;
     (async () => {
       if (!restaurant?.id) return;
       const { data, error } = await db.from("shift_tasks")
-        .select("id, title, subtitle, position, kind, active")
+        .select("id, title, subtitle, position, kind, active, expires_on")
         .eq("restaurant_id", restaurant.id)
         .order("position", { ascending: true });
       if (!alive) return;
       // An empty list and a failed load look identical on screen — the team tab shipped
       // that bug for a week (see CLAUDE.md). Say which one it is.
       if (error) { console.error("shift_tasks load failed:", error); setErr("לא הצלחנו לטעון את המשימות. נסו לרענן."); setRows([]); return; }
-      setRows(data || []);
+      // Expired one-day tasks are history: never rendered, never counted, never deleted —
+      // the done-rows keep their FK target and yesterday stays queryable.
+      setRows((data || []).filter((r) => !r.expires_on || r.expires_on >= todayStr()));
 
       const ids = (data || []).map((r) => r.id);
       if (ids.length) {
@@ -260,6 +265,7 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
       renumbered.map((r) => ({
         id: r.id, restaurant_id: restaurant.id, title: r.title,
         subtitle: r.subtitle || null, position: r.position, kind: r.kind, active: r.active,
+        expires_on: r.expires_on || null,
       }))
     );
     setBusy(false);
@@ -267,12 +273,12 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
     return !error;
   };
 
-  const addTasks = async (kind, entries) => {
+  const addTasks = async (kind, entries, { expiresOn = null } = {}) => {
     if (!entries.length) return;
     const base = (rows || []).length;
     const payload = entries.map(([title, subtitle], i) => ({
       restaurant_id: restaurant.id, title, subtitle: subtitle || null,
-      kind, position: base + i + 1, active: true,
+      kind, position: base + i + 1, active: true, expires_on: expiresOn,
     }));
     setBusy(true);
     setErr("");
@@ -495,15 +501,19 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
         <span className={`flex-1 min-w-0 text-[12.5px] font-bold leading-snug truncate ${r.active ? "text-[#eef0f6]" : "text-[#5a5a6e] line-through"}`}>
           {r.title}
         </span>
+        {r.expires_on && (
+          <span className="flex-shrink-0 text-[9px] font-black text-[#f3a712] bg-[#f3a712]/10 border border-[#f3a712]/30 px-1.5 py-0.5 rounded-full">
+            להיום בלבד
+          </span>
+        )}
         {r.active && doneCount(g.kind, r.id) > 0 && (
           <span className="text-[10px] font-black text-[#22c08c] flex-shrink-0">
             ✓{doneCount(g.kind, r.id)}{teamCount ? `/${teamCount}` : ""}
           </span>
         )}
-        <ChevronDown
-          size={13}
-          className={`flex-shrink-0 transition-transform ${editing?.id === r.id ? "rotate-180 text-[#a79bff]" : "text-[#3a3d46]"}`}
-        />
+        {editing?.id === r.id
+          ? <ChevronDown size={13} className="flex-shrink-0 rotate-180 text-[#a79bff]" />
+          : <Pencil size={12} className="flex-shrink-0 text-[#5a5a6e]" />}
       </button>
 
       {editing?.id === r.id && (
@@ -579,7 +589,7 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
         <Plus size={13} className="inline ml-1" /> הוספה מהספרייה
       </button>
       <button
-        onClick={() => { setCustomFor(g.kind); setCustom({ title: "", subtitle: "" }); }}
+        onClick={() => { setCustomFor(g.kind); setCustom({ title: "", subtitle: "" }); setCustomScope("standing"); }}
         className="px-3 text-[11.5px] font-black py-2.5 rounded-xl bg-[#20232b] text-[#8a8aa0]"
       >
         משימה משלכם
@@ -589,6 +599,25 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
 
   {customFor === g.kind && (
     <div className="bg-[#0c0d10] border border-[#22252b] rounded-xl p-3 space-y-2">
+      {/* Standing vs today-only. Hidden on the weekly/monthly checklists — a one-day
+          task inside "repeats every month" answers no question. */}
+      {!g.period && (
+        <div className="flex gap-1.5">
+          {[["standing", "קבועה — כל יום"], ["today", "להיום בלבד"]].map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => setCustomScope(v)}
+              className={`flex-1 text-[11px] font-black py-2 rounded-lg border transition ${
+                customScope === v
+                  ? "bg-[#6d5efc]/15 border-[#6d5efc] text-[#a79bff]"
+                  : "bg-[#16181c] border-[#22252b] text-[#8a8aa0]"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       <input
         value={custom.title}
         onChange={(e) => setCustom({ ...custom, title: e.target.value })}
@@ -608,7 +637,8 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
         <button
           onClick={async () => {
             if (!custom.title.trim()) return;
-            await addTasks(g.kind, [[custom.title.trim(), custom.subtitle.trim()]]);
+            await addTasks(g.kind, [[custom.title.trim(), custom.subtitle.trim()]],
+              { expiresOn: !g.period && customScope === "today" ? todayStr() : null });
             setCustomFor(null);
           }}
           disabled={busy || !custom.title.trim()}
@@ -622,6 +652,17 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
       </div>
     </div>
   )}
+
+      <button
+        onClick={() => {
+          setEditing(null);
+          setCustomFor(null);
+          if (initialGroup) onExit?.(); else setGroupView(null);
+        }}
+        className="w-full bg-[#22c08c] text-[#06231a] font-black py-3 min-h-[44px] rounded-xl text-sm"
+      >
+        שמירה וסגירה ✓
+      </button>
       </div>
       {/* The library sheet. Titles already on the list are shown as taken rather than
           hidden — an owner scanning for "did I already add this?" should find the answer

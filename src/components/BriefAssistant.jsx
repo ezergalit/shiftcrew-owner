@@ -1,22 +1,112 @@
 import { useMemo, useState } from "react";
-import { Sparkles, ArrowLeft, Check, X } from "lucide-react";
+import { Sparkles, ArrowLeft, Check, X, Plus } from "lucide-react";
 
 // Guided daily-brief builder, shown when today's brief is still empty.
 //
 // The blank four-field form assumed the owner arrives knowing what to write. In practice
 // the brief is the last thing before a shift and the fields stay empty — so the team's
 // home screen says "no updates" on a day when three dishes were actually 86'd. This walks
-// the owner through the questions a manager answers out loud anyway, one at a time, with
-// the answers pre-filled from the menu wherever possible.
+// the owner through the questions a manager answers out loud anyway, one at a time.
 //
 // It never writes on its own: every step ends in the same `briefDraft` the manual form
 // uses, and the owner still presses save.
 
 const DAY_MS = 86400000;
 
+// Type, don't scan. The first version showed the WHOLE menu as toggle chips — twenty
+// buttons before the owner did anything (user, 2026-08-21: "its too long and confusing").
+// A manager already knows what ran out; the field's job is to catch the name, not to
+// quiz them on their own menu:
+//   • typing filters the menu — tapping a match autocompletes the exact dish name
+//   • anything that isn't a dish ("לחם", "עגבניות") is added exactly as typed
+//   • text still sitting in the box when the step advances is committed anyway, so
+//     "typed but never pressed Enter" — the most common path — loses nothing
+export function TagField({ items, picked, onPicked, text, onText, placeholder, tone }) {
+  const suggestions = useMemo(() => {
+    const q = text.trim().toLowerCase();
+    if (!q) return [];
+    return (items || [])
+      .map((d) => d.name)
+      .filter((n) => n.toLowerCase().includes(q) && !picked.includes(n))
+      .slice(0, 6);
+  }, [text, items, picked]);
+
+  const add = (name) => {
+    const v = (name || "").trim();
+    if (!v) return;
+    if (!picked.includes(v)) onPicked([...picked, v]);
+    onText("");
+  };
+
+  const exact = suggestions.some((n) => n.toLowerCase() === text.trim().toLowerCase());
+  const tagCls =
+    tone === "red"
+      ? "bg-[#e0315a]/10 border-[#e0315a]/40 text-[#ff8aa5]"
+      : "bg-[#22c08c]/10 border-[#22c08c]/40 text-[#5fdcb2]";
+
+  return (
+    <div className="space-y-2">
+      <input
+        value={text}
+        onChange={(e) => onText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") {
+            e.preventDefault();
+            add(text);
+          }
+        }}
+        placeholder={placeholder}
+        dir="rtl"
+        className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-3 py-2.5 text-[13px] text-[#eef0f6] placeholder:text-[#5a5a6e] focus:outline-none focus:border-[#6d5efc]"
+      />
+
+      {/* Suggestions exist only while typing — the empty state is an empty box, not a
+          wall of the whole menu. */}
+      {(suggestions.length > 0 || (text.trim() && !exact)) && (
+        <div className="flex flex-wrap gap-1.5">
+          {suggestions.map((n) => (
+            <button
+              key={n}
+              onClick={() => add(n)}
+              className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg border bg-[#16181c] text-[#c4c4d4] border-[#3a3d46]"
+            >
+              {n}
+            </button>
+          ))}
+          {text.trim() && !exact && (
+            <button
+              onClick={() => add(text)}
+              className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg border border-dashed border-[#6d5efc]/60 text-[#a79bff] flex items-center gap-1"
+            >
+              <Plus size={11} /> הוספת ״{text.trim()}״
+            </button>
+          )}
+        </div>
+      )}
+
+      {picked.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {picked.map((n) => (
+            <span
+              key={n}
+              className={`text-[11px] font-bold px-2.5 py-1.5 rounded-lg border flex items-center gap-1.5 ${tagCls}`}
+            >
+              {n}
+              <button onClick={() => onPicked(picked.filter((x) => x !== n))} aria-label={`הסרת ${n}`}>
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BriefAssistant({ items, draft, setDraft, onSave, saving, onDismiss }) {
   const [step, setStep] = useState(0);
-  const [picked, setPicked] = useState({ missing: new Set(), recommend: new Set() });
+  const [picked, setPicked] = useState({ missing: [], recommend: [] });
+  const [typing, setTyping] = useState({ missing: "", recommend: "" });
 
   // Dishes added in the last three weeks — the ones worth pushing, and the ones the team
   // most likely hasn't learned yet.
@@ -35,12 +125,11 @@ export default function BriefAssistant({ items, draft, setDraft, onSave, saving,
     return Object.entries(byCat).filter(([, ds]) => ds.length >= 3);
   }, [recentlyAdded]);
 
-  const toggle = (group, value) =>
-    setPicked((p) => {
-      const next = new Set(p[group]);
-      next.has(value) ? next.delete(value) : next.add(value);
-      return { ...p, [group]: next };
-    });
+  const toggleRecommendCat = (cat) =>
+    setPicked((p) => ({
+      ...p,
+      recommend: p.recommend.includes(cat) ? p.recommend.filter((x) => x !== cat) : [...p.recommend, cat],
+    }));
 
   const appendTo = (field, values) => {
     if (!values.length) return;
@@ -49,67 +138,70 @@ export default function BriefAssistant({ items, draft, setDraft, onSave, saving,
     setDraft({ ...draft, [field]: merged.join(", ") });
   };
 
-  const Chip = ({ on, children, onClick }) => (
-    <button
-      onClick={onClick}
-      className={`text-[11px] font-bold px-2.5 py-1.5 rounded-lg border transition-colors ${
-        on ? "bg-[#6d5efc] text-white border-[#6d5efc]" : "bg-[#16181c] text-[#c4c4d4] border-[#22252b]"
-      }`}
-    >
-      {children}
-    </button>
-  );
+  // What the step actually hands over: the tags, plus whatever is still in the input.
+  // The user's rule verbatim — "when they press save it saves what they typed anyway".
+  const flush = (group) => [...new Set([...picked[group], typing[group].trim()].filter(Boolean))];
 
   const steps = [
     {
       key: "missing",
-      question: "יש חוסרים במטבח היום?",
-      hint: "בחרו מנות שאזלו — הצוות יראה אותן מסומנות באדום",
+      question: "מה חסר היום?",
+      hint: "הקלידו — מנה מהתפריט תושלם אוטומטית, וכל דבר אחר יישמר כמו שכתבתם",
       body: (
-        <div className="flex flex-wrap gap-1.5 max-h-[180px] overflow-y-auto">
-          {(items || []).length === 0 ? (
-            <p className="text-[11px] text-[#8a8aa0]">אין עדיין מנות בתפריט</p>
-          ) : (
-            (items || []).map((d) => (
-              <Chip key={d.id} on={picked.missing.has(d.name)} onClick={() => toggle("missing", d.name)}>
-                {d.name}
-              </Chip>
-            ))
-          )}
-        </div>
+        <TagField
+          items={items}
+          picked={picked.missing}
+          onPicked={(v) => setPicked((p) => ({ ...p, missing: v }))}
+          text={typing.missing}
+          onText={(v) => setTyping((t) => ({ ...t, missing: v }))}
+          placeholder="למשל: סלמון…"
+          tone="red"
+        />
       ),
-      commit: () => appendTo("missing", [...picked.missing]),
+      commit: () => appendTo("missing", flush("missing")),
     },
     {
       key: "recommend",
       question: newCategories.length
         ? `תרצו שימליצו על תפריט ${newCategories[0][0]} החדש?`
-        : "יש משהו שתרצו שימליצו עליו היום?",
-      hint: "מה שתבחרו יופיע לצוות כ״חדש היום״",
+        : "על מה להמליץ היום?",
+      hint: "מה שתוסיפו יופיע לצוות כ״חדש היום״",
       body: (
         <div className="space-y-2">
           {newCategories.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {newCategories.map(([cat, ds]) => (
-                <Chip key={cat} on={picked.recommend.has(cat)} onClick={() => toggle("recommend", cat)}>
+                <button
+                  key={cat}
+                  onClick={() => toggleRecommendCat(cat)}
+                  className={`text-[11px] font-bold px-2.5 py-1.5 rounded-lg border transition-colors ${
+                    picked.recommend.includes(cat)
+                      ? "bg-[#6d5efc] text-white border-[#6d5efc]"
+                      : "bg-[#16181c] text-[#c4c4d4] border-[#22252b]"
+                  }`}
+                >
                   כל תפריט {cat} ({ds.length})
-                </Chip>
+                </button>
               ))}
             </div>
           )}
-          <div className="flex flex-wrap gap-1.5 max-h-[150px] overflow-y-auto">
-            {(recentlyAdded.length ? recentlyAdded : items || []).slice(0, 40).map((d) => (
-              <Chip key={d.id} on={picked.recommend.has(d.name)} onClick={() => toggle("recommend", d.name)}>
-                {d.name}
-              </Chip>
-            ))}
-          </div>
-          {recentlyAdded.length > 0 && (
-            <p className="text-[10px] text-[#8a8aa0]">מוצגות מנות שנוספו ב-3 השבועות האחרונים</p>
-          )}
+          <TagField
+            items={items}
+            picked={picked.recommend.filter((x) => !newCategories.some(([cat]) => cat === x))}
+            onPicked={(v) =>
+              setPicked((p) => ({
+                ...p,
+                recommend: [...p.recommend.filter((x) => newCategories.some(([cat]) => cat === x)), ...v],
+              }))
+            }
+            text={typing.recommend}
+            onText={(v) => setTyping((t) => ({ ...t, recommend: v }))}
+            placeholder="למשל: קינוח היום…"
+            tone="green"
+          />
         </div>
       ),
-      commit: () => appendTo("newItems", [...picked.recommend]),
+      commit: () => appendTo("newItems", flush("recommend")),
     },
     {
       key: "notes",
@@ -141,7 +233,7 @@ export default function BriefAssistant({ items, draft, setDraft, onSave, saving,
     <div className="bg-gradient-to-l from-[#1b1740] to-[#16181c] border border-[#6d5efc] rounded-xl p-4">
       <div className="flex items-center gap-1.5 mb-1">
         <Sparkles size={14} className="text-[#a79bff]" />
-        <p className="text-xs font-black text-[#a79bff]">בואו נכין את הבריף להיום</p>
+        <p className="text-xs font-black text-[#a79bff]">העדכון היומי לצוות</p>
         <span className="flex-1" />
         <button onClick={onDismiss} className="text-[#5a5a6e]" title="אכתוב לבד">
           <X size={14} />

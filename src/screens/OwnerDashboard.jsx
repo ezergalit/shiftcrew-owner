@@ -30,7 +30,17 @@ const db = supabase.schema("menu_app");
 // Hebrew counts one thing in the singular. "1 משימות" reads as a string-concatenation
 // bug, because it is one.
 const countLabel = (n, one, many) => (n === 1 ? `${one} אחת` : `${n} ${many}`);
-export const RESTAURANT_COLUMNS = "id, name, owner_code, team_code, created_at, phone, address, description, cuisine_types, important_allergens, service_style, service_notes, onboarding_completed, onboarding_step, tracked_flags";
+
+// Coca-Cola has no allergens, and that is not a gap (user, 2026-08-21). Plain drinks are
+// exempt from the "missing allergens" task; beer and cocktails are NOT — gluten in beer
+// and half a bar in a cocktail are exactly what a guest asks about.
+const DRINK_CAT_RE = /(שתי|משקא|יין|יינות|קפה|מיץ|מיצים|שייק|קולה|סודה|אלכוהול|וויסקי|וודקה|טקילה|ליקר|drink|wine|coffee|juice)/i;
+const BREW_CAT_RE = /(בירה|בירות|קוקטייל|beer|cocktail)/i;
+const needsAllergens = (d) => {
+  const c = d.category || "";
+  return !DRINK_CAT_RE.test(c) || BREW_CAT_RE.test(c);
+};
+export const RESTAURANT_COLUMNS = "id, name, owner_code, team_code, created_at, phone, address, description, cuisine_types, important_allergens, service_style, service_notes, onboarding_completed, onboarding_step, tracked_flags, dismissed_menu_tasks";
 
 function fromDbRestaurant(r) {
   return {
@@ -349,6 +359,35 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
   const today = new Date().toISOString().slice(0, 10);
 
+  // "Turn a mission grey again" (user, 2026-08-21): a done home task can be reopened for
+  // the SAME day. done is a derived fact (brief exists, checklist configured), so the
+  // reopening lives as an override set, day-scoped so tomorrow starts clean. localStorage
+  // because it is a personal "I want another pass" marker, not restaurant data.
+  const redoKey = `menu-app-owner-redo-${restaurant?.id}-${today}`;
+  const [redoIds, setRedoIds] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(redoKey) || "[]")); } catch { return new Set(); }
+  });
+  const setRedo = (id, on) =>
+    setRedoIds((prev) => {
+      const s = new Set(prev);
+      on ? s.add(id) : s.delete(id);
+      try { localStorage.setItem(redoKey, JSON.stringify([...s])); } catch {}
+      return s;
+    });
+
+  // "בסדר לי שזה ככה בינתיים" — a menu task the owner waved off. Snoozed for 14 days
+  // (it resurfaces later rather than disappearing forever), stored on the restaurant row
+  // so it survives restarts and devices. MenuHealthReview keeps showing the gap always.
+  const dismissedTasks = restaurant?.dismissed_menu_tasks || {};
+  const isDismissed = (id) => dismissedTasks[id] && dismissedTasks[id] >= today;
+  const dismissMenuTask = async (id) => {
+    const until = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+    const next = { ...dismissedTasks, [id]: until };
+    onRestaurantUpdated?.({ ...restaurant, dismissed_menu_tasks: next });
+    const { error } = await db.from("restaurants").update({ dismissed_menu_tasks: next }).eq("id", restaurant.id);
+    if (error) console.error("dismiss menu task failed:", error.message);
+  };
+
   // Keep `details` in sync with the canonical restaurant object.
   //
   // Operator model (2026-08-13): the operator opens the account and hands over the code,
@@ -405,10 +444,11 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const reloadTaskCounts = async () => {
     if (!restaurant?.id) return;
     const { data } = await db.from("shift_tasks")
-      .select("id, kind").eq("restaurant_id", restaurant.id).eq("active", true);
-    setActiveTaskCount((data || []).length);
+      .select("id, kind, expires_on").eq("restaurant_id", restaurant.id).eq("active", true);
+    const live = (data || []).filter((t) => !t.expires_on || t.expires_on >= today);
+    setActiveTaskCount(live.length);
     const byKind = {};
-    (data || []).forEach((t) => { byKind[t.kind] = (byKind[t.kind] || 0) + 1; });
+    live.forEach((t) => { byKind[t.kind] = (byKind[t.kind] || 0) + 1; });
     setTaskCountByKind(byKind);
   };
 
@@ -554,11 +594,13 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       // "משימות משמרת 3/7" line in their detail sheet. TasksManager still loads the full
       // rows itself when its panel opens — this is only what the summaries need.
       const { data: taskRows } = await db.from("shift_tasks")
-        .select("id, kind").eq("restaurant_id", restaurant.id).eq("active", true);
+        .select("id, kind, expires_on").eq("restaurant_id", restaurant.id).eq("active", true);
+      // A one-day task that expired yesterday is history, not workload.
+      const liveTasks = (taskRows || []).filter((t) => !t.expires_on || t.expires_on >= today);
       if (alive) {
-        setActiveTaskCount((taskRows || []).length);
+        setActiveTaskCount(liveTasks.length);
         const byKind = {};
-        (taskRows || []).forEach((t) => { byKind[t.kind] = (byKind[t.kind] || 0) + 1; });
+        liveTasks.forEach((t) => { byKind[t.kind] = (byKind[t.kind] || 0) + 1; });
         setTaskCountByKind(byKind);
       }
       if (alive && taskRows?.length) {
@@ -607,7 +649,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // The manager's day, as a list. Built the way the waiter's is: a row exists only when
   // there is something behind it, and every row opens the thing rather than ticking a box.
   const missingDesc = items.filter((d) => !String(d.description || "").trim()).length;
-  const missingAllergens = items.filter((d) => !(d.allergens || []).length).length;
+  const missingAllergens = items.filter((d) => needsAllergens(d) && !(d.allergens || []).length).length;
   const missingIngredients = items.filter((d) => (d.ingredients || []).length < 3).length;
 
   const openingCount = taskCountByKind.opening || 0;
@@ -619,48 +661,55 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     id: "brief", group: "daily",
     title: "לכתוב את העדכון היומי",
     subtitle: "מה חסר, מה חדש ומה להמליץ — הצוות רואה את זה לפני המשמרת",
-    done: briefSent, cta: briefSent ? "עריכה" : "לכתיבה",
+    done: briefSent && !redoIds.has("brief"), cta: briefSent ? "עריכה" : "לכתיבה",
     onOpen: () => { setHomeView("brief"); if (briefSent) setEditingBrief(true); },
+    onRedo: briefSent ? () => setRedo("brief", true) : undefined,
   });
   ownerTasks.push({
     id: "opening", group: "daily",
     title: "משימות פתיחת משמרת",
     subtitle: openingCount ? `${countLabel(openingCount, "משימה", "משימות")} · לעריכה` : "צ׳קליסט פתיחה — בוחרים מספרייה מוכנה, לוקח דקה",
-    done: openingCount > 0, cta: openingCount ? "עריכה" : "להגדרה",
+    done: openingCount > 0 && !redoIds.has("opening"), cta: openingCount ? "עריכה" : "להגדרה",
     onOpen: () => setHomeView("checklist:opening"),
+    onRedo: openingCount > 0 ? () => setRedo("opening", true) : undefined,
   });
   ownerTasks.push({
     id: "closing", group: "daily",
     title: "משימות סגירת משמרת",
     subtitle: closingCount ? `${countLabel(closingCount, "משימה", "משימות")} · לעריכה` : "צ׳קליסט סגירה — בוחרים מספרייה מוכנה",
-    done: closingCount > 0, cta: closingCount ? "עריכה" : "להגדרה",
+    done: closingCount > 0 && !redoIds.has("closing"), cta: closingCount ? "עריכה" : "להגדרה",
     onOpen: () => setHomeView("checklist:closing"),
+    onRedo: closingCount > 0 ? () => setRedo("closing", true) : undefined,
   });
   ownerTasks.push({
     id: "shift", group: "daily",
     title: "כללי השירות במשמרת",
     subtitle: shiftCount ? `${countLabel(shiftCount, "משימה", "משימות")} · לעריכה` : "מה חוזר על עצמו בכל שולחן",
-    done: shiftCount > 0, cta: shiftCount ? "עריכה" : "להגדרה",
+    done: shiftCount > 0 && !redoIds.has("shift"), cta: shiftCount ? "עריכה" : "להגדרה",
     onOpen: () => setHomeView("checklist:shift"),
+    onRedo: shiftCount > 0 ? () => setRedo("shift", true) : undefined,
   });
 
   // Menu group: only what is actually missing. Nothing missing ⇒ no rows ⇒ no group.
-  if (missingDesc > 0) ownerTasks.push({
+  if (missingDesc > 0 && !isDismissed("desc")) ownerTasks.push({
     id: "desc", group: "menu",
+    onDismiss: () => dismissMenuTask("desc"),
     title: `${countLabel(missingDesc, "מנה", "מנות")} בלי תיאור`,
     subtitle: "בלי תיאור הצוות לומד רק שם ומחיר, ואי אפשר לשאול עליה",
     done: false, cta: "לתפריט",
     onOpen: () => { setTab("settings"); setOpenSetting("health"); },
   });
-  if (missingAllergens > 0) ownerTasks.push({
+  if (missingAllergens > 0 && !isDismissed("allerg")) ownerTasks.push({
     id: "allerg", group: "menu",
+    onDismiss: () => dismissMenuTask("allerg"),
     title: `${countLabel(missingAllergens, "מנה", "מנות")} בלי אלרגנים`,
     subtitle: "השדה היחיד בתפריט שיכול לשלוח אורח לבית חולים",
     done: false, cta: "להשלמה",
     onOpen: () => { setTab("settings"); setOpenSetting("health"); },
   });
-  if (missingIngredients > 0) ownerTasks.push({
+  if (missingIngredients > 0 && !isDismissed("ingr")) ownerTasks.push({
     id: "ingr", group: "menu",
+    onDismiss: () => dismissMenuTask("ingr"),
     title: `${countLabel(missingIngredients, "מנה", "מנות")} בלי מספיק מרכיבים`,
     subtitle: "צריך 3 ומעלה כדי לבנות מהן שאלות",
     done: false, cta: "להשלמה",
@@ -904,16 +953,20 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     if (count > 0) setShowMenuTip(true);
   };
 
-  const handleSaveBrief = async () => {
+  // `draftOverride` lets the editor hand over a draft with mid-typed text already
+  // flushed in — reading state right after a setState would save the pre-flush draft.
+  const handleSaveBrief = async (draftOverride) => {
+    const d = draftOverride ?? briefDraft;
+    if (draftOverride) setBriefDraft(draftOverride);
     setSavingBrief(true);
     const toArr = (s) => s.split(",").map((x) => x.trim()).filter(Boolean);
     const patch = {
       restaurant_id: restaurant.id,
       date: today,
-      missing_items: toArr(briefDraft.missing),
-      new_items: toArr(briefDraft.newItems),
-      oven_items: toArr(briefDraft.oven),
-      notes: briefDraft.notes,
+      missing_items: toArr(d.missing),
+      new_items: toArr(d.newItems),
+      oven_items: toArr(d.oven),
+      notes: d.notes,
       updated_at: new Date().toISOString()
     };
     const { error } = await db.from("daily_brief")
@@ -921,6 +974,10 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     setSavingBrief(false);
     if (error) { alert("שמירה נכשלה: " + error.message); return; }
     setDailyBrief(patch);
+    // Saving closes the loop by itself (user, 2026-08-21): back to the task list, where
+    // the brief row is now green at the bottom. A fresh save also clears any redo flag.
+    setRedo("brief", false);
+    setHomeView(null);
   };
 
   const handleAddManager = async () => {
@@ -1183,9 +1240,10 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
               />
             ) : (
               <DailyBriefEditor
+                items={items}
                 draft={briefDraft}
                 onChange={setBriefDraft}
-                onSave={async () => { await handleSaveBrief(); setEditingBrief(false); }}
+                onSave={async (final) => { await handleSaveBrief(final); setEditingBrief(false); }}
                 saving={savingBrief}
               />
             )}
@@ -1198,7 +1256,12 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             restaurant={restaurant}
             teamCount={teamMembers.length}
             initialGroup={homeView.split(":")[1] || null}
-            onExit={() => { setHomeView(null); reloadTaskCounts(); }}
+            onExit={() => {
+              const kind = homeView.split(":")[1];
+              if (kind) setRedo(kind, false);
+              setHomeView(null);
+              reloadTaskCounts();
+            }}
           />
         )}
 
@@ -1684,45 +1747,56 @@ function TeamProgressList({ teamMembers, memberPct, taskDoneByMember, activeTask
   );
 }
 
-function DailyBriefEditor({ draft, onChange, onSave, saving }) {
+// The manual brief editor — the same typeahead fields as the assistant (user, 2026-08-21:
+// "same for the rest of the daily brief"). Draft list fields stay comma-joined strings
+// (that is the contract with handleSaveBrief); this component parses them into tags at
+// the edge and joins them back on every change.
+function DailyBriefEditor({ items, draft, onChange, onSave, saving }) {
+  // Text mid-typing per field. Flushed into the draft when save is pressed, so "typed
+  // but never confirmed" — the most common path — loses nothing.
+  const [typing, setTyping] = useState({ missing: "", newItems: "", oven: "" });
+
+  const parse = (s) => (s || "").split(",").map((x) => x.trim()).filter(Boolean);
+  const setField = (field) => (arr) => onChange({ ...draft, [field]: [...new Set(arr)].join(", ") });
+
+  const saveAll = () => {
+    // Compute the final draft HERE and hand it up — flushing via setState and then
+    // reading state in the same tick would save the pre-flush draft.
+    const final = { ...draft };
+    for (const f of ["missing", "newItems", "oven"]) {
+      const t = typing[f].trim();
+      if (t) final[f] = [...new Set([...parse(draft[f]), t])].join(", ");
+    }
+    setTyping({ missing: "", newItems: "", oven: "" });
+    onSave(final);
+  };
+
+  const Field = (field, label, placeholder, tone) => (
+    <div>
+      <p className="text-[11px] font-bold text-[#8a8aa0] mb-1">{label}</p>
+      <TagField
+        items={items}
+        picked={parse(draft[field])}
+        onPicked={setField(field)}
+        text={typing[field]}
+        onText={(v) => setTyping((t) => ({ ...t, [field]: v }))}
+        placeholder={placeholder}
+        tone={tone}
+      />
+    </div>
+  );
+
   return (
     <div className="bg-[#16181c] rounded-lg p-4 border border-[#22252b] space-y-3">
-      <p className="font-bold text-[#eef0f6]">עדכון יומי לצוות</p>
-      <p className="text-xs text-[#8a8aa0]">מה שתעדכנו כאן יופיע מיד לצוות באפליקציה שלהם.</p>
+      <p className="font-bold text-[#eef0f6]">העדכון היומי לצוות</p>
+      <p className="text-xs text-[#8a8aa0]">
+        הקלידו — מנה מהתפריט תושלם אוטומטית, וכל דבר אחר יישמר כמו שכתבתם.
+      </p>
 
-      <div>
-        <p className="text-[11px] font-bold text-[#8a8aa0] mb-1">חוסרים היום (מופרדים בפסיקים)</p>
-        <input
-          type="text"
-          value={draft.missing}
-          onChange={(e) => onChange({ ...draft, missing: e.target.value })}
-          placeholder="לדוגמה: סלמון, יין אדום בית"
-          className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-3 py-2 text-[#eef0f6] placeholder:text-[#8a8aa0] focus:outline-none focus:border-[#6d5efc] text-sm"
-          dir="rtl"
-        />
-      </div>
-      <div>
-        <p className="text-[11px] font-bold text-[#8a8aa0] mb-1">מנות חדשות היום</p>
-        <input
-          type="text"
-          value={draft.newItems}
-          onChange={(e) => onChange({ ...draft, newItems: e.target.value })}
-          placeholder="לדוגמה: מרק פטריות עונתי"
-          className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-3 py-2 text-[#eef0f6] placeholder:text-[#8a8aa0] focus:outline-none focus:border-[#6d5efc] text-sm"
-          dir="rtl"
-        />
-      </div>
-      <div>
-        <p className="text-[11px] font-bold text-[#8a8aa0] mb-1">בתנור / בהכנה</p>
-        <input
-          type="text"
-          value={draft.oven}
-          onChange={(e) => onChange({ ...draft, oven: e.target.value })}
-          placeholder="לדוגמה: לחם בייתי, עוגת שוקולד"
-          className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-3 py-2 text-[#eef0f6] placeholder:text-[#8a8aa0] focus:outline-none focus:border-[#6d5efc] text-sm"
-          dir="rtl"
-        />
-      </div>
+      {Field("missing", "מה חסר היום", "למשל: סלמון…", "red")}
+      {Field("newItems", "חדש / ממליצים היום", "למשל: קינוח היום…", "green")}
+      {Field("oven", "בתנור / בהכנה", "למשל: לחם בייתי…", "green")}
+
       <div>
         <p className="text-[11px] font-bold text-[#8a8aa0] mb-1">הערות נוספות</p>
         <textarea
@@ -1736,11 +1810,11 @@ function DailyBriefEditor({ draft, onChange, onSave, saving }) {
       </div>
 
       <button
-        onClick={onSave}
+        onClick={saveAll}
         disabled={saving}
-        className="w-full bg-[#6d5efc] text-white font-bold py-2 rounded-lg text-sm hover:bg-[#5b4ef0] transition disabled:opacity-60"
+        className="w-full bg-[#6d5efc] text-white font-bold py-2.5 min-h-[44px] rounded-lg text-sm hover:bg-[#5b4ef0] transition disabled:opacity-60"
       >
-        {saving ? "שומר..." : "שמירת עדכון יומי"}
+        {saving ? "שומר..." : "שמירת העדכון היומי"}
       </button>
     </div>
   );
