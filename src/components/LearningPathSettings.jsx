@@ -345,7 +345,7 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
         )}
 
         <Setting
-          title="מבחן היכרות למלצר חדש"
+          title="בוחן היכרות למלצר חדש"
           desc={path.baseline_enabled
             ? `מלצר חדש עונה על כמה שאלות על עצמו ואז נבחן ${path.baseline_minutes} דקות, כדי שתדעו איפה הוא מתחיל.`
             : "מלצרים חדשים נכנסים ישר ללימוד, בלי נקודת מדידה התחלתית."}
@@ -354,7 +354,7 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
         </Setting>
 
         {path.baseline_enabled && (
-          <Setting title="אורך מבחן ההיכרות" desc="">
+          <Setting title="אורך בוחן ההיכרות" desc="">
             <div className="flex gap-1.5">
               {[5, 7, 10].map((v) => (
                 <button key={v} onClick={() => { setPath({ ...path, baseline_minutes: v }); setSavedAt(null); }}

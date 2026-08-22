@@ -127,7 +127,7 @@ const LIBRARY = {
   training: [
     ["לתרגל 10 דקות תפריט באפליקציה", "לפני המשמרת או אחריה — העיקר שזה יקרה"],
     ["לחזור על המנות שאתם הכי טועים בהן", "מופיעות באפליקציה במסך המדדים"],
-    ["לעבור מבחן קטגוריה אחת השבוע", ""],
+    ["לעבור בוחן קטגוריה אחד השבוע", ""],
     ["לתרגל את לימוד האלרגיות", "השדה היחיד בתפריט שיכול לשלוח אורח לבית חולים"],
     ["ללמוד את הקינוחים ואת ההמלצות עליהם", ""],
     ["לעבור על היינות והמשקאות של הבית", ""],
@@ -179,6 +179,11 @@ const AUTOMATIC = [
 // `initialGroup` opens straight into one checklist — a task row that says "משימות פתיחת
 // משמרת" must land on that checklist, not on a grid the manager then has to navigate.
 // `onExit` is what the back arrow does once there is nowhere further back to go.
+// Who a task is for. NULL = the whole team; 'waiter'/'bar' match the role each team
+// member picks in the waiter app, which filters their list accordingly.
+const ROLES = [[null, "כולם"], ["waiter", "מלצרים"], ["bar", "ברמנים"]];
+const roleLabel = (r) => (ROLES.find(([v]) => v === r) || ROLES[0])[1];
+
 export default function TasksManager({ restaurant, teamCount = 0, initialGroup = null, onExit }) {
   const [rows, setRows] = useState(null);        // null = still loading
   // task_id -> members who ticked it, per period. Which one a row reads depends on how
@@ -196,13 +201,14 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
   // Custom task lifetime: standing (shows every day — the default, and what the library
   // adds) or today-only, which expires quietly at midnight.
   const [customScope, setCustomScope] = useState("standing");
+  const [customRole, setCustomRole] = useState(null); // null=everyone | waiter | bar
 
   useEffect(() => {
     let alive = true;
     (async () => {
       if (!restaurant?.id) return;
       const { data, error } = await db.from("shift_tasks")
-        .select("id, title, subtitle, position, kind, active, expires_on")
+        .select("id, title, subtitle, position, kind, active, expires_on, role")
         .eq("restaurant_id", restaurant.id)
         .order("position", { ascending: true });
       if (!alive) return;
@@ -265,7 +271,7 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
       renumbered.map((r) => ({
         id: r.id, restaurant_id: restaurant.id, title: r.title,
         subtitle: r.subtitle || null, position: r.position, kind: r.kind, active: r.active,
-        expires_on: r.expires_on || null,
+        expires_on: r.expires_on || null, role: r.role || null,
       }))
     );
     setBusy(false);
@@ -273,12 +279,12 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
     return !error;
   };
 
-  const addTasks = async (kind, entries, { expiresOn = null } = {}) => {
+  const addTasks = async (kind, entries, { expiresOn = null, role = null } = {}) => {
     if (!entries.length) return;
     const base = (rows || []).length;
     const payload = entries.map(([title, subtitle], i) => ({
       restaurant_id: restaurant.id, title, subtitle: subtitle || null,
-      kind, position: base + i + 1, active: true, expires_on: expiresOn,
+      kind, position: base + i + 1, active: true, expires_on: expiresOn, role,
     }));
     setBusy(true);
     setErr("");
@@ -313,7 +319,7 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
   const saveEdit = async () => {
     const t = editing.title.trim();
     if (!t) return;
-    await persist((rows || []).map((r) => (r.id === editing.id ? { ...r, title: t, subtitle: editing.subtitle.trim() } : r)));
+    await persist((rows || []).map((r) => (r.id === editing.id ? { ...r, title: t, subtitle: editing.subtitle.trim(), role: editing.role ?? null } : r)));
     setEditing(null);
   };
 
@@ -489,7 +495,7 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
       }`}
     >
       <button
-        onClick={() => setEditing(editing?.id === r.id ? null : { id: r.id, title: r.title, subtitle: r.subtitle || "" })}
+        onClick={() => setEditing(editing?.id === r.id ? null : { id: r.id, title: r.title, subtitle: r.subtitle || "", role: r.role || null })}
         className="w-full text-right flex items-center gap-2.5 px-2.5 py-2 min-h-[40px]"
       >
         <span
@@ -504,6 +510,11 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
         {r.expires_on && (
           <span className="flex-shrink-0 text-[9px] font-black text-[#f3a712] bg-[#f3a712]/10 border border-[#f3a712]/30 px-1.5 py-0.5 rounded-full">
             להיום בלבד
+          </span>
+        )}
+        {r.role && (
+          <span className="flex-shrink-0 text-[9px] font-black text-[#38bdf8] bg-[#38bdf8]/10 border border-[#38bdf8]/30 px-1.5 py-0.5 rounded-full">
+            {roleLabel(r.role)}
           </span>
         )}
         {r.active && doneCount(g.kind, r.id) > 0 && (
@@ -531,6 +542,23 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
             className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-2.5 py-2 text-[11px] text-[#eef0f6] placeholder:text-[#5a5a6e] focus:outline-none focus:border-[#6d5efc]"
             dir="rtl"
           />
+          {/* Who sees it — mirrors the role each team member picks in the waiter app. */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-bold text-[#8a8aa0] flex-shrink-0">למי:</span>
+            {ROLES.map(([v, label]) => (
+              <button
+                key={label}
+                onClick={() => setEditing({ ...editing, role: v })}
+                className={`text-[10px] font-black px-2 py-1 rounded-lg border transition ${
+                  (editing.role ?? null) === v
+                    ? "bg-[#38bdf8]/15 border-[#38bdf8] text-[#7dd3fc]"
+                    : "bg-[#16181c] border-[#22252b] text-[#8a8aa0]"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {r.active && doneCount(g.kind, r.id) > 0 && (
             <p className="text-[10px] font-black text-[#22c08c]">
               ✓ {doneCount(g.kind, r.id)}{teamCount ? ` מתוך ${teamCount}` : ""} סימנו {g.period || "היום"}
@@ -589,7 +617,7 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
         <Plus size={13} className="inline ml-1" /> הוספה מהספרייה
       </button>
       <button
-        onClick={() => { setCustomFor(g.kind); setCustom({ title: "", subtitle: "" }); setCustomScope("standing"); }}
+        onClick={() => { setCustomFor(g.kind); setCustom({ title: "", subtitle: "" }); setCustomScope("standing"); setCustomRole(null); }}
         className="px-3 text-[11.5px] font-black py-2.5 rounded-xl bg-[#20232b] text-[#8a8aa0]"
       >
         משימה משלכם
@@ -618,6 +646,22 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
           ))}
         </div>
       )}
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-bold text-[#8a8aa0] flex-shrink-0">למי:</span>
+        {ROLES.map(([v, label]) => (
+          <button
+            key={label}
+            onClick={() => setCustomRole(v)}
+            className={`text-[10px] font-black px-2 py-1 rounded-lg border transition ${
+              customRole === v
+                ? "bg-[#38bdf8]/15 border-[#38bdf8] text-[#7dd3fc]"
+                : "bg-[#16181c] border-[#22252b] text-[#8a8aa0]"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <input
         value={custom.title}
         onChange={(e) => setCustom({ ...custom, title: e.target.value })}
@@ -638,7 +682,7 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
           onClick={async () => {
             if (!custom.title.trim()) return;
             await addTasks(g.kind, [[custom.title.trim(), custom.subtitle.trim()]],
-              { expiresOn: !g.period && customScope === "today" ? todayStr() : null });
+              { expiresOn: !g.period && customScope === "today" ? todayStr() : null, role: customRole });
             setCustomFor(null);
           }}
           disabled={busy || !custom.title.trim()}

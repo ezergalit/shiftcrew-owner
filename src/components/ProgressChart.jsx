@@ -81,7 +81,7 @@ export default function ProgressChart({ baseline, current, seconds, snapshots })
         </svg>
       ) : (
         <p className="text-[10px] text-[#6a6a7e] py-3 text-center">
-          {hasBaseline ? "עוד אין מספיק נקודות מדידה לגרף — יופיע אחרי כמה סבבי לימוד" : "אין עדיין מבחן היכרות"}
+          {hasBaseline ? "עוד אין מספיק נקודות מדידה לגרף — יופיע אחרי כמה סבבי לימוד" : "אין עדיין בוחן היכרות"}
         </p>
       )}
 
@@ -89,7 +89,7 @@ export default function ProgressChart({ baseline, current, seconds, snapshots })
         <span className="text-[#8a8aa0]">
           {hasBaseline
             ? <>התחיל/ה ב-<span className="font-bold text-[#c4c4d4]">{Math.round(start)}%</span></>
-            : "לא עשה/תה מבחן היכרות"}
+            : "לא עשה/תה בוחן היכרות"}
         </span>
         <span className="text-[#8a8aa0] flex items-center gap-1">
           <Clock size={10} /> {fmtDuration(seconds)}

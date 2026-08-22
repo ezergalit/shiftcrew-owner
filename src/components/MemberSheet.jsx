@@ -93,7 +93,7 @@ export default function MemberSheet({ detail, onClose, onMessage }) {
 
           {exams.length > 0 && (
             <div>
-              <p className="text-[10px] font-bold text-[#8a8aa0] mb-1.5">מבחנים</p>
+              <p className="text-[10px] font-bold text-[#8a8aa0] mb-1.5">בחנים ומבחנים</p>
               <div className="flex flex-wrap gap-1.5">
                 {exams.map((e) => (
                   <span
