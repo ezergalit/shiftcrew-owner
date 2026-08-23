@@ -126,8 +126,11 @@ export default function LearningStatus({ restaurant, onSelectMember, onRows, onM
     const list = rows || [];
     return {
       studied: list.filter((r) => r.studiedToday).sort((a, b) => b.studiedTodaySeconds - a.studiedTodaySeconds),
-      // Read the brief or marked shift tasks today (and did not study — studying wins).
-      engaged: list.filter((r) => !r.studiedToday && (r.readBrief || r.tasksDone > 0)),
+      // Read the brief or marked shift tasks today. NOT filtered against the studied
+      // list: someone who studied AND read appears in both, otherwise this group's
+      // "nobody read yet" line contradicts the read-board below it (caught live
+      // 2026-08-23 — a waiter read at 11:35 but also studied, so the line claimed nobody).
+      engaged: list.filter((r) => r.readBrief || r.tasksDone > 0),
     };
   }, [rows]);
 
