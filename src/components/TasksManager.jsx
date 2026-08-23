@@ -178,7 +178,9 @@ const AUTOMATIC = [
 
 // `initialGroup` opens straight into one checklist — a task row that says "משימות פתיחת
 // משמרת" must land on that checklist, not on a grid the manager then has to navigate.
-// `onExit` is what the back arrow does once there is nowhere further back to go.
+// `onExit(completed)` — completed=true only from the green "שמירה וסגירה" button. The
+// back arrow passes false: peeking at a checklist is not doing it, and a task that turns
+// green from a glance gets forgotten (user, 2026-08-23).
 // Who a task is for. NULL = the whole team; 'waiter'/'bar' match the role each team
 // member picks in the waiter app, which filters their list accordingly.
 const ROLES = [[null, "כולם"], ["waiter", "מלצרים"], ["bar", "ברמנים"]];
@@ -417,8 +419,8 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
           onClick={() => {
             setEditing(null); setCustomFor(null);
             // Opened directly into this checklist ⇒ back means "out", not "up to a grid
-            // the manager never came from".
-            if (initialGroup) onExit?.(); else setGroupView(null);
+            // the manager never came from". Back is a peek, not a completion.
+            if (initialGroup) onExit?.(false); else setGroupView(null);
           }}
           aria-label="חזרה לכל הצ׳קליסטים"
           className="w-9 h-9 rounded-xl bg-[#0c0d10] border border-[#22252b] flex items-center justify-center text-[#eef0f6] flex-shrink-0"
@@ -701,7 +703,7 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
         onClick={() => {
           setEditing(null);
           setCustomFor(null);
-          if (initialGroup) onExit?.(); else setGroupView(null);
+          if (initialGroup) onExit?.(true); else setGroupView(null);
         }}
         className="w-full bg-[#22c08c] text-[#06231a] font-black py-3 min-h-[44px] rounded-xl text-sm"
       >

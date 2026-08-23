@@ -1351,9 +1351,11 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             restaurant={restaurant}
             teamCount={teamMembers.length}
             initialGroup={homeView.split(":")[1] || null}
-            onExit={() => {
+            onExit={(completed) => {
               const kind = homeView.split(":")[1];
-              if (kind) setRedo(kind, false);
+              // Only the explicit "שמירה וסגירה" completes the task — leaving with the
+              // back arrow keeps it open, so a glance can't silently mark it done.
+              if (kind && completed) setRedo(kind, false);
               setHomeView(null);
               reloadTaskCounts();
             }}
