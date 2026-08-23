@@ -9,7 +9,9 @@ const db = supabase.schema("menu_app");
 // want in their own words, it lands in operator_requests (the same queue the operator
 // panel drains), and the menu updates for them without touching anything. The open
 // requests are listed with their status so a sent request never feels swallowed.
-export default function OperatorLine({ restaurant }) {
+// Also reused in settings as the "add something to the app?" box (user, 2026-08-23) —
+// same queue, different framing, `prefix` marks the request type for the operator.
+export default function OperatorLine({ restaurant, title, placeholder, prefix = "", showPending = true }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -34,7 +36,7 @@ export default function OperatorLine({ restaurant }) {
     setBusy(true); setErr(""); setSent(false);
     const { error } = await db.from("operator_requests").insert({
       restaurant_id: restaurant.id,
-      request: text.trim(),
+      request: prefix + text.trim(),
     });
     setBusy(false);
     if (error) { setErr("השליחה נכשלה: " + error.message); return; }
@@ -50,12 +52,12 @@ export default function OperatorLine({ restaurant }) {
            פשוט וחלק"). The placeholder carries the one example that is still worth having. */}
       <div className="bg-[#16181c] rounded-2xl p-3 border border-[#22252b] space-y-2">
         <p className="text-[12px] font-bold text-[#eef0f6] flex items-center gap-1.5">
-          <MessageCircle size={14} className="text-[#6d5efc]" /> רוצים לשנות משהו? כתבו לנו ונטפל
+          <MessageCircle size={14} className="text-[#6d5efc]" /> {title || "רוצים לשנות משהו? כתבו לנו ונטפל"}
         </p>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="למשל: תעלו את מחיר הסלמון ל-84"
+          placeholder={placeholder || "למשל: תעלו את מחיר הסלמון ל-84"}
           rows={2}
           dir="rtl"
           className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-3 py-2 text-[#eef0f6] text-[13px] placeholder:text-[#5a5a6e] focus:outline-none focus:border-[#6d5efc] resize-none"
@@ -83,7 +85,7 @@ export default function OperatorLine({ restaurant }) {
 
       {/* Open requests only. A closed request is a thing that already happened, and the
           owner is looking at the menu, not at an archive. */}
-      {pending.length > 0 && (
+      {showPending && pending.length > 0 && (
         <div className="space-y-1.5">
           {pending.map((r) => (
             <div key={r.id} className="bg-[#16181c] rounded-xl px-3 py-2 border border-[#22252b] flex items-center gap-2">

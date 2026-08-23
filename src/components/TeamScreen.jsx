@@ -1,4 +1,4 @@
-import { X, Flame, TrendingUp, Eye } from "lucide-react";
+import { X, Flame, TrendingUp, Eye, Megaphone } from "lucide-react";
 import LearningStatus from "./LearningStatus";
 import BriefReadBoard from "./BriefReadBoard";
 import SettingsSection from "./SettingsSection";
@@ -12,7 +12,7 @@ import SettingsSection from "./SettingsSection";
 export default function TeamScreen({
   restaurant, teamMembers, dailyBrief, briefSent, briefReadsToday,
   studiedToday, teamAvgPct, weakestMember, open, onToggle,
-  onSelectMember, onRows, onMessage, messagedToday, children, onClose,
+  onSelectMember, onRows, onMessage, onBroadcast, messagedToday, children, onClose,
 }) {
   return (
     <div className="fixed inset-0 z-50 bg-[#0c0d10] flex flex-col max-w-md mx-auto" dir="rtl">
@@ -29,6 +29,16 @@ export default function TeamScreen({
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+        {/* One message to the whole team (user, 2026-08-23) — the per-waiter nudge lives
+            on each row below; this is the "everyone, read the brief" megaphone. */}
+        {teamMembers.length > 0 && onBroadcast && (
+          <button
+            onClick={onBroadcast}
+            className="w-full flex items-center justify-center gap-2 bg-[#16181c] border border-[#22252b] rounded-2xl py-3 min-h-[44px] text-[13px] font-black text-[#a79bff]"
+          >
+            <Megaphone size={15} /> הודעה לכל הצוות
+          </button>
+        )}
         <div className="bg-[#16181c] border border-[#22252b] rounded-2xl overflow-hidden">
           <SettingsSection
             icon={<Flame size={15} className="text-[#f3a712]" />}

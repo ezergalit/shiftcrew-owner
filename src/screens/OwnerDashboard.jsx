@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Home, BookOpen, Users, Settings, ListChecks, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Star, Target, Stethoscope, Store, ShieldCheck, Compass, ChevronLeft, ChevronRight, Flame, TrendingUp, Megaphone, BarChart3} from "lucide-react";
+import { Home, BookOpen, Users, Settings, ListChecks, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Star, Target, Stethoscope, Store, ShieldCheck, Compass, ChevronLeft, ChevronRight, Flame, TrendingUp, Megaphone, BarChart3, Lightbulb } from "lucide-react";
 import LearningStatus from "../components/LearningStatus";
 import SignOutButton from "../components/SignOutButton";
 import TasksManager from "../components/TasksManager";
@@ -283,6 +283,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const [profileSkipped, setProfileSkipped] = useState(() => !!localStorage.getItem(profileSkipKey));
   const [messageFor, setMessageFor] = useState(null);          // waiter being nudged
   const [messagedToday, setMessagedToday] = useState({});      // id -> { body, readAt }
+  const [broadcastOpen, setBroadcastOpen] = useState(false);   // one message to the whole team
   const [menuGroupView, setMenuGroupView] = useState(null); // open menu (menu_group) or null
   const [editingBrief, setEditingBrief] = useState(false);
   const [onboarding, setOnboarding] = useState(false); // true if first time setup needed
@@ -1649,6 +1650,23 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
               🧭 סיור מודרך באפליקציה — מה יש בכל טאב
             </button>
               </SettingsSection>
+
+              {/* Feature requests, straight into the operator queue (user, 2026-08-23). */}
+              <SettingsSection
+                icon={<Lightbulb size={15} className="text-[#f3c98b]" />}
+                title="תרצו להוסיף משהו באפליקציה?"
+                summary="רעיון, בקשה או שיפור — כתבו לנו ונחזור אליכם"
+                open={openSetting === "feedback"}
+                onToggle={() => setOpenSetting(openSetting === "feedback" ? null : "feedback")}
+              >
+                <OperatorLine
+                  restaurant={restaurant}
+                  title="תרצו להוסיף משהו באפליקציה? ספרו לנו"
+                  placeholder="למשל: היה עוזר לי לקבל סיכום שבועי של הלמידה"
+                  prefix="[הצעה לאפליקציה] "
+                  showPending={false}
+                />
+              </SettingsSection>
             </div>
           </div>
         )}
@@ -1678,6 +1696,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           onSelectMember={setSheetFor}
           onRows={(rows) => setLiveByMember(Object.fromEntries(rows.map((r) => [r.id, r])))}
           onMessage={setMessageFor}
+          onBroadcast={() => setBroadcastOpen(true)}
           messagedToday={messagedToday}
           onClose={() => setShowTeam(false)}
         >
@@ -1721,6 +1740,14 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           restaurantId={restaurant?.id}
           lastSent={messagedToday[messageFor.id]}
           onClose={() => setMessageFor(null)}
+          onSent={(id, body) => setMessagedToday((prev) => ({ ...prev, [id]: { body, readAt: null } }))}
+        />
+      )}
+      {broadcastOpen && (
+        <TeamMessageDialog
+          members={teamMembers}
+          restaurantId={restaurant?.id}
+          onClose={() => setBroadcastOpen(false)}
           onSent={(id, body) => setMessagedToday((prev) => ({ ...prev, [id]: { body, readAt: null } }))}
         />
       )}
