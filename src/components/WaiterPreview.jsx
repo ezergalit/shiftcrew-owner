@@ -64,10 +64,10 @@ export default function WaiterPreview({ teamCode }) {
           onClick={(e) => e.stopPropagation()}
           className="h-full max-h-[760px] aspect-[9/19] max-w-full rounded-[28px] border-[6px] border-[#22252b] bg-[#0c0d10] overflow-hidden shadow-2xl"
         >
-          {/* ?preview=<team_code> asks the waiter app to open a read-only demo session
-              for this restaurant — real menu, no login typing, no team member created,
-              nothing saved. Until the waiter side ships support, the param is ignored
-              and the normal login shows. */}
+          {/* ?preview=<team_code> opens the waiter app in read-only view mode (live since
+              2026-08-23): a `role='preview'` session with no team member, so every write
+              is refused by RLS. It overrides any waiter session stored in the iframe's
+              localStorage and skips the profile/shift/brief gates. */}
           <iframe
             key={nonce}
             src={teamCode ? `${WAITER_URL}/?preview=${encodeURIComponent(teamCode)}` : WAITER_URL}
