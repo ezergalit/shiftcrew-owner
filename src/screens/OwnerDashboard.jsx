@@ -15,7 +15,7 @@ import OperatorLine from "../components/OperatorLine";
 import SmartSuggestions from "../components/SmartSuggestions";
 import { categoryVisual } from "../lib/categoryVisual";
 import GuidedTour from "../components/GuidedTour";
-import BriefAssistant, { TagField } from "../components/BriefAssistant";
+import BriefAssistant, { TagField, BriefCarryOver } from "../components/BriefAssistant";
 import BriefReadBoard from "../components/BriefReadBoard";
 import CuisineSelector from "../components/CuisineSelector";
 import LearningPathSettings from "../components/LearningPathSettings";
@@ -319,6 +319,10 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // Daily brief
   const [dailyBrief, setDailyBrief] = useState({ missing_items: [], new_items: [], oven_items: [], notes: "" });
   const [briefDraft, setBriefDraft] = useState({ missing: "", newItems: "", oven: "", notes: "" });
+  // The most recent past brief, offered for one-tap approval on a fresh day ("they just
+  // approve", user 2026-08-23). carryOff falls back to the assistant for this session.
+  const [prevBrief, setPrevBrief] = useState(null);
+  const [carryOff, setCarryOff] = useState(false);
   // The guided builder only appears while today's brief is still empty; dismissing it
   // hands the owner the plain form for the rest of the session.
   const [briefAssistantOff, setBriefAssistantOff] = useState(false);
@@ -605,6 +609,12 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
         });
       }
 
+      const { data: prevData } = await db.from("daily_brief")
+        .select("date, missing_items, new_items, oven_items, notes")
+        .eq("restaurant_id", restaurant.id).lt("date", today)
+        .order("date", { ascending: false }).limit(1).maybeSingle();
+      if (alive && prevData) setPrevBrief(prevData);
+
       const { data: usersData } = await db.from("owner_users")
         .select("id, name, created_at").eq("restaurant_id", restaurant.id).order("created_at");
       if (alive && usersData) setOwnerUsers(usersData);
@@ -665,6 +675,19 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // The guided brief builder replaces the plain editor while it's up, rather than sitting
   // on top of it.
   const showBriefAssistant = !briefAssistantOff && !briefSent;
+  const prevBriefReady = !briefSent && !carryOff && !!(
+    prevBrief?.missing_items?.length || prevBrief?.new_items?.length ||
+    prevBrief?.oven_items?.length || prevBrief?.notes
+  );
+  const prevBriefLabel = prevBrief
+    ? (prevBrief.date === new Date(Date.now() - 86400000).toLocaleDateString("en-CA") ? "אתמול" : prevBrief.date)
+    : "";
+  const prevToDraft = () => ({
+    missing: (prevBrief?.missing_items || []).join(", "),
+    newItems: (prevBrief?.new_items || []).join(", "),
+    oven: (prevBrief?.oven_items || []).join(", "),
+    notes: prevBrief?.notes || "",
+  });
   // The manager's day, as a list. Built the way the waiter's is: a row exists only when
   // there is something behind it, and every row opens the thing rather than ticking a box.
   const missingDesc = items.filter((d) => !String(d.description || "").trim()).length;
@@ -689,7 +712,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   ownerTasks.push({
     id: "brief", group: "daily",
     title: "לכתוב את העדכון היומי",
-    subtitle: "מה חסר, מה חדש ומה להמליץ — הצוות רואה את זה לפני המשמרת",
+    subtitle: prevBriefReady
+      ? `העדכון של ${prevBriefLabel} כבר מוכן — נשאר רק לאשר`
+      : "מה חסר, מה חדש ומה להמליץ — הצוות רואה את זה לפני המשמרת",
     done: briefSent && !redoIds.has("brief"), cta: briefSent ? "עריכה" : "לכתיבה",
     onOpen: () => { setHomeView("brief"); if (briefSent) setEditingBrief(true); },
     onRedo: briefSent ? () => setRedo("brief", true) : undefined,
@@ -1289,6 +1314,16 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           <div className="space-y-3">
             <ViewHeader title="העדכון היומי" subtitle="מה חסר, מה חדש ומה להמליץ" onBack={() => setHomeView(null)} />
             {showBriefAssistant ? (
+              prevBriefReady ? (
+                <BriefCarryOver
+                  prev={prevBrief}
+                  prevLabel={prevBriefLabel}
+                  saving={savingBrief}
+                  onApprove={() => handleSaveBrief(prevToDraft())}
+                  onEdit={() => { setBriefDraft(prevToDraft()); setBriefAssistantOff(true); }}
+                  onDismiss={() => setCarryOff(true)}
+                />
+              ) : (
               <BriefAssistant
                 items={items}
                 draft={briefDraft}
@@ -1297,6 +1332,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 saving={savingBrief}
                 onDismiss={() => setBriefAssistantOff(true)}
               />
+              )
             ) : (
               <DailyBriefEditor
                 items={items}

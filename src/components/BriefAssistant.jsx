@@ -135,6 +135,65 @@ export function TagField({ items, picked, onPicked, text, onText, placeholder, t
   );
 }
 
+// "They filled out 1,2,3 yesterday — today it's filled out automatically and they just
+// approve" (user, 2026-08-23). Yesterday's brief, shown ready-to-send: one tap approves it
+// as today's, "עריכה" opens the regular editor pre-filled, X falls back to the assistant.
+// Nothing is ever sent without the owner pressing the button.
+export function BriefCarryOver({ prev, prevLabel, onApprove, onEdit, onDismiss, saving }) {
+  const chips = (arr, cls) =>
+    (arr || []).map((n) => (
+      <span key={n} className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${cls}`}>{n}</span>
+    ));
+  return (
+    <div className="bg-gradient-to-l from-[#0f2e24] to-[#16181c] border border-[#22c08c]/50 rounded-xl p-4">
+      <div className="flex items-center gap-1.5 mb-2">
+        <Check size={14} className="text-[#5fdcb2]" />
+        <p className="text-xs font-black text-[#5fdcb2]">העדכון של {prevLabel} מוכן לאישור</p>
+        <span className="flex-1" />
+        <button onClick={onDismiss} className="text-[#5a5a6e]" title="כתיבה מהתחלה">
+          <X size={14} />
+        </button>
+      </div>
+      <p className="text-[10px] text-[#8a8aa0] font-bold mb-2.5">
+        אם היום דומה — מאשרים בלחיצה. אפשר גם לערוך לפני, או להתחיל מהתחלה עם ה-X.
+      </p>
+      <div className="space-y-2 mb-3">
+        {prev.missing_items?.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] font-black text-[#ff8aa5]">חסר:</span>
+            {chips(prev.missing_items, "bg-[#e0315a]/10 border-[#e0315a]/40 text-[#ff8aa5]")}
+          </div>
+        )}
+        {prev.new_items?.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] font-black text-[#5fdcb2]">ממליצים:</span>
+            {chips(prev.new_items, "bg-[#22c08c]/10 border-[#22c08c]/40 text-[#5fdcb2]")}
+          </div>
+        )}
+        {prev.oven_items?.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] font-black text-[#f3c98b]">בהכנה:</span>
+            {chips(prev.oven_items, "bg-[#f3a712]/10 border-[#f3a712]/40 text-[#f3c98b]")}
+          </div>
+        )}
+        {prev.notes && <p className="text-[11px] text-[#c4c4d4] leading-relaxed">{prev.notes}</p>}
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={onApprove}
+          disabled={saving}
+          className="flex-1 py-2.5 rounded-lg bg-[#22c08c] text-[#04150e] text-xs font-black flex items-center justify-center gap-1.5 disabled:opacity-50"
+        >
+          <Check size={13} /> {saving ? "שולח…" : "אישור ושליחה להיום"}
+        </button>
+        <button onClick={onEdit} className="px-4 py-2.5 rounded-lg bg-[#22252b] text-[#eef0f6] text-xs font-bold">
+          עריכה
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function BriefAssistant({ items, draft, setDraft, onSave, saving, onDismiss }) {
   const [step, setStep] = useState(0);
   const [picked, setPicked] = useState({ missing: [], recommend: [] });
