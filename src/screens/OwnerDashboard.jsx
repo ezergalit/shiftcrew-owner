@@ -15,7 +15,7 @@ import OperatorLine from "../components/OperatorLine";
 import SmartSuggestions from "../components/SmartSuggestions";
 import { categoryVisual } from "../lib/categoryVisual";
 import GuidedTour from "../components/GuidedTour";
-import BriefAssistant from "../components/BriefAssistant";
+import BriefAssistant, { TagField } from "../components/BriefAssistant";
 import BriefReadBoard from "../components/BriefReadBoard";
 import CuisineSelector from "../components/CuisineSelector";
 import LearningPathSettings from "../components/LearningPathSettings";
