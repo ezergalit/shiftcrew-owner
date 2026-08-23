@@ -381,6 +381,18 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       return s;
     });
 
+  // "Never an empty page" (user, 2026-08-23): once every task is done, checking the
+  // team's progress becomes the day's next task. Its "done" is the owner having opened
+  // it today — day-scoped in localStorage, same shape as the redo override.
+  const progressKey = `menu-app-owner-progress-${restaurant?.id}-${today}`;
+  const [progressChecked, setProgressChecked] = useState(() => {
+    try { return localStorage.getItem(progressKey) === "1"; } catch { return false; }
+  });
+  const markProgressChecked = () => {
+    setProgressChecked(true);
+    try { localStorage.setItem(progressKey, "1"); } catch {}
+  };
+
   // "בסדר לי שזה ככה בינתיים" — a menu task the owner waved off. Snoozed for 14 days
   // (it resurfaces later rather than disappearing forever), stored on the restaurant row
   // so it survives restarts and devices. MenuHealthReview keeps showing the gap always.
@@ -731,6 +743,23 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     done: false, cta: "להשלמה",
     onOpen: () => { setTab("settings"); setOpenSetting("health"); },
   });
+  // The reward task: when everything above is done the day isn't over — the page offers
+  // "check the team's progress" instead of going blank (user, 2026-08-23: "שלא יהיה לו
+  // דף ריק תמיד"). Appears only once the rest is done, stays visible (as done) for the
+  // rest of the day once opened.
+  const baseAllDone = ownerTasks.length > 0 && ownerTasks.every((t) => t.done);
+  if (loadDone && (baseAllDone || progressChecked)) ownerTasks.push({
+    id: "progress", group: "daily",
+    title: "לבדוק את התקדמות הצוות",
+    subtitle: studiedToday
+      ? `${studiedToday} מהצוות כבר למדו היום — שווה הצצה`
+      : "מי למד היום, מי מתקדם ומי צריך תזכורת",
+    done: progressChecked && !redoIds.has("progress"),
+    cta: "לצפייה",
+    onOpen: () => { markProgressChecked(); setRedo("progress", false); setShowTeam(true); },
+    onRedo: progressChecked && !redoIds.has("progress") ? () => setRedo("progress", true) : undefined,
+  });
+
   const weakestMember = teamMembers.length
     ? [...teamMembers].sort((a, b) => memberPct(a.id) - memberPct(b.id))[0]
     : null;

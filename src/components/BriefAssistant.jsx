@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Sparkles, ArrowLeft, Check, X, Plus } from "lucide-react";
+import { crossScriptMatches } from "../lib/translit";
 
 // Guided daily-brief builder, shown when today's brief is still empty.
 //
@@ -25,11 +26,30 @@ export function TagField({ items, picked, onPicked, text, onText, placeholder, t
   const suggestions = useMemo(() => {
     const q = text.trim().toLowerCase();
     if (!q) return [];
-    return (items || [])
-      .map((d) => d.name)
-      .filter((n) => n.toLowerCase().includes(q) && !picked.includes(n))
-      .slice(0, 6);
+    // Each suggestion carries its category — "הרי גליל אלון לבן · יינות" answers "is
+    // that even on my menu?" on sight (user, 2026-08-23: typed "הר", got wines from the
+    // imported wine list, and reasonably asked what they were). Word-start matches rank
+    // before mid-word ones.
+    const matches = (items || [])
+      .filter((d) => d.name.toLowerCase().includes(q) && !picked.includes(d.name))
+      .map((d) => ({
+        name: d.name,
+        category: (d.category || "").split(/\s*[—–]\s*/)[0].trim(),
+        atWordStart: d.name.toLowerCase().split(/\s+/).some((w) => w.startsWith(q)),
+      }));
+    matches.sort((a, b) => (b.atWordStart ? 1 : 0) - (a.atWordStart ? 1 : 0));
+    return matches.slice(0, 6);
   }, [text, items, picked]);
+
+  // The owner types "לילי" and the menu says "Lilly Flower" — phonetic matching across
+  // scripts (src/lib/translit.js, deterministic consonant skeletons, no AI). Shown as
+  // "האם התכוונתם?" so a near-miss is clearly a guess, not a plain-text match.
+  const soundsLike = useMemo(
+    () =>
+      crossScriptMatches(text.trim(), items || []).filter((d) => !picked.includes(d.name))
+        .map((d) => ({ name: d.name, category: (d.category || "").split(/\s*[—–]\s*/)[0].trim() })),
+    [text, items, picked]
+  );
 
   const add = (name) => {
     const v = (name || "").trim();
@@ -38,7 +58,7 @@ export function TagField({ items, picked, onPicked, text, onText, placeholder, t
     onText("");
   };
 
-  const exact = suggestions.some((n) => n.toLowerCase() === text.trim().toLowerCase());
+  const exact = suggestions.some((sg) => sg.name.toLowerCase() === text.trim().toLowerCase());
   const tagCls =
     tone === "red"
       ? "bg-[#e0315a]/10 border-[#e0315a]/40 text-[#ff8aa5]"
@@ -62,15 +82,27 @@ export function TagField({ items, picked, onPicked, text, onText, placeholder, t
 
       {/* Suggestions exist only while typing — the empty state is an empty box, not a
           wall of the whole menu. */}
-      {(suggestions.length > 0 || (text.trim() && !exact)) && (
+      {(suggestions.length > 0 || soundsLike.length > 0 || (text.trim() && !exact)) && (
         <div className="flex flex-wrap gap-1.5">
-          {suggestions.map((n) => (
+          {suggestions.map((sg) => (
             <button
-              key={n}
-              onClick={() => add(n)}
-              className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg border bg-[#16181c] text-[#c4c4d4] border-[#3a3d46]"
+              key={sg.name}
+              onClick={() => add(sg.name)}
+              className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg border bg-[#16181c] text-[#c4c4d4] border-[#3a3d46] flex items-center gap-1.5"
             >
-              {n}
+              {sg.name}
+              {sg.category && <span className="text-[9px] font-black text-[#8a8aa0]">· {sg.category}</span>}
+            </button>
+          ))}
+          {soundsLike.map((sg) => (
+            <button
+              key={`sl-${sg.name}`}
+              onClick={() => add(sg.name)}
+              className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg border border-dashed bg-[#16181c] text-[#7fc8ff] border-[#3d6a8f] flex items-center gap-1.5"
+            >
+              <span className="text-[9px] font-black text-[#8a8aa0]">התכוונתם?</span>
+              {sg.name}
+              {sg.category && <span className="text-[9px] font-black text-[#8a8aa0]">· {sg.category}</span>}
             </button>
           ))}
           {text.trim() && !exact && (
