@@ -35,7 +35,7 @@ export default function WaiterPreview({ teamCode }) {
         <div>
           <p className="text-sm font-black text-[#eef0f6]">כך נראית האפליקציה אצל הצוות</p>
           <p className="text-[11px] text-[#8a8aa0]">
-            זו האפליקציה האמיתית, חיה — היכנסו עם קוד הצוות{teamCode ? ` (${teamCode})` : ""} כדי לראות אותה כמו מלצר
+            זו האפליקציה האמיתית, חיה. לחיצה מחוץ לטלפון חוזרת לניהול
           </p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -53,12 +53,24 @@ export default function WaiterPreview({ teamCode }) {
           </button>
         </div>
       </div>
-      <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+      {/* Tapping anywhere OUTSIDE the phone bounces back to the owner app (user,
+          2026-08-22) — the backdrop is the exit, the frame swallows its own clicks. */}
+      <div
+        className="flex-1 flex items-center justify-center p-4 overflow-hidden"
+        onClick={() => setOpen(false)}
+      >
         {/* A phone-shaped frame so it reads as "the waiter's phone", not a broken page. */}
-        <div className="h-full max-h-[760px] aspect-[9/19] max-w-full rounded-[28px] border-[6px] border-[#22252b] bg-[#0c0d10] overflow-hidden shadow-2xl">
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="h-full max-h-[760px] aspect-[9/19] max-w-full rounded-[28px] border-[6px] border-[#22252b] bg-[#0c0d10] overflow-hidden shadow-2xl"
+        >
+          {/* ?preview=<team_code> asks the waiter app to open a read-only demo session
+              for this restaurant — real menu, no login typing, no team member created,
+              nothing saved. Until the waiter side ships support, the param is ignored
+              and the normal login shows. */}
           <iframe
             key={nonce}
-            src={WAITER_URL}
+            src={teamCode ? `${WAITER_URL}/?preview=${encodeURIComponent(teamCode)}` : WAITER_URL}
             title="תצוגת אפליקציית הצוות"
             className="w-full h-full border-0"
           />

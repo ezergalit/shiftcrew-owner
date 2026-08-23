@@ -9,6 +9,8 @@ import TeamMessageDialog from "../components/TeamMessageDialog";
 import OwnerTasksList from "../components/OwnerTasksList";
 import TeamScreen from "../components/TeamScreen";
 import Greeting from "../components/Greeting";
+import ProfileGate from "../components/ProfileGate";
+import { genderWord } from "../lib/gender";
 import OperatorLine from "../components/OperatorLine";
 import SmartSuggestions from "../components/SmartSuggestions";
 import { categoryVisual } from "../lib/categoryVisual";
@@ -40,7 +42,7 @@ const needsAllergens = (d) => {
   const c = d.category || "";
   return !DRINK_CAT_RE.test(c) || BREW_CAT_RE.test(c);
 };
-export const RESTAURANT_COLUMNS = "id, name, owner_code, team_code, created_at, phone, address, description, cuisine_types, important_allergens, service_style, service_notes, onboarding_completed, onboarding_step, tracked_flags, dismissed_menu_tasks";
+export const RESTAURANT_COLUMNS = "id, name, owner_code, team_code, created_at, phone, address, description, cuisine_types, important_allergens, service_style, service_notes, onboarding_completed, onboarding_step, tracked_flags, dismissed_menu_tasks, owner_name, owner_gender";
 
 function fromDbRestaurant(r) {
   return {
@@ -275,6 +277,10 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // Today's study rows, computed by LearningStatus and shared so the detail sheet is
   // identical no matter which home list opened it.
   const [liveByMember, setLiveByMember] = useState({});
+  // The personal-profile gate (name + gender). Skipping is remembered per device; the
+  // secondary-manager identity already carries a name, so the gate is primary-owner only.
+  const profileSkipKey = `menu-app-owner-profile-skip-${restaurant?.id}`;
+  const [profileSkipped, setProfileSkipped] = useState(() => !!localStorage.getItem(profileSkipKey));
   const [messageFor, setMessageFor] = useState(null);          // waiter being nudged
   const [messagedToday, setMessagedToday] = useState({});      // id -> { body, readAt }
   const [menuGroupView, setMenuGroupView] = useState(null); // open menu (menu_group) or null
@@ -1210,9 +1216,13 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
         </div>
         <div className="flex-1 min-w-0 text-center">
           <h1 className="text-lg font-black truncate">{restaurant?.name || "המסעדה שלי"}</h1>
-          {restaurant?.logged_in_as_name && (
+          {restaurant?.logged_in_as_name ? (
             <p className="text-[11px] text-[#8a8aa0] truncate">מחובר/ת כ{restaurant.logged_in_as_name}</p>
-          )}
+          ) : restaurant?.owner_name ? (
+            <p className="text-[11px] text-[#8a8aa0] truncate">
+              {genderWord(restaurant.owner_gender, "מחובר", "מחוברת")} כ{restaurant.owner_name}
+            </p>
+          ) : null}
         </div>
         <div className="flex items-start gap-1.5 flex-shrink-0">
           {/* The team's numbers live behind this button now that home is a task list —
@@ -1238,7 +1248,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {tab === "home" && homeView === null && (
           <div className="space-y-3">
-            <Greeting name={restaurant?.logged_in_as_name || restaurant?.name} />
+            <Greeting name={restaurant?.owner_name || restaurant?.logged_in_as_name || restaurant?.name} />
             <OwnerTasksList tasks={ownerTasks} />
           </div>
         )}
@@ -1657,6 +1667,15 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             />
           </>
         </TeamScreen>
+      )}
+
+      {loadDone && !restaurant?.owner_name && !restaurant?.logged_in_as_name &&
+        !profileSkipped && !menuSetupActive && (
+        <ProfileGate
+          restaurant={restaurant}
+          onDone={(patch) => onRestaurantUpdated?.({ ...restaurant, ...patch })}
+          onSkip={() => { localStorage.setItem(profileSkipKey, "1"); setProfileSkipped(true); }}
+        />
       )}
 
       {/* One waiter's full detail, opened from either home list. */}
