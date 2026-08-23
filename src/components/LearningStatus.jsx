@@ -1,21 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
-import { Clock, AlertCircle, Eye, CheckCircle2 } from "lucide-react";
+import { Clock, Eye, CheckCircle2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { MemberRow } from "./MemberSheet";
 
 const db = supabase.schema("menu_app");
 
-// "סטטוס למידה" — the owner's daily read on the team. It answers, in order:
+// "סטטוס למידה" — the owner's daily read on the team. Two lists only (user, 2026-08-23):
 //   1. who studied today, and how much
-//   2. who still needs to
-//   3. who merely opened the app without learning anything
+//   2. who read the daily brief or marked shift tasks today
 //
-// That third group is the one a progress-only view hides: a waiter who logs in every day
-// and learns nothing looks exactly like one who never showed up. `team_members.last_seen_at`
-// records presence; `progress_snapshots` records actual study, and the gap between them is
-// the signal.
+// There is deliberately NO "everyone else" list ("whoever didn't study is obvious because
+// it shows who did") — the 2/7 headline already sizes the gap, and the full roster lives
+// in "התקדמות ומבחנים". An empty group says so explicitly instead of hiding.
 //
-// Read-only and mounted on its own tab, so nothing here can disturb the menu editor.
+// Read-only; nothing here can disturb the menu editor.
 
 const DAY_MS = 86400000;
 const startOfDay = (d = new Date()) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
@@ -37,7 +35,8 @@ export default function LearningStatus({ restaurant, onSelectMember, onRows, onM
     (async () => {
       if (!restaurant?.id) return;
       const since = new Date(Date.now() - 7 * DAY_MS).toISOString();
-      const [members, menu, snaps, board] = await Promise.all([
+      const todayStr = new Date().toLocaleDateString("en-CA");
+      const [members, menu, snaps, board, reads] = await Promise.all([
         db.from("team_members")
           .select("id, name, first_name, last_name, total_seconds, baseline_pct, last_seen_at, created_at")
           .eq("restaurant_id", restaurant.id),
@@ -45,6 +44,8 @@ export default function LearningStatus({ restaurant, onSelectMember, onRows, onM
         db.from("progress_snapshots").select("team_member_id, taken_at, seconds_delta, points")
           .eq("restaurant_id", restaurant.id).gte("taken_at", since),
         db.from("leaderboard").select("team_member_id, points, streak").eq("restaurant_id", restaurant.id),
+        db.from("daily_brief_reads").select("team_member_id")
+          .eq("restaurant_id", restaurant.id).eq("date", todayStr),
       ]);
       if (!alive) return;
 
@@ -52,10 +53,16 @@ export default function LearningStatus({ restaurant, onSelectMember, onRows, onM
       // Percentage from menu_progress, the same sum/(n*5) formula the waiter app and the
       // team tab use. Kept consistent on purpose — two screens disagreeing about the same
       // waiter's score is worse than either number being slightly off.
-      const { data: progress } = ids.length
-        ? await db.from("menu_progress").select("team_member_id, mastery, source_item_id").in("team_member_id", ids)
-        : { data: [] };
+      const [{ data: progress }, { data: taskMarks }] = ids.length
+        ? await Promise.all([
+            db.from("menu_progress").select("team_member_id, mastery, source_item_id").in("team_member_id", ids),
+            db.from("shift_task_done").select("team_member_id").in("team_member_id", ids).eq("done_date", todayStr),
+          ])
+        : [{ data: [] }, { data: [] }];
       if (!alive) return;
+      const readToday = new Set((reads.data || []).map((r) => r.team_member_id));
+      const tasksBy = new Map();
+      for (const t of taskMarks || []) tasksBy.set(t.team_member_id, (tasksBy.get(t.team_member_id) || 0) + 1);
 
       const total = (menu.data || []).length;
       const today = startOfDay();
@@ -98,6 +105,8 @@ export default function LearningStatus({ restaurant, onSelectMember, onRows, onM
           studiedTodaySeconds: todaySnaps.reduce((a, s) => a + (s.seconds_delta || 0), 0),
           studiedToday: todaySnaps.length > 0,
           seenToday: isSameDay(m.last_seen_at, today),
+          readBrief: readToday.has(m.id),
+          tasksDone: tasksBy.get(m.id) || 0,
           lastSeen: m.last_seen_at,
           week,
           weekMinutes: week.reduce((a, b) => a + b, 0),
@@ -117,9 +126,8 @@ export default function LearningStatus({ restaurant, onSelectMember, onRows, onM
     const list = rows || [];
     return {
       studied: list.filter((r) => r.studiedToday).sort((a, b) => b.studiedTodaySeconds - a.studiedTodaySeconds),
-      // Opened the app today but produced no study time — the group worth a nudge.
-      seenOnly: list.filter((r) => !r.studiedToday && r.seenToday),
-      absent: list.filter((r) => !r.studiedToday && !r.seenToday).sort((a, b) => a.pct - b.pct),
+      // Read the brief or marked shift tasks today (and did not study — studying wins).
+      engaged: list.filter((r) => !r.studiedToday && (r.readBrief || r.tasksDone > 0)),
     };
   }, [rows]);
 
@@ -138,7 +146,7 @@ export default function LearningStatus({ restaurant, onSelectMember, onRows, onM
   // One line per person. The chart, the wrong dishes and the exam chips that used to sit
   // in every card moved into MemberSheet, one tap away — at fifty waiters a card each is
   // a wall nobody reads (user, 2026-08-20).
-  const TONE = { studied: "#22c08c", seen: "#f3c14b", absent: "#5a5a6e" };
+  const TONE = { studied: "#22c08c", engaged: "#38bdf8" };
   const Row = ({ r, tone }) => (
     <MemberRow
       name={r.name}
@@ -146,9 +154,10 @@ export default function LearningStatus({ restaurant, onSelectMember, onRows, onM
       color={pctColor(r.pct)}
       dot={TONE[tone]}
       note={
-        tone === "studied" ? fmtMins(r.studiedTodaySeconds)
-          : tone === "seen" ? "לא למד/ה"
-            : r.lastSeen ? new Date(r.lastSeen).toLocaleDateString("he-IL") : "טרם נכנס/ה"
+        tone === "studied"
+          ? fmtMins(r.studiedTodaySeconds)
+          : [r.readBrief ? "עדכון ✓" : null, r.tasksDone ? (r.tasksDone === 1 ? "משימה אחת" : `${r.tasksDone} משימות`) : null]
+              .filter(Boolean).join(" · ")
       }
       onClick={() => onSelectMember?.(r)}
       // The nudge button appears only next to someone who did not study today — that is
@@ -204,18 +213,10 @@ export default function LearningStatus({ restaurant, onSelectMember, onRows, onM
       </Section>
 
       <Section
-        icon={Eye} title="נכנסו אבל לא למדו" count={groups.seenOnly.length} color="#f3c14b"
-        empty="כל מי שנכנס היום גם למד"
+        icon={Eye} title="קראו את העדכון או סימנו משימות" count={groups.engaged.length} color="#38bdf8"
+        empty="אף אחד עדיין לא קרא את העדכון או סימן משימות היום"
       >
-        <div>{groups.seenOnly.map((r) => <Row key={r.id} r={r} tone="seen" />)}</div>
-      </Section>
-
-      <Section
-        icon={AlertCircle} title="צריכים ללמוד" count={groups.absent.length} color="#8a8aa0"
-        empty="כל הצוות היה פעיל היום 🎉"
-      >
-        {/* Weakest first: this list is a to-do, so the person who needs it most is on top. */}
-        <div>{groups.absent.map((r) => <Row key={r.id} r={r} tone="absent" />)}</div>
+        <div>{groups.engaged.map((r) => <Row key={r.id} r={r} tone="engaged" />)}</div>
       </Section>
 
       <div className="flex items-center gap-1.5 justify-center pt-1">

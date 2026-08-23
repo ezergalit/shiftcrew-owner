@@ -671,7 +671,13 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const teamAvgPct = teamMembers.length
     ? Math.round(teamMembers.reduce((s, m) => s + memberPct(m.id), 0) / teamMembers.length)
     : 0;
-  const studiedToday = teamMembers.filter((m) => leaderboardByMember[m.id]?.last_study_date === today).length;
+  // Prefer LearningStatus's rows once they exist — it derives "studied today" from
+  // progress_snapshots, and the header disagreeing with the card below it (0/17 vs 12/17,
+  // caught live 2026-08-23) is exactly the two-screens-one-number trap. The leaderboard
+  // date is only the pre-load fallback.
+  const studiedToday = Object.keys(liveByMember).length
+    ? Object.values(liveByMember).filter((r) => r.studiedToday).length
+    : teamMembers.filter((m) => leaderboardByMember[m.id]?.last_study_date === today).length;
   // The guided brief builder replaces the plain editor while it's up, rather than sitting
   // on top of it.
   const showBriefAssistant = !briefAssistantOff && !briefSent;
