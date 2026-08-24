@@ -3,6 +3,7 @@ import { Loader2, AlertTriangle, Eye, EyeOff } from "lucide-react";
 import BrandMark from "../components/BrandMark";
 import { supabase } from "../lib/supabase";
 import { setSessionToken } from "../lib/appSession";
+import { RESTAURANT_COLUMNS } from "../screens/OwnerDashboard";
 
 const SESSION_KEY = "menu-app-owner-session";
 const db = supabase.schema("menu_app");
@@ -99,8 +100,16 @@ export default function OwnerLogin({ onGranted }) {
           return;
         }
         setSessionToken(data.token);
-        localStorage.setItem(SESSION_KEY, JSON.stringify(toSession(restaurant)));
-        onGranted(restaurant);
+        // The RPC returns a fixed profile that predates newer columns (owner_name,
+        // trainee_code, tracked_flags…). Session restore always uses RESTAURANT_COLUMNS,
+        // so a fresh login must too — otherwise the first day after every login runs on
+        // a partial restaurant object. Token is set, so RLS lets this row through.
+        const { data: full } = await db.from("restaurants")
+          .select(RESTAURANT_COLUMNS).eq("id", restaurant.id).maybeSingle();
+        // Merge, don't replace: logged_in_as_name exists only on the RPC result.
+        const profile = full ? { ...restaurant, ...full } : restaurant;
+        localStorage.setItem(SESSION_KEY, JSON.stringify(toSession(profile)));
+        onGranted(profile);
       } catch (e2) {
         console.error("Login error:", e2);
         setErr("משהו השתבש. נסו שוב.");

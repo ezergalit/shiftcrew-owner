@@ -10,6 +10,7 @@ const db = supabase.schema("menu_app");
 // on the home screen.
 export default function TeamRoster({ restaurant, members, onRemoved }) {
   const [copied, setCopied] = useState(false);
+  const [copiedTrainee, setCopiedTrainee] = useState(false);
   const [confirming, setConfirming] = useState(null); // member id awaiting confirmation
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -19,6 +20,16 @@ export default function TeamRoster({ restaurant, members, onRemoved }) {
       await navigator.clipboard.writeText(restaurant?.team_code || "");
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setErr("ההעתקה נחסמה בדפדפן — אפשר לסמן את הקוד ולהעתיק ידנית.");
+    }
+  };
+
+  const copyTraineeCode = async () => {
+    try {
+      await navigator.clipboard.writeText(restaurant?.trainee_code || "");
+      setCopiedTrainee(true);
+      setTimeout(() => setCopiedTrainee(false), 1800);
     } catch {
       setErr("ההעתקה נחסמה בדפדפן — אפשר לסמן את הקוד ולהעתיק ידנית.");
     }
@@ -61,6 +72,29 @@ export default function TeamRoster({ restaurant, members, onRemoved }) {
           מזין את הקוד ואת שמו, וזהו. הם יופיעו כאן ברגע שייכנסו.
         </p>
       </div>
+
+      {/* A second entry code for brand-new hires: same app, learning-only — no shift
+          tasks, no daily brief. The mode is decided by which code they typed. */}
+      {restaurant?.trainee_code && (
+        <div className="bg-[#0c0d10] border border-[#22252b] rounded-xl p-3.5">
+          <p className="text-[11px] font-bold text-[#8a8aa0] mb-1">קוד מלצרים מתחילים</p>
+          <div className="flex items-center gap-2">
+            <p className="text-2xl font-black text-[#38bdf8] tracking-wide flex-1">{restaurant.trainee_code}</p>
+            <button
+              onClick={copyTraineeCode}
+              className={`px-3 py-2 rounded-lg text-[11px] font-black flex items-center gap-1.5 transition ${
+                copiedTrainee ? "bg-[#22c08c] text-[#06231a]" : "bg-[#22252b] text-[#a79bff]"
+              }`}
+            >
+              {copiedTrainee ? <><Check size={13} /> הועתק</> : <><Copy size={13} /> העתקה</>}
+            </button>
+          </div>
+          <p className="text-[11px] text-[#8a8aa0] leading-relaxed mt-2">
+            למי שעוד לא במשמרות: כניסה עם הקוד הזה פותחת גרסה ללימוד התפריט בלבד —
+            בלי משימות משמרת ובלי העדכון היומי. כשמתחילים לעבוד, נכנסים עם קוד הצוות הרגיל.
+          </p>
+        </div>
+      )}
 
       {err && (
         <p className="text-[11px] font-bold text-[#e0315a] flex items-start gap-1.5 leading-relaxed">

@@ -42,7 +42,7 @@ const needsAllergens = (d) => {
   const c = d.category || "";
   return !DRINK_CAT_RE.test(c) || BREW_CAT_RE.test(c);
 };
-export const RESTAURANT_COLUMNS = "id, name, owner_code, team_code, created_at, phone, address, description, cuisine_types, important_allergens, service_style, service_notes, onboarding_completed, onboarding_step, tracked_flags, dismissed_menu_tasks, owner_name, owner_gender";
+export const RESTAURANT_COLUMNS = "id, name, owner_code, team_code, created_at, phone, address, description, cuisine_types, important_allergens, service_style, service_notes, onboarding_completed, onboarding_step, tracked_flags, dismissed_menu_tasks, owner_name, owner_gender, trainee_code";
 
 function fromDbRestaurant(r) {
   return {
