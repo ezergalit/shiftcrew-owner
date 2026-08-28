@@ -26,6 +26,7 @@ import SettingsSection from "../components/SettingsSection";
 import WaiterPreview from "../components/WaiterPreview";
 import { FLAG_GROUPS, FLAG_GROUP_BY_KEY, effectiveTrackedFlags } from "../lib/dishFlags";
 import { supabase } from "../lib/supabase";
+import "../aurora.css";
 
 const db = supabase.schema("menu_app");
 
@@ -42,7 +43,7 @@ const needsAllergens = (d) => {
   const c = d.category || "";
   return !DRINK_CAT_RE.test(c) || BREW_CAT_RE.test(c);
 };
-export const RESTAURANT_COLUMNS = "id, name, owner_code, team_code, created_at, phone, address, description, cuisine_types, important_allergens, service_style, service_notes, onboarding_completed, onboarding_step, tracked_flags, dismissed_menu_tasks, owner_name, owner_gender, trainee_code";
+export const RESTAURANT_COLUMNS = "id, name, owner_code, team_code, created_at, phone, address, description, cuisine_types, important_allergens, service_style, service_notes, onboarding_completed, onboarding_step, tracked_flags, dismissed_menu_tasks, owner_name, owner_gender, trainee_code, features";
 
 function fromDbRestaurant(r) {
   return {
@@ -120,7 +121,11 @@ function dishFromDb(row) {
     isSpecial: !!row.is_special,
     // "חשוב לי שהצוות ידע את המנה הזו" — drives learning priority in the waiter app.
     // Distinct from isSpecial, which is the daily-service "מנת היום" flag.
-    starred: !!row.starred
+    starred: !!row.starred,
+    // ⚠️ image_url was missing from this mapper, so the dish cards that read
+    // `item.image_url` always got undefined and every restaurant looked photo-less —
+    // even SALON26, which has 64 real photos. The row carried it; the mapper dropped it.
+    image_url: row.image_url || null
   };
 }
 
@@ -252,6 +257,15 @@ async function downscaleImage(file, maxDim = 2576) {
 
 export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpdated }) {
   const [tab, setTab] = useState("home"); // home | menu | settings
+  // ⚠️ The «אורורה» skin is opt-in per restaurant (restaurants.features.design),
+  // exactly like the waiter app. A restaurant without the flag — CREWDEMO, which
+  // Apple's reviewer and the Play testers open — renders the old screens byte for byte.
+  const aurora = restaurant?.features?.design === "aurora";
+  // features.tasks === false — the same per-restaurant switch the waiter app reads.
+  // The product focuses on the menu and the service; the shift checklists and the daily
+  // brief are not part of it, and the owner should have nothing to tick off. Home turns
+  // into the one thing that IS their job here: is the team actually learning.
+  const tasksOff = restaurant?.features?.tasks === false;
   // The team tab is gone (user, 2026-08-20). It held two unrelated things: the numbers the
   // owner checks daily, and the joining code they touch once. The numbers moved to the home
   // screen, the code and roster into settings — so the nav carries four destinations that
@@ -1262,7 +1276,8 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
   // Main App
   return (
-    <div className="h-screen max-w-md mx-auto bg-[#0c0d10] text-[#eef0f6] flex flex-col" dir="rtl">
+    <div className={`h-screen mx-auto text-[#eef0f6] flex flex-col ${aurora ? "aurora-skin" : "max-w-md bg-[#0c0d10]"}`} dir="rtl">
+      {aurora && (<><div className="aurora" aria-hidden><i /><i /><i /></div><div className="grain" aria-hidden /></>)}
       {/* Header */}
       <div className="px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-4 border-b border-[#22252b] flex items-center justify-between gap-2">
         {/* Sign-out sits in the top-right corner (first in RTL flow) instead of the bottom
@@ -1310,7 +1325,39 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
         {tab === "home" && homeView === null && (
           <div className="space-y-3">
             <Greeting name={restaurant?.owner_name || restaurant?.logged_in_as_name || restaurant?.name} />
-            <OwnerTasksList tasks={ownerTasks} />
+            {tasksOff ? (
+              <>
+                {/* LearningStatus already carries the day's numbers; a second row of
+                    tiles repeated them. What it does NOT know is the menu size, so that
+                    is the one tile left — and it doubles as the way into the menu. */}
+                <button onClick={() => setTab("menu")} className="glass w-full flex items-center gap-3 text-right">
+                  <span className="text-[19px]" aria-hidden>📖</span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[15px] font-black text-[#eef0f6]">{items.length} מנות בתפריט</span>
+                    <span className="block text-[12px] text-[#8a8aa0] mt-0.5">זה מה שהצוות לומד · לחצו לעריכה</span>
+                  </span>
+                  <span className="chev">‹</span>
+                </button>
+                <LearningStatus
+                  restaurant={restaurant}
+                  onSelectMember={setSheetFor}
+                  onRows={(rows) => setLiveByMember(Object.fromEntries(rows.map((r) => [r.id, r])))}
+                  onMessage={setMessageFor}
+                  messagedToday={messagedToday}
+                />
+                {teamMembers.length === 0 && (
+                  <button
+                    onClick={() => { setTab("settings"); setOpenSetting("team"); }}
+                    className="w-full glass rounded-2xl p-4 text-right"
+                  >
+                    <p className="text-sm font-black text-[#eef0f6]">לצרף את הצוות</p>
+                    <p className="text-[12px] text-[#8a8aa0] mt-1">שתפו את קוד ההצטרפות — כל מלצר נכנס עם הקוד והשם שלו</p>
+                  </button>
+                )}
+              </>
+            ) : (
+              <OwnerTasksList tasks={ownerTasks} />
+            )}
           </div>
         )}
 
@@ -1453,6 +1500,13 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
               const vis = categoryVisual(cat);
               return (
               <div key={cat} className="space-y-2">
+                {aurora ? (
+                  <div className="au-cathead">
+                    <span className="ic" aria-hidden>{vis.emoji}</span>
+                    <b>{cat}</b>
+                    <span>{items.filter((i) => i.category === cat).length} מנות</span>
+                  </div>
+                ) : (
                 <div className="flex items-center gap-2 px-1">
                   <span
                     className="w-6 h-6 rounded-lg flex items-center justify-center text-[13px] shrink-0"
@@ -1463,7 +1517,51 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                   </span>
                   <p className="text-xs font-bold text-[#8a8aa0]">{cat}</p>
                 </div>
+                )}
                 {items.filter((i) => i.category === cat).map((item) => (
+                  aurora ? (
+                  /* Under the skin the photo leads: a 78px tile instead of a 36px
+                     thumbnail, because the picture is how an owner recognises the dish
+                     at a glance. No photo ⇒ the category visual stands in, same as before. */
+                  <div
+                    key={item.id}
+                    onClick={() => openDishEditor(item)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === "Enter") openDishEditor(item); }}
+                    className={`glass au-dish ${item.starred ? "starred" : ""} ${!item.description ? "warn" : ""}`}
+                  >
+                    <span className="ph" aria-hidden>
+                      {item.image_url
+                        ? <img src={item.image_url} alt="" loading="lazy" />
+                        : vis.emoji}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="flex items-start gap-2">
+                        <h3 className="flex-1 min-w-0">{item.name}</h3>
+                        {item.price ? <span className="price">{item.price} ₪</span> : null}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleStar(item); }}
+                          title={item.starred ? "מנה מודגשת — הצוות מתרגל אותה בעדיפות. לחצו להסרת ההדגשה." : "הדגישו מנה שחשוב במיוחד שהצוות ידע — היא תקבל עדיפות בלימוד."}
+                          aria-label={item.starred ? "הסרת הדגשה מהמנה" : "הדגשת המנה"}
+                          className={`au-star ${item.starred ? "on" : ""}`}
+                        >
+                          <Star size={15} fill={item.starred ? "currentColor" : "none"} />
+                        </button>
+                      </span>
+                      {item.description
+                        ? <span className="desc line-clamp-2">{item.description}</span>
+                        : <span className="desc" style={{ color: "var(--amber)" }}>אין תיאור — לחצו להוספה</span>}
+                      {item.allergens?.length > 0 && (
+                        <span className="flex flex-wrap gap-1.5 mt-1.5">
+                          {item.allergens.map((a) => (
+                            <span key={a} className="chip red"><i className="dot" />{a}</span>
+                          ))}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  ) : (
                   <div
                     key={item.id}
                     /* One tap target: the card IS the edit button. The star is the only
@@ -1516,6 +1614,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                       <Edit2 size={10} /> לחצו לעריכה
                     </p>
                   </div>
+                  )
                 ))}
               </div>
             );})}
@@ -1717,13 +1816,13 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       </div>
 
       {/* Bottom Navigation */}
-      <div className="border-t border-[#22252b] bg-[#16181c]">
+      <div className={aurora ? "au-nav" : "border-t border-[#22252b] bg-[#16181c]"}>
         {/* pb keeps the tabs clear of the iPhone home indicator once packaged with
             Capacitor. On the web the inset is 0 and this stays the plain p-2. */}
         <div className="grid grid-cols-3 gap-1 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-          <NavButton icon={<Home size={18} />} label="בית" active={tab === "home"} onClick={() => setTab("home")} />
-          <NavButton icon={<BookOpen size={18} />} label="תפריט" active={tab === "menu"} onClick={() => setTab("menu")} />
-          <NavButton icon={<Settings size={18} />} label="הגדרות" active={tab === "settings"} onClick={() => setTab("settings")} />
+          <NavButton aurora={aurora} emoji="🏠" icon={<Home size={18} />} label="בית" active={tab === "home"} onClick={() => setTab("home")} />
+          <NavButton aurora={aurora} emoji="📖" icon={<BookOpen size={18} />} label="תפריט" active={tab === "menu"} onClick={() => setTab("menu")} />
+          <NavButton aurora={aurora} emoji="⚙️" icon={<Settings size={18} />} label="הגדרות" active={tab === "settings"} onClick={() => setTab("settings")} />
         </div>
       {showTeam && (
         <TeamScreen
@@ -1829,7 +1928,17 @@ function ViewHeader({ title, subtitle, onBack }) {
   );
 }
 
-function NavButton({ icon, label, active, onClick }) {
+function NavButton({ icon, emoji, label, active, onClick, aurora }) {
+  // Under the skin the tab is an emoji over a glowing emerald line (user pick, 27.8);
+  // without it, the original lucide icon in a purple pill. Same button, two wallpapers.
+  if (aurora) {
+    return (
+      <button onClick={onClick} className={active ? "on" : ""}>
+        <span className="ic" aria-hidden>{emoji}</span>
+        <span>{label}</span>
+      </button>
+    );
+  }
   return (
     <button
       onClick={onClick}

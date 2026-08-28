@@ -1,0 +1,225 @@
+/* ============================================================
+   CrewMenu · «אורורה» — הסגנון של אפליקציית הניהול
+   מקור האמת: Desktop/crewmenu-redesign-2026-08/crewmenu-menu-page.html
+   סעיפים 1-8 זהים מילה במילה לעותק של המלצר (src/aurora.css שם) —
+   שינוי בטוקנים או באטומים חייב לקרות בשני הריפואים.
+   סעיפים 9-12 הם תוספת של הניהול בלבד.
+   ============================================================ */
+
+/* --- 1. טוקנים --- */
+:root{
+  --bg:#0C0D10;            /* רקע האפליקציה */
+  --hair:rgba(238,240,246,.09);
+  --ink:#EEF0F6;           /* טקסט ראשי (קרם) */
+  --dim:#8A919E;           /* טקסט משני */
+  --faint:#6B7280;         /* טקסט שלישוני / אייקונים כבויים */
+  --em:#22C08C;            /* אמרלד — צבע המותג היחיד */
+  --red:#E5484D;           /* אלרגיות */
+  --purple:#B085F5;        /* רגישות בהריון */
+  --amber:#E8B93E;         /* מוקשים והעדפות */
+  --ease:cubic-bezier(.22,1,.32,1);
+}
+
+
+/* ⚠️ הכול מקונן תחת `.aurora-skin` — העיצוב הזה נדלק פר-מסעדה
+   (`restaurants.features.design = "aurora"`). מסעדה בלי הדגל מקבלת
+   בדיוק את האפליקציה הישנה, כולל CREWDEMO שנמצא בביקורת אפל. */
+
+/* --- 3. פריסת המסך --- */
+/* ⚠️ `isolation:isolate` הוא מה שמחזיק את סעיף 2. בלעדיו שכבות ה-z השלילי
+   מצוירות מתחת לרקע של השורש עצמו — הן רצות ולא נראות (נתפס בביקורת 27.8). */
+.aurora-skin{isolation:isolate; position:relative; overflow:hidden; background:var(--bg); max-width:430px; margin:0 auto;
+  font-family:'Heebo',system-ui,sans-serif}
+.aurora-skin .au-screen{padding:26px 20px 12px}
+
+/* --- 2. רקע האורורה (שכבות קבועות, מאחורי הכל: z שלילי) --- */
+.aurora-skin .aurora {position:absolute; inset:0; z-index:-2; pointer-events:none; overflow:hidden}
+.aurora-skin .aurora i {position:absolute; border-radius:50%; filter:blur(80px)}
+.aurora-skin .aurora i:nth-child(1) {width:95%;height:22%;right:-22%;top:-5%; opacity:.85;
+  background:radial-gradient(ellipse at center,#2A8467 0%,transparent 68%);
+  animation:drift1 26s var(--ease) infinite alternate}
+.aurora-skin .aurora i:nth-child(2) {width:80%;height:20%;right:-20%;top:16%; opacity:.6;
+  background:radial-gradient(ellipse at center,#1E6B52 0%,transparent 70%);
+  animation:drift2 32s var(--ease) infinite alternate}
+.aurora-skin .aurora i:nth-child(3) {width:70%;height:18%;right:-22%;top:34%; opacity:.3;
+  background:radial-gradient(ellipse at center,#123B30 0%,transparent 72%);
+  animation:drift1 38s var(--ease) infinite alternate-reverse}
+@keyframes drift1{to{transform:translate(-14%,10%) rotate(8deg)}}
+@keyframes drift2{to{transform:translate(12%,-12%) rotate(-6deg)}}
+.aurora-skin .grain {position:absolute; inset:0; z-index:-1; pointer-events:none; opacity:.05;
+  mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+/* --- 4. אטומים --- */
+.aurora-skin .glass {position:relative; border-radius:22px; padding:16px;
+  background:linear-gradient(160deg,rgba(37,41,48,.72),rgba(23,25,30,.5));
+  border:1px solid var(--hair); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+  box-shadow:0 16px 34px rgba(0,0,0,.4), inset 0 1px 0 rgba(238,240,246,.07)}
+.aurora-skin .au-label {font-size:12.5px; color:var(--dim); letter-spacing:.02em}
+.aurora-skin .chev {color:var(--faint); flex:none}
+
+/* --- 5. הדר: ברכה (לחיץ → מסך המדדים) --- */
+.aurora-skin .hdr {display:flex; align-items:center; gap:12px; width:100%; text-align:right;
+  background:none; border:0; font:inherit; color:inherit; cursor:pointer;
+  border-radius:16px}
+.aurora-skin .hdr h2 {font-size:21px; font-weight:800; display:flex; align-items:center; gap:7px}
+.aurora-skin .hdr h2 svg {color:var(--faint)}
+.aurora-skin .avatar {width:44px;height:44px;border-radius:50%; display:grid; place-items:center;
+  font-weight:700; font-size:15px; color:var(--em); flex:none;
+  background:linear-gradient(150deg,rgba(20,72,58,.9),rgba(14,42,34,.9));
+  border:1px solid rgba(34,192,140,.3)}
+
+/* --- 6. חיפוש --- */
+.aurora-skin .search {display:flex; align-items:center; gap:10px; padding:12px 16px;
+  border-radius:18px; background:rgba(238,240,246,.05);
+  border:1px solid var(--hair); color:var(--dim)}
+.aurora-skin .search input {border:0; outline:0; background:transparent; color:var(--ink);
+  font:inherit; width:100%}
+.aurora-skin .search input::placeholder {color:var(--dim)}
+
+/* --- 7. מקרא הצבעים --- */
+.aurora-skin .chip {display:inline-flex; align-items:center; gap:6px; font-size:12.5px;
+  padding:5px 12px; border-radius:999px; background:rgba(238,240,246,.07);
+  border:1px solid var(--hair); color:var(--ink)}
+.aurora-skin .chip .dot {width:7px;height:7px;border-radius:50%}
+.aurora-skin .chip.red {background:rgba(229,72,77,.12); border-color:rgba(229,72,77,.35)}
+.aurora-skin .chip.red .dot {background:var(--red)}
+.aurora-skin .chip.purple {background:rgba(176,133,245,.12); border-color:rgba(176,133,245,.35)}
+.aurora-skin .chip.purple .dot {background:var(--purple)}
+.aurora-skin .chip.amber {background:rgba(232,185,62,.12); border-color:rgba(232,185,62,.4)}
+.aurora-skin .chip.amber .dot {background:var(--amber)}
+
+/* --- 8. כרטיס קטגוריה --- */
+.aurora-skin .cat {display:flex; align-items:center; gap:14px; cursor:pointer; width:100%;
+  text-align:right; font:inherit; color:var(--ink);
+  transition:transform .3s var(--ease)}
+.aurora-skin .cat:active {transform:scale(.98)}
+.aurora-skin .cat .icon {width:56px;height:56px; flex:none; border-radius:18px;
+  display:grid; place-items:center; font-size:24px; overflow:hidden;
+  background:linear-gradient(150deg,rgba(20,72,58,.55),rgba(14,42,34,.7));
+  border:1px solid rgba(34,192,140,.28)}
+.aurora-skin .cat .icon img {width:100%;height:100%;object-fit:cover}
+.aurora-skin .cat h3 {font-size:17px; font-weight:700}
+.aurora-skin .cat p {font-size:12.5px; color:var(--dim); margin-top:1px}
+
+/* טבעת ההתקדמות: r=18 ⇒ היקף 113. dashoffset = 113 * (1 - pct/100) */
+.aurora-skin .miniring {position:relative; width:46px; height:46px; flex:none}
+.aurora-skin .miniring svg {transform:rotate(-90deg)}
+.aurora-skin .miniring circle {fill:none; stroke-width:4}
+.aurora-skin .miniring .track {stroke:rgba(238,240,246,.1)}
+.aurora-skin .miniring .fill {stroke:var(--em); stroke-linecap:round;
+  filter:drop-shadow(0 0 4px rgba(34,192,140,.5))}
+.aurora-skin .miniring b {position:absolute; inset:0; display:grid; place-items:center;
+  font-size:10.5px; font-weight:700}
+
+/* --- 9. סרגל תחתון (בר מלא-רוחב, אייקוני אימוג'י) --- */
+.aurora-skin .au-nav {padding:10px 14px calc(24px + env(safe-area-inset-bottom));
+  background:rgba(12,13,16,.85); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+  border-top:1px solid rgba(238,240,246,.08)}
+.aurora-skin .au-nav button {border:0; background:transparent; cursor:pointer; font:inherit;
+  font-size:11px; font-weight:600; color:var(--faint);
+  display:flex; flex-direction:column; align-items:center; gap:4px;
+  padding:8px 4px; border-radius:16px;
+  transition:color .25s var(--ease), background .25s var(--ease)}
+.aurora-skin .au-nav button .ic {font-size:20px; line-height:21px}
+.aurora-skin .au-nav button.on {color:var(--em); background:rgba(34,192,140,.1)}
+
+@media (prefers-reduced-motion:reduce){
+  .aurora-skin, .aurora-skin *, .aurora-skin *::before, .aurora-skin *::after{
+    animation:none!important; transition:none!important}
+}
+
+/* צר במיוחד (iPhone SE וכדומה): מקטינים את אריח האייקון כדי שהשם יישאר קריא */
+@media (max-width:359px){
+  .aurora-skin .cat{gap:10px}
+  .aurora-skin .cat .icon{width:44px;height:44px;border-radius:14px;font-size:20px}
+  .aurora-skin .miniring{width:40px;height:40px}
+  .aurora-skin .miniring svg{width:40px;height:40px}
+}
+
+/* גוון משני אחד תחת העור: מרכזים את ה-#8A8AA0 הישן אל --dim */
+.aurora-skin .text-\[\#8a8aa0\]{color:var(--dim)}
+
+
+/* ============================================================
+   סעיפים 9-12 — תוספת של אפליקציית הניהול בלבד
+   ============================================================ */
+
+/* --- 9. סרגל תחתון: אימוג'י + קו זוהר (בחירת המשתמש, 27.8) --- */
+/* ⚠️ ה-pill הירקרק של המלצר הוחלף כאן בקו אמרלד זוהר מעל הטאב הפעיל.
+   הקו מצויר ב-::before על הכפתור, ולכן הכפתור חייב position:relative. */
+.aurora-skin .au-nav button{position:relative}
+.aurora-skin .au-nav button.on{background:transparent}
+.aurora-skin .au-nav button.on::before{content:''; position:absolute; top:-10px;
+  right:50%; transform:translateX(50%); width:34px; height:3px; border-radius:99px;
+  background:var(--em); box-shadow:0 0 14px rgba(34,192,140,.9)}
+.aurora-skin .au-nav button.on .ic{filter:drop-shadow(0 0 7px rgba(34,192,140,.55))}
+
+/* --- 10. אריחי מספר --- */
+.aurora-skin .au-tile{flex:1; text-align:center; padding:14px 6px}
+.aurora-skin .au-tile b{font-size:23px; font-weight:800; font-variant-numeric:tabular-nums}
+.aurora-skin .au-tile span{display:block; font-size:11.5px; color:var(--dim); margin-top:3px}
+
+/* --- 11. כרטיס מנה עם תצלום (טאב התפריט של הניהול) --- */
+/* התמונה היא הדבר הראשון שהעין תופסת, ולכן היא רחבה ולא תמונונת של 36px. */
+.aurora-skin .au-dish{display:flex; gap:12px; align-items:stretch; width:100%;
+  text-align:right; font:inherit; color:var(--ink); cursor:pointer; padding:10px;
+  transition:transform .25s var(--ease), border-color .25s var(--ease)}
+.aurora-skin .au-dish:active{transform:scale(.985)}
+.aurora-skin .au-dish .ph{width:78px; height:78px; flex:none; border-radius:16px;
+  overflow:hidden; display:grid; place-items:center; font-size:28px;
+  background:linear-gradient(150deg,rgba(20,72,58,.55),rgba(14,42,34,.7));
+  border:1px solid rgba(34,192,140,.28)}
+.aurora-skin .au-dish .ph img{width:100%; height:100%; object-fit:cover; display:block}
+.aurora-skin .au-dish h3{font-size:15.5px; font-weight:700; line-height:1.35}
+.aurora-skin .au-dish .desc{font-size:12px; color:var(--dim); line-height:1.5; margin-top:2px}
+.aurora-skin .au-dish .price{font-size:14px; font-weight:700; white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+.aurora-skin .au-dish.starred{border-color:rgba(243,167,18,.45)}
+.aurora-skin .au-dish.warn{border-color:rgba(232,185,62,.42)}
+.aurora-skin .au-star{border:0; background:transparent; cursor:pointer; padding:2px;
+  line-height:1; color:rgba(238,240,246,.28); transition:color .25s var(--ease), transform .2s}
+.aurora-skin .au-star.on{color:#F3A712; transform:scale(1.1);
+  filter:drop-shadow(0 0 6px rgba(243,167,18,.55))}
+
+/* --- 12. שורת קטגוריה בטאב התפריט של הניהול --- */
+.aurora-skin .au-cathead{display:flex; align-items:center; gap:9px; padding:4px 2px 2px}
+.aurora-skin .au-cathead .ic{width:26px;height:26px;border-radius:9px; flex:none;
+  display:grid; place-items:center; font-size:14px; overflow:hidden;
+  background:linear-gradient(150deg,rgba(20,72,58,.55),rgba(14,42,34,.7));
+  border:1px solid rgba(34,192,140,.24)}
+.aurora-skin .au-cathead .ic img{width:100%;height:100%;object-fit:cover}
+.aurora-skin .au-cathead b{font-size:13px; font-weight:800; color:var(--ink)}
+.aurora-skin .au-cathead span{font-size:11.5px; color:var(--faint)}
+
+/* --- 13. מיפוי הסגול הישן לאמרלד, תחת העור בלבד --- */
+/* ⚠️ העיצוב הישן בנוי על `#6d5efc` ב-133 מקומות. במקום לגעת בכולם — וליצור דיף
+   ענק שסיכון הרגרסיה שלו גדול מהתועלת — הצבע ממופה כאן. מסעדה בלי הדגל
+   ממשיכה לראות סגול; רק תחת `.aurora-skin` הוא הופך לאמרלד.
+   הסלקטורים מנוסחים כ-Tailwind arbitrary values ולכן הסוגריים מבורחים. */
+.aurora-skin .bg-\[\#6d5efc\]{background-color:var(--em)!important; color:#06231A!important}
+.aurora-skin .bg-\[\#6d5efc\]\/20{background-color:rgba(34,192,140,.20)!important}
+.aurora-skin .bg-\[\#6d5efc\]\/15{background-color:rgba(34,192,140,.15)!important}
+.aurora-skin .bg-\[\#6d5efc\]\/10{background-color:rgba(34,192,140,.10)!important}
+.aurora-skin .text-\[\#6d5efc\]{color:var(--em)!important}
+.aurora-skin .border-\[\#6d5efc\]{border-color:rgba(34,192,140,.55)!important}
+.aurora-skin .border-\[\#6d5efc\]\/60{border-color:rgba(34,192,140,.42)!important}
+.aurora-skin .border-\[\#6d5efc\]\/50{border-color:rgba(34,192,140,.36)!important}
+.aurora-skin .border-\[\#6d5efc\]\/40{border-color:rgba(34,192,140,.30)!important}
+.aurora-skin .border-\[\#6d5efc\]\/30{border-color:rgba(34,192,140,.24)!important}
+/* כפתור אמרלד מלא: הטקסט חייב להיות כהה, אחרת קרם-על-אמרלד לא קריא */
+.aurora-skin .bg-\[\#6d5efc\] *{color:inherit!important}
+
+/* --- 14. משטחי הכרטיסים: זכוכית במקום אפור אטום --- */
+.aurora-skin .bg-\[\#16181c\]{
+  background:linear-gradient(160deg,rgba(37,41,48,.72),rgba(23,25,30,.5))!important;
+  backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px)}
+.aurora-skin .border-\[\#22252b\]{border-color:var(--hair)!important}
+.aurora-skin .bg-\[\#0c0d10\]{background:transparent!important}
+/* הגוון הסגול המשני (#a79bff) — קישורים ותוויות "הבא בתור" */
+.aurora-skin .text-\[\#a79bff\]{color:var(--em)!important}
+
+/* --- 15. כרטיס הסיכום של LearningStatus: זכוכית במקום גרדיאנט אינדיגו --- */
+.aurora-skin .bg-gradient-to-l.from-\[\#1b1740\]{
+  background:linear-gradient(160deg,rgba(20,72,58,.5),rgba(14,42,34,.75))!important;
+  border-color:rgba(34,192,140,.28)!important}
