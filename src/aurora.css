@@ -113,16 +113,21 @@
   font-size:10.5px; font-weight:700}
 
 /* --- 9. סרגל תחתון (בר מלא-רוחב, אייקוני אימוג'י) --- */
+/* 🔴 הכללים כאן חייבים להיות ממוקדים ב-`.au-tabs > button` ולא ב-`.au-nav button`.
+   ה-div של הסרגל התחתון עוטף גם את כל המודאלים של האפליקציה (גיליון העובד, מסך
+   הצוות, הסיור המודרך) — זה מבנה קיים שלא הפריע כשה-div היה סתם רקע אפור. ברגע
+   שהוא קיבל מחלקה עם `flex-direction:column` על כל כפתור צאצא, כל כפתור בכל דיאלוג
+   נשבר לשתי שורות ("הבא" מעל החץ). ראיתי את זה רק בדפדפן — ה-build היה ירוק. */
 .aurora-skin .au-nav {padding:10px 14px calc(24px + env(safe-area-inset-bottom));
   background:rgba(12,13,16,.85); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
   border-top:1px solid rgba(238,240,246,.08)}
-.aurora-skin .au-nav button {border:0; background:transparent; cursor:pointer; font:inherit;
+.aurora-skin .au-tabs > button {border:0; background:transparent; cursor:pointer; font:inherit;
   font-size:11px; font-weight:600; color:var(--faint);
   display:flex; flex-direction:column; align-items:center; gap:4px;
   padding:8px 4px; border-radius:16px;
   transition:color .25s var(--ease), background .25s var(--ease)}
-.aurora-skin .au-nav button .ic {font-size:20px; line-height:21px}
-.aurora-skin .au-nav button.on {color:var(--em); background:rgba(34,192,140,.1)}
+.aurora-skin .au-tabs > button .ic {font-size:20px; line-height:21px}
+.aurora-skin .au-tabs > button.on {color:var(--em); background:rgba(34,192,140,.1)}
 
 @media (prefers-reduced-motion:reduce){
   .aurora-skin, .aurora-skin *, .aurora-skin *::before, .aurora-skin *::after{
@@ -148,12 +153,12 @@
 /* --- 9. סרגל תחתון: אימוג'י + קו זוהר (בחירת המשתמש, 27.8) --- */
 /* ⚠️ ה-pill הירקרק של המלצר הוחלף כאן בקו אמרלד זוהר מעל הטאב הפעיל.
    הקו מצויר ב-::before על הכפתור, ולכן הכפתור חייב position:relative. */
-.aurora-skin .au-nav button{position:relative}
-.aurora-skin .au-nav button.on{background:transparent}
-.aurora-skin .au-nav button.on::before{content:''; position:absolute; top:-10px;
+.aurora-skin .au-tabs > button{position:relative}
+.aurora-skin .au-tabs > button.on{background:transparent}
+.aurora-skin .au-tabs > button.on::before{content:''; position:absolute; top:-10px;
   right:50%; transform:translateX(50%); width:34px; height:3px; border-radius:99px;
   background:var(--em); box-shadow:0 0 14px rgba(34,192,140,.9)}
-.aurora-skin .au-nav button.on .ic{filter:drop-shadow(0 0 7px rgba(34,192,140,.55))}
+.aurora-skin .au-tabs > button.on .ic{filter:drop-shadow(0 0 7px rgba(34,192,140,.55))}
 
 /* --- 10. אריחי מספר --- */
 .aurora-skin .au-tile{flex:1; text-align:center; padding:14px 6px}
@@ -177,8 +182,10 @@
   font-variant-numeric:tabular-nums}
 .aurora-skin .au-dish.starred{border-color:rgba(243,167,18,.45)}
 .aurora-skin .au-dish.warn{border-color:rgba(232,185,62,.42)}
-.aurora-skin .au-star{border:0; background:transparent; cursor:pointer; padding:2px;
-  line-height:1; color:rgba(238,240,246,.28); transition:color .25s var(--ease), transform .2s}
+.aurora-skin .au-star{border:0; background:transparent; cursor:pointer;
+  line-height:1; color:rgba(238,240,246,.28); transition:color .25s var(--ease), transform .2s;
+  /* 44px of touchable area around a 16px glyph, without taking 44px of layout. */
+  padding:14px; margin:-14px; -webkit-tap-highlight-color:transparent}
 .aurora-skin .au-star.on{color:#F3A712; transform:scale(1.1);
   filter:drop-shadow(0 0 6px rgba(243,167,18,.55))}
 
@@ -223,3 +230,158 @@
 .aurora-skin .bg-gradient-to-l.from-\[\#1b1740\]{
   background:linear-gradient(160deg,rgba(20,72,58,.5),rgba(14,42,34,.75))!important;
   border-color:rgba(34,192,140,.28)!important}
+
+
+/* ============================================================
+   סעיפים 16-24 — מסכי הניהול «אורורה»
+   העיצוב שאושר בצילומי המסך של יותם (28.8): שלושה טאבים, בלי משימות,
+   כותרת לכל מסך במקום סרגל עליון, וקוד ההצטרפות כדבר הראשון בהגדרות.
+   ============================================================ */
+
+/* --- 16. כותרת מסך --- */
+/* ⚠️ אין סרגל עליון תחת העור. הכותרת של כל מסך היא מה שאומר איפה אנחנו,
+   ולכן היא גם המקום שבו יושבת הפעולה הראשית של המסך (מנה חדשה / תצוגת מלצר). */
+.aurora-skin .au-head{display:flex; align-items:flex-start; justify-content:space-between;
+  gap:12px; margin-bottom:14px}
+.aurora-skin .au-head h1{font-size:26px; font-weight:800; line-height:1.15; letter-spacing:-.01em}
+.aurora-skin .au-head .sub{font-size:12.5px; color:var(--dim); margin-top:3px; line-height:1.45}
+.aurora-skin .au-hint{font-size:12px; color:var(--faint); margin:-8px 0 12px}
+
+/* --- 17. כפתור אמרלד מלא --- */
+.aurora-skin .au-pill{display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  padding:9px 16px; border-radius:999px; border:0; cursor:pointer;
+  font:inherit; font-size:13px; font-weight:800; color:#06231A; background:var(--em);
+  box-shadow:0 6px 18px rgba(34,192,140,.28);
+  transition:transform .2s var(--ease), box-shadow .2s var(--ease)}
+.aurora-skin .au-pill:active{transform:scale(.96)}
+.aurora-skin .au-pill.ghost{background:rgba(238,240,246,.06); color:var(--ink);
+  border:1px solid var(--hair); box-shadow:none; font-weight:700}
+
+/* --- 18. שורת צ'יפים לסינון (נגללת אופקית) --- */
+/* התפריט של סטודיו הוא 21 קטגוריות בחמישה תפריטים — רשימה נגללת היא הדרך
+   היחידה להראות את כולן בלי לדחוס אותן לשלוש שורות. */
+.aurora-skin .au-filter{display:flex; gap:7px; overflow-x:auto; padding:2px 0 8px;
+  scrollbar-width:none; -ms-overflow-style:none}
+.aurora-skin .au-filter::-webkit-scrollbar{display:none}
+.aurora-skin .au-fchip{flex:none; white-space:nowrap; cursor:pointer; font:inherit;
+  font-size:12.5px; font-weight:700; padding:9px 15px; min-height:40px; border-radius:999px;
+  background:rgba(238,240,246,.05); border:1px solid var(--hair); color:var(--dim);
+  transition:background .2s var(--ease), color .2s var(--ease), border-color .2s var(--ease)}
+.aurora-skin .au-fchip.on{background:var(--em); border-color:var(--em); color:#06231A}
+
+/* --- 19. אריחי מספר: שלושה בשורה --- */
+.aurora-skin .au-tiles{display:flex; gap:9px}
+.aurora-skin .au-tiles .glass{flex:1; padding:14px 6px; text-align:center; border-radius:20px}
+.aurora-skin .au-tiles b{display:block; font-size:24px; font-weight:800;
+  font-variant-numeric:tabular-nums; line-height:1.1}
+.aurora-skin .au-tiles b i{font-style:normal; font-size:15px; color:var(--dim)}
+.aurora-skin .au-tiles span{display:block; font-size:11px; color:var(--dim); margin-top:5px}
+
+/* --- 20. שורת חבר צוות --- */
+.aurora-skin .au-member{display:flex; align-items:center; gap:11px; width:100%;
+  text-align:right; font:inherit; color:var(--ink); background:none; border:0;
+  padding:10px 2px; min-height:44px}
+.aurora-skin .au-member + .au-member{border-top:1px solid var(--hair)}
+/* Only the ones that are actually buttons get the hand — in the learning-status card the
+   row is a div and only the name inside it is clickable. */
+.aurora-skin button.au-member{cursor:pointer}
+.aurora-skin .au-member .av{width:34px;height:34px;border-radius:50%; flex:none;
+  display:grid; place-items:center; font-size:12px; font-weight:800; color:var(--em);
+  background:linear-gradient(150deg,rgba(20,72,58,.9),rgba(14,42,34,.9));
+  border:1px solid rgba(34,192,140,.3)}
+.aurora-skin .au-member .nm{font-size:14px; font-weight:700; line-height:1.3}
+.aurora-skin .au-member .st{font-size:11.5px; color:var(--dim); margin-top:2px; line-height:1.4}
+.aurora-skin .au-member .pc{display:flex; align-items:center; gap:6px; flex:none;
+  font-size:13.5px; font-weight:800; font-variant-numeric:tabular-nums}
+.aurora-skin .au-member .pc i{width:7px;height:7px;border-radius:50%; display:block}
+
+/* --- 21. כרטיס קוד ההצטרפות --- */
+/* הדבר הראשון בהגדרות, כי זו הפעולה היחידה שמנהל באמת עושה כאן:
+   לצרף מלצר. הקוד גדול מספיק כדי להקריא אותו בקול מעבר לחדר. */
+.aurora-skin .au-join{text-align:center; padding:20px 16px;
+  background:linear-gradient(160deg,rgba(20,72,58,.55),rgba(12,38,30,.75));
+  border-color:rgba(34,192,140,.3)}
+.aurora-skin .au-join .lbl{font-size:12.5px; color:rgba(238,240,246,.7)}
+.aurora-skin .au-join .code{font-size:34px; font-weight:800; letter-spacing:.14em;
+  margin:6px 0 8px; font-variant-numeric:tabular-nums;
+  text-shadow:0 0 26px rgba(34,192,140,.45)}
+.aurora-skin .au-join .exp{font-size:12px; color:var(--dim); line-height:1.55;
+  max-width:31ch; margin:0 auto 14px}
+
+/* --- 22. שורת הגדרה מתקפלת --- */
+.aurora-skin .au-sec{width:100%; display:flex; align-items:center; gap:11px; cursor:pointer;
+  text-align:right; font:inherit; color:var(--ink); background:none; border:0;
+  padding:13px 2px; border-top:1px solid var(--hair)}
+.aurora-skin .au-sec:first-of-type{border-top:0}
+.aurora-skin .au-sec .ic{width:32px;height:32px;border-radius:11px; flex:none;
+  display:grid; place-items:center; font-size:15px;
+  background:rgba(238,240,246,.05); border:1px solid var(--hair)}
+.aurora-skin .au-sec .tt{font-size:13.5px; font-weight:700}
+.aurora-skin .au-sec .sm{font-size:11.5px; color:var(--faint); margin-top:2px; line-height:1.4}
+.aurora-skin .au-secbody{padding:2px 2px 14px}
+
+/* --- 23. בורר ערך (סף מעבר / יעד יומי) --- */
+.aurora-skin .au-opt{font-size:12.5px; color:var(--dim); margin:14px 0 7px; font-weight:700}
+.aurora-skin .au-opt:first-child{margin-top:2px}
+
+/* --- 24. כרטיס מנה: מוקשים ואזהרות בשלושת הצבעים --- */
+/* ⚠️ הכרטיס הראה עד עכשיו אלרגיות בלבד. מנהל שרואה רשימה אחת אדומה לא יודע
+   שהמנה נושאת גם «דג נא» — וזו בדיוק ההפרדה שהמלצר כבר מקבל. */
+.aurora-skin .au-dish .flags{display:flex; flex-wrap:wrap; gap:5px; margin-top:7px}
+.aurora-skin .au-dish .flags .chip{font-size:11px; padding:3px 9px}
+.aurora-skin .au-warn{color:var(--amber); font-size:12px; margin-top:3px; font-weight:600}
+
+/* --- 25. שורות צבע: «בריאות התפריט» ו«מה הצוות מתקשה בו» --- */
+/* תווית מודגשת בצבע ואחריה המשפט, שתיהן inline כדי שייקראו כמשפט אחד עם
+   פתיח צבעוני — ופס צבע דק בקצה הימני. הצבע נושא משמעות, הוא לא מציף. */
+.aurora-skin .bgrid{display:flex; flex-direction:column; gap:5px; width:100%}
+.aurora-skin .brow2{position:relative; width:100%; text-align:right; font:inherit;
+  color:var(--ink); border:1px solid rgba(238,240,246,.05); border-radius:11px;
+  background:rgba(238,240,246,.045); padding:7px 12px 8px 10px; overflow:hidden;
+  line-height:1.5; cursor:pointer; transition:background .2s var(--ease)}
+.aurora-skin .brow2.flat{cursor:default}
+.aurora-skin .brow2::before{content:''; position:absolute; top:0; bottom:0; right:0;
+  width:3px; background:rgba(238,240,246,.16)}
+.aurora-skin .brow2.em::before{background:#22C08C}
+.aurora-skin .brow2.red::before{background:#F0637F}
+.aurora-skin .brow2.amber::before{background:#F3C14B}
+.aurora-skin .blabel2{font-size:10.5px; font-weight:800; color:#8A90A0;
+  letter-spacing:.03em; display:inline; margin-left:8px; white-space:nowrap}
+.aurora-skin .brow2.em .blabel2{color:#2ED3A0}
+.aurora-skin .brow2.red .blabel2{color:#F0637F}
+.aurora-skin .brow2.amber .blabel2{color:#F3C14B}
+.aurora-skin .bval2{font-size:12.5px; color:#E7EAEF; font-weight:500; display:inline}
+
+/* --- 26. כותרת כרטיס --- */
+.aurora-skin .au-cardhead{display:flex; align-items:baseline; gap:8px; margin-bottom:10px}
+.aurora-skin .au-cardhead b{font-size:16px; font-weight:800; flex:1; min-width:0}
+.aurora-skin .au-cardhead span{font-size:11.5px; color:var(--dim); flex:none}
+
+/* --- 27. שורת הגדרה עם ערך / מתג --- */
+.aurora-skin .srow{display:flex; align-items:center; justify-content:space-between;
+  gap:10px; padding:11px 0; border-bottom:1px solid rgba(238,240,246,.06); font-size:14px}
+.aurora-skin .srow:last-child{border-bottom:0}
+.aurora-skin .srow .v{color:var(--dim); font-size:13px; text-align:left}
+/* ⚠️ המתג כתוב ל-RTL: הכפתור מתחיל ב-right:3px ונוסע שמאלה כשהוא דלוק. */
+.aurora-skin .toggle{width:46px; height:27px; border-radius:99px; flex:none; cursor:pointer;
+  position:relative; border:0; padding:0; background:rgba(238,240,246,.14);
+  transition:background .3s var(--ease)}
+.aurora-skin .toggle::after{content:''; position:absolute; top:3px; right:3px;
+  width:21px; height:21px; border-radius:50%; background:#dfe3ea;
+  transition:transform .3s var(--ease)}
+.aurora-skin .toggle.on{background:var(--em); box-shadow:0 0 12px rgba(34,192,140,.4)}
+.aurora-skin .toggle.on::after{transform:translateX(-19px)}
+
+/* --- 28. כפתור רוחב מלא בתוך כרטיס --- */
+.aurora-skin .au-wide{width:100%; padding:12px; border-radius:16px; text-align:center;
+  font:inherit; font-size:13.5px; font-weight:700; cursor:pointer; color:var(--ink);
+  background:rgba(238,240,246,.06); border:1px solid var(--hair);
+  transition:background .2s var(--ease)}
+.aurora-skin .au-wide.danger{color:#F27D8D; border-color:rgba(229,72,77,.3)}
+
+/* צ'יפי בורר ערך נכרכים לשורה הבאה במקום להיגלל — ראו Choice ב-bits.jsx */
+.aurora-skin .au-filter.wrap{flex-wrap:wrap; overflow-x:visible}
+
+/* --- 29. כפתור ניקוי החיפוש --- */
+.aurora-skin .au-x{border:0; background:transparent; color:var(--faint); cursor:pointer;
+  font:inherit; font-size:13px; line-height:1; padding:13px; margin:-13px; flex:none}

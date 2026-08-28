@@ -22,7 +22,7 @@ const Pill = ({ ok, children }) => (
   </span>
 );
 
-export default function MemberSheet({ detail, onClose, onMessage }) {
+export default function MemberSheet({ detail, onClose, onMessage, tasksOff = false }) {
   if (!detail) return null;
   const {
     name, pct, pctColor, mastered, dishCount, weak, untouched, baseline, totalSeconds,
@@ -62,13 +62,21 @@ export default function MemberSheet({ detail, onClose, onMessage }) {
                   {live.studiedToday ? `✓ למד/ה ${fmtMins(live.studiedTodaySeconds)}` : live.seenToday ? "נכנס/ה ולא למד/ה" : "לא נכנס/ה"}
                 </Pill>
               )}
-              <Pill ok={readBrief}>{readBrief ? "✓ קרא/ה עדכון יומי" : "לא קרא/ה עדכון יומי"}</Pill>
-              {tasksTotal > 0 && (
-                <Pill ok={tasksDone >= tasksTotal}>
-                  משימות משמרת {tasksDone}/{tasksTotal}
-                </Pill>
+              {/* ⚠️ A restaurant with `features.tasks === false` has no daily update and no
+                  shift checklist, so "לא קרא/ה עדכון יומי" would be reporting a failure to
+                  do something that does not exist. The study pill above is the whole story
+                  there. */}
+              {!tasksOff && (
+                <>
+                  <Pill ok={readBrief}>{readBrief ? "✓ קרא/ה עדכון יומי" : "לא קרא/ה עדכון יומי"}</Pill>
+                  {tasksTotal > 0 && (
+                    <Pill ok={tasksDone >= tasksTotal}>
+                      משימות משמרת {tasksDone}/{tasksTotal}
+                    </Pill>
+                  )}
+                  <Pill ok={didChallenge}>{didChallenge ? "✓ אתגר יומי" : "אתגר יומי לא הושלם"}</Pill>
+                </>
               )}
-              <Pill ok={didChallenge}>{didChallenge ? "✓ אתגר יומי" : "אתגר יומי לא הושלם"}</Pill>
             </div>
             {live?.weekMinutes > 0 && (
               <p className="text-[10px] text-[#8a8aa0] font-bold flex items-center gap-1">

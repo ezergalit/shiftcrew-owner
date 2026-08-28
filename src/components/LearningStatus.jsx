@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Clock, Eye, CheckCircle2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { MemberRow } from "./MemberSheet";
+import { lastSeenNote } from "./aurora/bits";
 
 const db = supabase.schema("menu_app");
 
@@ -27,7 +28,10 @@ const fmtMins = (secs) => {
 
 const pctColor = (p) => (p >= 75 ? "#22c08c" : p >= 45 ? "#f3c14b" : "#e0315a");
 
-export default function LearningStatus({ restaurant, onSelectMember, onRows, onMessage, messagedToday }) {
+// `variant="aurora"` swaps ONLY the rendering. The query above is shared, so the manager's
+// home screen and the old status card can never disagree about the same waiter — and a
+// restaurant without the skin renders exactly what it rendered before, byte for byte.
+export default function LearningStatus({ restaurant, onSelectMember, onRows, onMessage, messagedToday, variant, onInvite }) {
   const [rows, setRows] = useState(null);
 
   useEffect(() => {
@@ -134,6 +138,17 @@ export default function LearningStatus({ restaurant, onSelectMember, onRows, onM
     };
   }, [rows]);
 
+  if (variant === "aurora")
+    return (
+      <AuroraStatus
+        rows={rows}
+        onSelectMember={onSelectMember}
+        onMessage={onMessage}
+        messagedToday={messagedToday}
+        onInvite={onInvite}
+      />
+    );
+
   if (rows === null) return <p className="text-xs text-[#8a8aa0] py-8 text-center">טוען סטטוס למידה…</p>;
   if (!rows.length)
     return (
@@ -231,3 +246,96 @@ export default function LearningStatus({ restaurant, onSelectMember, onRows, onM
     </div>
   );
 }
+
+
+// ── «אורורה»: one card, three states ──────────────────────────────────────────────
+//
+// The unskinned card has two lists — who studied, and who read the brief or ticked shift
+// tasks. Under this skin there IS no brief and there are no tasks (`features.tasks:false`),
+// so the second list would always be empty. The three states that remain are the ones a
+// manager actually acts on: learned today, opened the app without learning, did not open it.
+//
+// ⚠️ Wording is deliberately genderless. `team_members` stores no gender, and "למדה"/"למד"
+// guessed from a name is worse than a noun phrase that is right for everyone.
+function AuroraStatus({ rows, onSelectMember, onMessage, messagedToday, onInvite }) {
+  if (rows === null)
+    return <p className="text-[12.5px] text-[#8a919e] py-6 text-center">טוען את סטטוס הצוות…</p>;
+
+  if (!rows.length)
+    return (
+      <div className="text-center py-3">
+        <p className="text-[14px] font-black text-[#eef0f6]">עדיין אין חברי צוות</p>
+        <p className="text-[12px] text-[#8a919e] mt-1 mb-3 leading-relaxed">
+          ברגע שמלצר נכנס עם קוד ההצטרפות, הוא יופיע כאן עם ההתקדמות שלו
+        </p>
+        {onInvite && (
+          <button type="button" className="au-pill" onClick={onInvite}>
+            לקוד ההצטרפות
+          </button>
+        )}
+      </div>
+    );
+
+  const studied = rows.filter((r) => r.studiedToday);
+  const seen = rows.filter((r) => !r.studiedToday && r.seenToday);
+  const away = rows.filter((r) => !r.studiedToday && !r.seenToday);
+
+  const note = (r) => {
+    if (r.studiedToday) return `${fmtMins(r.studiedTodaySeconds)} לימוד היום`;
+    if (r.seenToday) return "כניסה היום · עדיין בלי לימוד";
+    return lastSeenNote(r.lastSeen);
+  };
+  const dot = (r) => (r.studiedToday ? "#22c08c" : r.seenToday ? "#E8B93E" : "rgba(238,240,246,.3)");
+
+  // Weakest first within each group: this list is a to-do, not a leaderboard.
+  const byPct = (a, b) => a.pct - b.pct;
+  const ordered = [...studied.sort(byPct), ...seen.sort(byPct), ...away.sort(byPct)];
+
+  return (
+    <>
+      <div className="au-cardhead">
+        <b>מי למד היום</b>
+      </div>
+      <p className="text-[12px] text-[#8a919e] -mt-2 mb-1.5 leading-relaxed">
+        {`למדו היום ${studied.length} · נכנסו ולא למדו ${seen.length} · לא נכנסו ${away.length}`}
+      </p>
+      {ordered.map((r) => (
+        <div key={r.id} className="au-member">
+          <span className="av" aria-hidden>{auInitials(r.name)}</span>
+          <button
+            type="button"
+            onClick={() => onSelectMember?.(r)}
+            className="flex-1 min-w-0 text-right bg-transparent border-0 p-0 font-inherit text-inherit cursor-pointer"
+          >
+            <span className="nm block truncate">{r.name}</span>
+            <span className="st block" style={r.seenToday && !r.studiedToday ? { color: "var(--amber)" } : undefined}>
+              {note(r)}
+            </span>
+          </button>
+          {/* The nudge sits only next to someone who has not learned today — that is the
+              entire point of the button, and the group it belongs to. */}
+          {!r.studiedToday && onMessage && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onMessage(r); }}
+              title={messagedToday?.[r.id] ? "כבר נשלחה תזכורת היום" : "שליחת תזכורת"}
+              aria-label={messagedToday?.[r.id] ? `כבר נשלחה תזכורת ל${r.name}` : `שליחת תזכורת ל${r.name}`}
+              className="au-star"
+              style={messagedToday?.[r.id] ? { color: "var(--em)" } : undefined}
+            >
+              {messagedToday?.[r.id] ? "✓" : "✉"}
+            </button>
+          )}
+          <span className="pc" style={{ color: pctColor(r.pct) }}>
+            {Math.round(r.pct)}%
+            <i style={{ background: dot(r) }} />
+          </span>
+        </div>
+      ))}
+      <p className="text-[11px] text-[#6b7280] text-center pt-2.5">לחצו על שם לפרטים המלאים</p>
+    </>
+  );
+}
+
+const auInitials = (name) =>
+  String(name || "").trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("");

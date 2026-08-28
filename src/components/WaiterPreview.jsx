@@ -11,12 +11,20 @@ const WAITER_URL = import.meta.env.DEV
   ? "http://localhost:5176"
   : "https://shiftcrew-waiter.vercel.app";
 
-export default function WaiterPreview({ teamCode }) {
+export default function WaiterPreview({ teamCode, variant }) {
   const [open, setOpen] = useState(false);
   // Bumping the key remounts the iframe — the only reliable cross-origin "refresh".
   const [nonce, setNonce] = useState(0);
 
   if (!open) {
+    // Under the «אורורה» skin the trigger is the ghost pill next to the greeting, where
+    // the approved design puts it; everywhere else it stays the header chip it has been.
+    if (variant === "aurora")
+      return (
+        <button onClick={() => setOpen(true)} title="איך זה נראה אצל הצוות" className="au-pill ghost flex-none">
+          <span aria-hidden>📱</span> תצוגת מלצר
+        </button>
+      );
     return (
       <button
         onClick={() => setOpen(true)}

@@ -14,6 +14,39 @@ import { X, ChevronLeft, Compass } from "lucide-react";
 // nav changes, and for a first-time owner a tour that describes screens that no longer
 // exist is worse than no tour. Any change to the home views, the header buttons or the
 // tabs ⇒ re-read every step here.
+// ⚠️ Under the «אורורה» skin there are no tasks, no daily brief, no shift checklists and
+// no 📊 button — `features.tasks === false` removed all of them. The original tour still
+// described every one of those screens, which would have walked a new owner through an
+// app that does not exist for them. Same trap as the two earlier navigation changes: a
+// tour is content, and content goes stale the moment the screens move.
+const buildAuroraSteps = (teamCode) => [
+  {
+    tab: "home",
+    title: "הבית — מה מצב התפריט ומי לומד",
+    body: "שלושה מספרים פותחים את היום: כמה מהתפריט הצוות כבר שולט בו, כמה מנות יש, וכמה אנשים למדו היום. אין כאן שום דבר למלא — הכל נגזר מעצמו ממה שקורה באפליקציה של הצוות.",
+  },
+  {
+    tab: "home",
+    title: "בריאות התפריט — מה חסר כדי ללמד",
+    body: "מנה בלי תיאור אי אפשר לבנות עליה שאלות, ומנה בלי אלרגיות היא שדה בטיחות ריק. הכרטיס הזה מוצא אותן בשבילכם — לחיצה על שורה פותחת את המנה, ואם יש כמה, את מסך התיקון הקבוצתי. מתחתיו: המנות שהצוות הכי טועה בהן, והקשה מדגישה מנה ⭐ כדי שתקפוץ ראשונה בתרגול.",
+  },
+  {
+    tab: "menu",
+    title: "התפריט — לחיצה על מנה פותחת אותה",
+    body: "את התפריט אנחנו מזינים בשבילכם, עם התמונות. לחיצה על מנה פותחת אותה לעריכה מלאה — שם, מחיר, תיאור, מרכיבים ואלרגיות — והשינוי מגיע לצוות מיד. אפשר לסנן לפי תפריט וקטגוריה או לחפש מנה בשם. רוצים שינוי גדול? כתבו לנו בתיבה שבתחתית ואנחנו נטפל.",
+  },
+  {
+    tab: "settings",
+    title: "ההגדרות — קוד ההצטרפות ומסלול הלמידה",
+    body: `בראש המסך קוד ההצטרפות${teamCode ? ` (${teamCode})` : ""} — שיתוף בוואטסאפ בלחיצה, וכל מלצר נכנס עם הקוד והשם שלו, בלי סיסמאות. מתחתיו הצוות עם אחוז הידע של כל אחד, ומסלול הלמידה שכבר מוגדר להמלצה שלנו — אפשר לכוונן, ואפשר לא לגעת.`,
+  },
+  {
+    tab: "home",
+    title: "זהו! המטרה: שהצוות יעבור את המבחנים",
+    body: "אתם מתקנים מה שחסר בתפריט ומדגישים מה שחשוב; הצוות מתרגל ונבחן. אתם רואים כאן מי מתקדם — כל השאר קורה מעצמו. אפשר לחזור לסיור הזה בכל רגע דרך ההגדרות.",
+  },
+];
+
 const buildSteps = (teamCode) => [
   {
     tab: "home",
@@ -52,12 +85,17 @@ const buildSteps = (teamCode) => [
   },
 ];
 
-export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, withWelcome = false }) {
-  const STEPS = buildSteps(teamCode);
+export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, withWelcome = false, aurora = false }) {
+  const STEPS = aurora ? buildAuroraSteps(teamCode) : buildSteps(teamCode);
   const [welcome, setWelcome] = useState(withWelcome);
   const [step, setStep] = useState(0);
   const s = STEPS[step];
   const last = step === STEPS.length - 1;
+  // One brand colour. The tour's sky-blue is the unskinned app's; under «אורורה» it is
+  // the only thing on screen that is not emerald, and it reads as a foreign dialog.
+  const accent = aurora
+    ? { card: "border-[#22c08c]/50", pill: "text-[#22c08c] bg-[#22c08c]/12", cta: "bg-[#22c08c] text-[#06231A] hover:bg-[#1aa87a]", dot: "bg-[#22c08c]", icon: "text-[#22c08c]", iconBg: "bg-[#22c08c]/15" }
+    : { card: "border-[#38bdf8]/60", pill: "text-[#7dd3fc] bg-[#38bdf8]/15", cta: "bg-[#0ea5e9] text-white hover:bg-[#0284c7]", dot: "bg-[#38bdf8]", icon: "text-[#7dd3fc]", iconBg: "bg-[#38bdf8]/15" };
 
   const go = (i) => {
     setStep(i);
@@ -69,9 +107,9 @@ export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, 
   if (welcome) {
     return (
       <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-6" dir="rtl">
-        <div className="w-full max-w-sm bg-[#15202b] border border-[#38bdf8]/60 rounded-2xl p-6 shadow-2xl shadow-black/60 text-center space-y-4">
-          <div className="w-14 h-14 rounded-2xl bg-[#38bdf8]/15 flex items-center justify-center mx-auto">
-            <Compass size={28} className="text-[#7dd3fc]" />
+        <div className={`w-full max-w-sm bg-[#15202b] border ${accent.card} rounded-2xl p-6 shadow-2xl shadow-black/60 text-center space-y-4`}>
+          <div className={`w-14 h-14 rounded-2xl ${accent.iconBg} flex items-center justify-center mx-auto`}>
+            <Compass size={28} className={accent.icon} />
           </div>
           <div>
             <p className="text-lg font-black text-[#eef0f6]">ברוכים הבאים!</p>
@@ -83,7 +121,7 @@ export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, 
           </div>
           <button
             onClick={() => { setWelcome(false); onNavigate(STEPS[0].tab); }}
-            className="w-full bg-[#0ea5e9] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#0284c7] transition"
+            className={`w-full ${accent.cta} font-bold py-3 rounded-xl text-sm transition`}
           >
             התחילו את הסיור המודרך
           </button>
@@ -100,10 +138,10 @@ export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, 
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 max-w-md mx-auto px-3 pb-20 pointer-events-none">
-      <div className="pointer-events-auto bg-[#15202b] border border-[#38bdf8]/60 rounded-2xl p-4 shadow-2xl shadow-black/60 space-y-3">
+      <div className={`pointer-events-auto bg-[#15202b] border ${accent.card} rounded-2xl p-4 shadow-2xl shadow-black/60 space-y-3`}>
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-[#7dd3fc] bg-[#38bdf8]/15 px-2 py-0.5 rounded-full">
+            <span className={`text-[10px] font-bold ${accent.pill} px-2 py-0.5 rounded-full`}>
               סיור מודרך · {step + 1}/{STEPS.length}
             </span>
           </div>
@@ -122,7 +160,7 @@ export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, 
           <div className="space-y-2">
             <button
               onClick={() => (onSetupNow || onClose)()}
-              className="w-full bg-[#0ea5e9] text-white font-bold py-2.5 rounded-lg text-xs hover:bg-[#0284c7] transition"
+              className={`w-full ${accent.cta} font-bold py-2.5 rounded-lg text-xs transition`}
             >
               הגדירו את המסעדה שלכם עכשיו ←
             </button>
@@ -153,7 +191,7 @@ export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, 
             )}
             <button
               onClick={() => go(step + 1)}
-              className="flex-1 bg-[#0ea5e9] text-white font-bold py-2 rounded-lg text-xs hover:bg-[#0284c7] transition flex items-center justify-center gap-1"
+              className={`flex-1 ${accent.cta} font-bold py-2 rounded-lg text-xs transition flex items-center justify-center gap-1`}
             >
               הבא <ChevronLeft size={14} />
             </button>
@@ -161,7 +199,7 @@ export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, 
         )}
         <div className="flex justify-center gap-1">
           {STEPS.map((_, i) => (
-            <span key={i} className={`w-1.5 h-1.5 rounded-full ${i === step ? "bg-[#38bdf8]" : "bg-[#3a3d46]"}`} />
+            <span key={i} className={`w-1.5 h-1.5 rounded-full ${i === step ? accent.dot : "bg-[#3a3d46]"}`} />
           ))}
         </div>
       </div>

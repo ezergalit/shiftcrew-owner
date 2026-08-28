@@ -26,6 +26,10 @@ import SettingsSection from "../components/SettingsSection";
 import WaiterPreview from "../components/WaiterPreview";
 import { FLAG_GROUPS, FLAG_GROUP_BY_KEY, effectiveTrackedFlags } from "../lib/dishFlags";
 import { supabase } from "../lib/supabase";
+import { membersLabel } from "../components/aurora/bits";
+import OwnerHome from "../components/aurora/OwnerHome";
+import OwnerMenu from "../components/aurora/OwnerMenu";
+import OwnerSettings from "../components/aurora/OwnerSettings";
 import "../aurora.css";
 
 const db = supabase.schema("menu_app");
@@ -266,6 +270,14 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // brief are not part of it, and the owner should have nothing to tick off. Home turns
   // into the one thing that IS their job here: is the team actually learning.
   const tasksOff = restaurant?.features?.tasks === false;
+  // ⚠️ One scroller serves all three tabs, so switching tabs used to keep the previous
+  // tab's offset — settings opened halfway down. Fixed, but ONLY under the skin: the
+  // unskinned app is what Apple's reviewer and the Play testers have open right now, and
+  // during a review round even an improvement is a change. It can be lifted later.
+  const scrollRef = useRef(null);
+  useEffect(() => {
+    if (aurora && scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [tab, aurora]);
   // The team tab is gone (user, 2026-08-20). It held two unrelated things: the numbers the
   // owner checks daily, and the joining code they touch once. The numbers moved to the home
   // screen, the code and roster into settings — so the nav carries four destinations that
@@ -499,9 +511,13 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const handleTourSetupNow = () => {
     handleTourClose();
     setTab("settings");
+    // ⚠️ Under the skin the learning-path panel lives inside a COLLAPSED section, so the
+    // element the scroll is aiming at is not in the DOM yet. Open the section first, or
+    // the tour's closing call to action silently does nothing.
+    if (aurora) setOpenSetting("path");
     setTimeout(() => {
       document.getElementById("learning-path-settings")?.scrollIntoView({ behavior: "smooth" });
-    }, 100);
+    }, aurora ? 250 : 100);
   };
 
   // Re-fetch just the menu (used after the paste-a-menu tutorial bulk-inserts dishes
@@ -1279,6 +1295,12 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     <div className={`h-screen mx-auto text-[#eef0f6] flex flex-col ${aurora ? "aurora-skin" : "max-w-md bg-[#0c0d10]"}`} dir="rtl">
       {aurora && (<><div className="aurora" aria-hidden><i /><i /><i /></div><div className="grain" aria-hidden /></>)}
       {/* Header */}
+      {/* ⚠️ No header bar under the skin. Every screen states its own name — "הגדרות",
+          "התפריט", the greeting — so a permanent strip carrying the restaurant name and
+          three icon buttons was repeating what the screen already said and eating the
+          top 90px of a phone. Sign-out moved to the bottom of settings, the team screen
+          opens from the home list, and "תצוגת מלצר" sits beside the greeting. */}
+      {!aurora && (
       <div className="px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-4 border-b border-[#22252b] flex items-center justify-between gap-2">
         {/* Sign-out sits in the top-right corner (first in RTL flow) instead of the bottom
             nav — far from the tabs the owner taps all day.
@@ -1319,10 +1341,33 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           <WaiterPreview teamCode={restaurant?.team_code} />
         </div>
       </div>
+      )}
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-        {tab === "home" && homeView === null && (
+      {/* ⚠️ One scroller for all three tabs, so switching tabs kept the previous tab's
+          offset — settings opened halfway down, showing whatever happened to be there.
+          The tab is a destination; a destination starts at its top. */}
+      <div ref={scrollRef} className={`flex-1 overflow-y-auto ${aurora ? "au-screen" : "px-4 py-4"}`}>
+        {tab === "home" && homeView === null && aurora && (
+          <OwnerHome
+            restaurant={restaurant}
+            items={items}
+            needsAllergens={needsAllergens}
+            progressByMember={progressByMember}
+            teamMembers={teamMembers}
+            onOpenDish={openDishEditor}
+            onToggleStar={toggleStar}
+            onBroadcast={() => setBroadcastOpen(true)}
+            onGoSettings={() => { setTab("settings"); setOpenSetting(null); }}
+            onGoHealth={() => { setTab("settings"); setOpenSetting("health"); }}
+            onSelectMember={setSheetFor}
+            onRows={(rows) => setLiveByMember(Object.fromEntries(rows.map((r) => [r.id, r])))}
+            onMessage={setMessageFor}
+            messagedToday={messagedToday}
+          />
+        )}
+
+        {tab === "home" && homeView === null && !aurora && (
           <div className="space-y-3">
             <Greeting name={restaurant?.owner_name || restaurant?.logged_in_as_name || restaurant?.name} />
             {tasksOff ? (
@@ -1415,7 +1460,39 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           />
         )}
 
-        {tab === "menu" && (
+        {tab === "menu" && aurora && (
+          <OwnerMenu
+            restaurant={restaurant}
+            items={items}
+            onAdd={handleAddDish}
+            onOpenDish={openDishEditor}
+            onToggleStar={toggleStar}
+            dishForm={showAddForm ? (
+              <DishForm
+                item={editingItem}
+                onChange={setEditingItem}
+                onSave={handleSaveDish}
+                onCancel={() => { setShowAddForm(false); setEditingItem(null); }}
+                onDelete={editingItem?.id ? async () => {
+                  await handleDeleteDish(editingItem.id);
+                  setShowAddForm(false);
+                  setEditingItem(null);
+                } : undefined}
+                existingCategories={existingCategories}
+                aurora
+              />
+            ) : null}
+            operatorLine={<OperatorLine restaurant={restaurant} />}
+            emptyNote={
+              <p className="text-[13px] text-[#8a919e] text-center py-6 leading-relaxed">
+                התפריט שלכם בהכנה אצלנו ויופיע כאן בקרוב.
+                <br />אפשר גם להוסיף מנות ידנית בכל רגע.
+              </p>
+            }
+          />
+        )}
+
+        {tab === "menu" && !aurora && (
           <div className="space-y-3">
             {/* The direct line to the operator lives at the top of the menu tab — the
                 owner writes what they want changed, we do it for them. */}
@@ -1621,7 +1698,91 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           </div>
         )}
 
-        {tab === "settings" && (
+        {tab === "settings" && aurora && (
+          <OwnerSettings
+            restaurant={restaurant}
+            teamMembers={teamMembers}
+            memberPct={memberPct}
+            itemCount={items.filter((i) => !(i.category || "").startsWith("הדרכת") && !(i.name || "").startsWith("מה חשוב לדעת")).length}
+            openSetting={openSetting}
+            setOpenSetting={setOpenSetting}
+            onSelectMember={setSheetFor}
+            onSignOut={onSignOut}
+            sections={[
+              {
+                key: "health",
+                emoji: "🩺",
+                title: "בדיקת בריאות התפריט",
+                summary: "מנות עם מידע חסר — תיקון קבוצות שלמות במכה",
+                node: <MenuHealthReview items={items} categories={existingCategories} onChanged={loadMenuItems} />,
+              },
+              {
+                key: "team",
+                emoji: "👥",
+                title: "ניהול הצוות",
+                summary: `${membersLabel(teamMembers.length)} · הסרת עובד שעזב`,
+                node: (
+                  <TeamRoster
+                    restaurant={restaurant}
+                    members={teamMembers}
+                    onRemoved={(id) => setTeamMembers((prev) => prev.filter((m) => m.id !== id))}
+                  />
+                ),
+              },
+              {
+                key: "path",
+                emoji: "🎯",
+                title: "שינוי מתקדם במסלול הלמידה",
+                summary: "דירוג הנושאים שנבחנים עליהם וסדר הקטגוריות",
+                node: <div id="learning-path-settings"><LearningPathSettings restaurant={restaurant} items={items} /></div>,
+              },
+              {
+                key: "tour",
+                emoji: "🧭",
+                title: "סיור מודרך באפליקציה",
+                summary: "לעבור שוב על מה שיש בכל טאב",
+                node: (
+                  <button
+                    onClick={() => { setTourActive(true); setTab("home"); }}
+                    className="au-wide"
+                  >
+                    🧭 להתחיל את הסיור
+                  </button>
+                ),
+              },
+              {
+                key: "feedback",
+                emoji: "💡",
+                title: "תרצו להוסיף משהו באפליקציה?",
+                summary: "רעיון, בקשה או שיפור — כתבו לנו ונחזור אליכם",
+                node: (
+                  <OperatorLine
+                    restaurant={restaurant}
+                    title="תרצו להוסיף משהו באפליקציה? ספרו לנו"
+                    placeholder="למשל: היה עוזר לי לקבל סיכום שבועי של הלמידה"
+                    prefix="[הצעה לאפליקציה] "
+                    showPending={false}
+                  />
+                ),
+              },
+              {
+                key: "security",
+                emoji: "🔐",
+                title: "חשבון ואבטחה",
+                summary: "החלפת סיסמה ומחיקת החשבון",
+                node: (
+                  <AccountSecurity
+                    ownerCode={restaurant?.owner_code}
+                    secondaryName={restaurant?.logged_in_as_name || null}
+                    onDeleted={onSignOut}
+                  />
+                ),
+              },
+            ]}
+          />
+        )}
+
+        {tab === "settings" && !aurora && (
           <div className="space-y-3">
             <p className="text-[11px] text-[#8a8aa0] px-1 leading-relaxed">
               כל כותרת מראה מה מוגדר שם עכשיו — אפשר לסרוק את הכל בלי לפתוח כלום.
@@ -1819,11 +1980,21 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       <div className={aurora ? "au-nav" : "border-t border-[#22252b] bg-[#16181c]"}>
         {/* pb keeps the tabs clear of the iPhone home indicator once packaged with
             Capacitor. On the web the inset is 0 and this stays the plain p-2. */}
-        <div className="grid grid-cols-3 gap-1 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <div className={`grid grid-cols-3 gap-1 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] ${aurora ? "au-tabs" : ""}`}>
           <NavButton aurora={aurora} emoji="🏠" icon={<Home size={18} />} label="בית" active={tab === "home"} onClick={() => setTab("home")} />
           <NavButton aurora={aurora} emoji="📖" icon={<BookOpen size={18} />} label="תפריט" active={tab === "menu"} onClick={() => setTab("menu")} />
           <NavButton aurora={aurora} emoji="⚙️" icon={<Settings size={18} />} label="הגדרות" active={tab === "settings"} onClick={() => setTab("settings")} />
         </div>
+      </div>
+
+      {/* 🔴 These overlays are siblings of the nav, never children of it.
+          They used to sit inside that <div>, which was invisible while it was a plain
+          bar — but `.au-nav` carries `backdrop-filter`, and any value other than `none`
+          makes an element the containing block for its `position:fixed` descendants.
+          Every one of these is `fixed inset-0`, so they were being sized against the
+          108px tab bar: the member sheet, the nudge dialog, the profile gate and the
+          tour welcome all rendered as a sliver behind the tabs. Measured, not guessed —
+          the sheet came back 375×108 instead of 375×812. Keep them out here. */}
       {showTeam && (
         <TeamScreen
           restaurant={restaurant}
@@ -1875,6 +2046,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           detail={buildMemberDetail(sheetFor)}
           onClose={() => setSheetFor(null)}
           onMessage={() => setMessageFor(sheetFor)}
+          tasksOff={tasksOff}
         />
       )}
       {messageFor && (
@@ -1901,9 +2073,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           onSetupNow={handleTourSetupNow}
           teamCode={restaurant?.team_code}
           withWelcome={tourAutoRun}
+          aurora={aurora}
         />
       )}
-      </div>
     </div>
   );
 }
@@ -2774,12 +2946,28 @@ function CategoryComposer({ categories, onMerge }) {
   );
 }
 
-function DishForm({ item, onChange, onSave, onCancel, onDelete, existingCategories }) {
+function DishForm({ item, onChange, onSave, onCancel, onDelete, existingCategories, aurora }) {
   // Two taps to delete, both inside the editor — the card itself no longer carries a
   // delete button at all.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   return (
     <div id="dish-form" className="bg-[#16181c] rounded-lg p-4 border border-[#22252b] space-y-3">
+      {/* The dish's own photo, above its name. The owner opened this card by recognising
+          the picture in the list; losing it at the top of the editor makes them check
+          twice that they are editing the right dish. Read-only — photos are ours to set. */}
+      {aurora && item.image_url && (
+        <div className="flex items-center gap-3">
+          <img
+            src={item.image_url}
+            alt=""
+            className="w-14 h-14 rounded-xl object-cover border border-[#22252b] flex-shrink-0"
+          />
+          <p className="text-[11px] text-[#8a8aa0] leading-relaxed">
+            התצלום של המנה, כפי שהצוות רואה אותו.
+            <br />להחלפה — שלחו לנו בקשה מתחתית התפריט.
+          </p>
+        </div>
+      )}
       <input
         type="text"
         value={item.name}
