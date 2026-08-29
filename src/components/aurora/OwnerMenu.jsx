@@ -21,6 +21,14 @@ const TONE = { allergens: "red", pregnancy: "purple", pitfalls: "amber", kashrut
 // ⚠️ Only three chip colours exist, and kashrut shares amber with pitfalls. Colour alone
 // would make "בשרי" read as a preference like "חריף", so kashrut says what it is.
 const FLAG_PREFIX = { kashrut: "כשרות: " };
+// ⚠️ Not `g.short` — that is the singular used on a single chip ("מוקש"), and a legend
+// names the group, not one item in it.
+const KEY_LABEL = {
+  allergens: "אלרגיות",
+  pregnancy: "🤰 רגישות",
+  pitfalls: "מוקשים",
+  kashrut: "כשרות",
+};
 
 // A "הדרכת·" category holds knowledge cards, not dishes — calling six service-training
 // cards "6 מנות" is the kind of small wrongness that makes an owner distrust the rest.
@@ -89,6 +97,14 @@ function Dish({ item, flagGroups, onOpen, onToggleStar }) {
   );
 }
 
+// The health card on the home screen hands the menu a focus instead of a settings panel:
+// "24 מנות בלי אלרגיות" should land on those 24 dishes, which is what the sentence
+// promises. `needsAllergens` comes from the dashboard so the two screens count the same way.
+const FOCUS = {
+  "no-desc": { label: "בלי תיאור", match: (d) => !d.description },
+  "no-allergens": { label: "בלי אלרגיות", match: null }, // filled in from props
+};
+
 export default function OwnerMenu({
   restaurant,
   items,
@@ -98,6 +114,10 @@ export default function OwnerMenu({
   dishForm,
   operatorLine,
   emptyNote,
+  focus = null,
+  onClearFocus,
+  needsAllergens,
+  isKnowledge,
 }) {
   const [group, setGroup] = useState(null);   // null = every menu
   const [cat, setCat] = useState(null);       // null = every category
@@ -123,9 +143,18 @@ export default function OwnerMenu({
     [inGroup]
   );
 
+  const focusMatch = useMemo(() => {
+    if (!focus) return null;
+    if (focus === "no-desc") return (d) => !isKnowledge?.(d) && !d.description;
+    if (focus === "no-allergens")
+      return (d) => !isKnowledge?.(d) && d.description && needsAllergens?.(d) && !(d.allergens?.length > 0);
+    return null;
+  }, [focus, needsAllergens, isKnowledge]);
+
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return inGroup.filter((i) => {
+      if (focusMatch && !focusMatch(i)) return false;
       if (cat && i.category !== cat) return false;
       if (!needle) return true;
       return (
@@ -134,30 +163,68 @@ export default function OwnerMenu({
         i.category?.toLowerCase().includes(needle)
       );
     });
-  }, [inGroup, cat, q]);
+  }, [inGroup, cat, q, focusMatch]);
 
   // Under "הכל" the list keeps its category headings: at 152 dishes an unbroken list is
   // unusable, and the heading is how the owner knows where they are while scrolling.
   const sections = useMemo(() => {
-    if (cat || q.trim()) return [{ cat: null, list: shown }];
+    if (cat || q.trim() || focus) return [{ cat: null, list: shown }];
     const order = [...new Set(shown.map((i) => i.category).filter(Boolean))];
     const out = order.map((c) => ({ cat: c, list: shown.filter((i) => i.category === c) }));
     const loose = shown.filter((i) => !i.category);
     if (loose.length) out.push({ cat: "ללא קטגוריה", list: loose });
     return out;
-  }, [shown, cat, q]);
+  }, [shown, cat, q, focus]);
+
+  // Editing is a screen, not a panel. The form is long on a phone, and leaving the
+  // search, the filters and 152 cards scrolling underneath it made it unclear whether
+  // you were editing one dish or browsing the menu. While the editor is open it is the
+  // only thing here — its own close button is the way out.
+  if (dishForm) return <div className="space-y-3">{dishForm}</div>;
 
   return (
     <div className="space-y-3">
       <div className="au-head">
         <h1 className="flex-1 min-w-0">התפריט</h1>
-        <button type="button" className="au-pill flex-none" onClick={onAdd}>+ מנה חדשה</button>
+        <button type="button" className="au-pill flex-none" onClick={() => onAdd(cat)}>+ מנה חדשה</button>
       </div>
       <p className="au-hint">לחיצה על מנה פותחת אותה לעריכה · השינוי מגיע לצוות מיד</p>
 
-      {dishForm}
+      {/* Arrived from "בריאות התפריט". Says what is being shown and how to leave it —
+          a filtered list with no explanation reads as a menu that lost most of its dishes. */}
+      {focus && (
+        <div className="glass flex items-center gap-2.5 py-3">
+          <span className="text-[17px]" aria-hidden>{focus === "no-allergens" ? "🔴" : "🟡"}</span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-[13.5px] font-black text-[#eef0f6]">
+              {shown.length === 1 ? "מנה אחת" : `${shown.length} מנות`} {FOCUS[focus]?.label}
+            </span>
+            <span className="block text-[11.5px] text-[#8a919e] mt-0.5">
+              הקישו על מנה כדי להשלים · השאר מוסתר בינתיים
+            </span>
+          </span>
+          <button type="button" onClick={onClearFocus} className="au-pill ghost flex-none">
+            כל התפריט
+          </button>
+        </div>
+      )}
 
-      {items.length > 6 && (
+      {/* The same colour key the team gets, in one line. A manager reading a red chip on a
+          dish card has no way to know red means "allergy" and amber means "preference"
+          unless someone says so once (user, 29.8). Small on purpose — it is a reminder,
+          not a lesson. */}
+      {!focus && flagGroups.length > 0 && (
+        <div className="au-key">
+          {flagGroups.map((g) => (
+            <span key={g.key} className={`chip ${TONE[g.key] || "amber"}`}>
+              <i className="dot" />
+              {KEY_LABEL[g.key] || g.label}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {!focus && items.length > 6 && (
         <div className="search">
           <span aria-hidden>🔍</span>
           <input
@@ -174,7 +241,7 @@ export default function OwnerMenu({
 
       {/* Menu group first, category second — a restaurant with one menu never sees the
           first row at all. */}
-      {menuGroups.length > 1 && (
+      {!focus && menuGroups.length > 1 && (
         <div className="au-filter">
           <button type="button" className={`au-fchip ${!group ? "on" : ""}`}
             onClick={() => { setGroup(null); setCat(null); }}>כל התפריטים</button>
@@ -185,7 +252,7 @@ export default function OwnerMenu({
         </div>
       )}
 
-      {categories.length > 1 && (
+      {!focus && categories.length > 1 && (
         <div className="au-filter">
           <button type="button" className={`au-fchip ${!cat ? "on" : ""}`} onClick={() => setCat(null)}>
             הכל
@@ -201,11 +268,11 @@ export default function OwnerMenu({
 
       {items.length > 0 && shown.length === 0 && (
         <p className="text-[13px] text-[#8a919e] text-center py-6 leading-relaxed">
-          אין מנה שמתאימה לחיפוש.
+          {focus ? "הכול מושלם כאן — אין מנות שחסר בהן מידע." : "אין מנה שמתאימה לחיפוש."}
           <br />
           <button type="button" className="text-[var(--em)] font-bold mt-1 py-2 px-3"
-            onClick={() => { setQ(""); setCat(null); setGroup(null); }}>
-            ניקוי הסינון
+            onClick={() => { setQ(""); setCat(null); setGroup(null); onClearFocus?.(); }}>
+            {focus ? "חזרה לכל התפריט" : "ניקוי הסינון"}
           </button>
         </p>
       )}

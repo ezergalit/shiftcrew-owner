@@ -39,7 +39,7 @@ export default function MemberSheet({ detail, onClose, onMessage, tasksOff = fal
           <div className="flex-1 min-w-0">
             <p className="text-base font-black text-[#eef0f6] truncate">{name}</p>
             <p className="text-[11px] text-[#8a8aa0]">
-              {mastered}/{dishCount} מנות נלמדו
+              {mastered}/{dishCount} {tasksOff ? "פריטים נלמדו" : "מנות נלמדו"}
               {live?.streak > 1 && <> · 🔥 {live.streak} ימים ברצף</>}
             </p>
           </div>
@@ -91,12 +91,12 @@ export default function MemberSheet({ detail, onClose, onMessage, tasksOff = fal
 
           {weak.length > 0 && (
             <div className="bg-[#3a1d22] border border-[#e0315a]/30 rounded-xl p-3">
-              <p className="text-[10px] font-black text-[#e0315a] mb-1">טועה ב-{weak.length} מנות</p>
+              <p className="text-[10px] font-black text-[#e0315a] mb-1">טועה ב-{weak.length} {tasksOff ? "פריטים" : "מנות"}</p>
               <p className="text-[11.5px] text-[#eef0f6] leading-relaxed">{weak.join(", ")}</p>
             </div>
           )}
           {untouched > 0 && (
-            <p className="text-[11px] text-[#8a8aa0]">עוד לא למד/ה {untouched} מנות</p>
+            <p className="text-[11px] text-[#8a8aa0]">עוד לא למד/ה {untouched} {tasksOff ? "פריטים" : "מנות"}</p>
           )}
 
           {exams.length > 0 && (

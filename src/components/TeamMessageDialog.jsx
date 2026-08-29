@@ -23,11 +23,24 @@ const SUGGESTIONS = [
   "יש מספר מנות שחוזרות בהן טעויות. נא לחזור עליהן — נדבר על זה במשמרת.",
 ];
 
+// ⚠️ A restaurant with `features.tasks === false` has no daily update and no shift
+// checklist, so "נא לקרוא את העדכון היומי" asks for something that does not exist in the
+// app the waiter opens. These restaurants are about the menu and the service, and the
+// suggestions say so (user, 29.8: "אין כבר עדכונים יומיים").
+const SUGGESTIONS_MENU_ONLY = [
+  "נא להשלים את הלימוד היומי לפני תחילת המשמרת — 5 דקות מספיקות.",
+  "נוספו מנות חדשות לתפריט. נא לעבור עליהן לפני המשמרת הקרובה.",
+  "שמתי לב שלא נכנסת לאפליקציה בימים האחרונים. נא להשלים היום תרגול קצר.",
+  "יש מספר מנות שחוזרות בהן טעויות. נא לחזור עליהן — נדבר על זה במשמרת.",
+  "נא לעבור על האלרגיות בתפריט — זה החלק שהכי חשוב לדעת בעל פה.",
+  "נא לעבור על הדרכת השירות בתפריט לפני המשמרת הקרובה.",
+];
+
 // Two modes, one dialog (user, 2026-08-23: "לשלוח הודעה כללית לכולם... או לבחור"):
 // `member` = the original personal nudge; `members` = broadcast — everyone starts
 // selected, tapping a name excludes them, and the same body is written once per
 // recipient (separate team_messages rows, so per-waiter read receipts keep working).
-export default function TeamMessageDialog({ member, members, restaurantId, lastSent, onClose, onSent }) {
+export default function TeamMessageDialog({ member, members, restaurantId, lastSent, onClose, onSent, tasksOff = false }) {
   const broadcast = Array.isArray(members);
   const [selected, setSelected] = useState(() => new Set(broadcast ? members.map((m) => m.id) : []));
   const [body, setBody] = useState("");
@@ -139,7 +152,7 @@ export default function TeamMessageDialog({ member, members, restaurantId, lastS
 
           <div className="space-y-1.5">
             <p className="text-[11px] font-black text-[#8a8aa0]">נוסחים מוכנים — לחצו כדי למלא</p>
-            {SUGGESTIONS.map((s) => (
+            {(tasksOff ? SUGGESTIONS_MENU_ONLY : SUGGESTIONS).map((s) => (
               <button
                 key={s}
                 onClick={() => setBody(s)}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Home, BookOpen, Users, Settings, ListChecks, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Star, Target, Stethoscope, Store, ShieldCheck, Compass, ChevronLeft, ChevronRight, Flame, TrendingUp, Megaphone, BarChart3, Lightbulb } from "lucide-react";
 import LearningStatus from "../components/LearningStatus";
 import SignOutButton from "../components/SignOutButton";
@@ -26,7 +27,8 @@ import SettingsSection from "../components/SettingsSection";
 import WaiterPreview from "../components/WaiterPreview";
 import { FLAG_GROUPS, FLAG_GROUP_BY_KEY, effectiveTrackedFlags } from "../lib/dishFlags";
 import { supabase } from "../lib/supabase";
-import { membersLabel } from "../components/aurora/bits";
+import { getSessionToken } from "../lib/appSession";
+import { membersLabel, isKnowledge } from "../components/aurora/bits";
 import OwnerHome from "../components/aurora/OwnerHome";
 import OwnerMenu from "../components/aurora/OwnerMenu";
 import OwnerSettings from "../components/aurora/OwnerSettings";
@@ -238,6 +240,31 @@ function parseMenuText(raw) {
 // 2576px on the long edge is the current high-resolution vision limit, and quality 0.92
 // keeps JPEG artifacts off the letter strokes. Both numbers are load-bearing for OCR
 // accuracy — do not lower them to save upload bytes.
+// Uploading a dish photo goes through an Edge Function, not straight to Storage: the app
+// is `anon` plus an `x-app-session` header, and Storage cannot see that header, so its
+// policies only admit `authenticated`. The function validates the session server-side and
+// writes under a path derived from it — a manager can only ever write to their own
+// restaurant's prefix, whatever the client sends.
+async function uploadDishPhoto(file) {
+  const { media_type, data } = await downscaleImage(file, 1400);
+  const { data: res, error } = await supabase.functions.invoke("dish-photo", {
+    body: { token: getSessionToken(), data, media_type },
+  });
+  if (error) {
+    // functions.invoke hides the body on a non-2xx; read it so the owner gets a reason.
+    let detail = "";
+    try { detail = (await error.context?.json())?.error || ""; } catch { /* keep generic */ }
+    throw new Error(
+      detail === "too_large" ? "התמונה גדולה מדי — נסו תמונה קטנה יותר."
+      : detail === "bad_type" ? "אפשר להעלות תמונה בלבד (JPG, PNG או WEBP)."
+      : detail === "not_owner" || detail === "bad_session" ? "ההתחברות פגה — היכנסו מחדש ונסו שוב."
+      : "העלאת התמונה נכשלה. נסו שוב."
+    );
+  }
+  if (!res?.url) throw new Error("העלאת התמונה נכשלה. נסו שוב.");
+  return res.url;
+}
+
 async function downscaleImage(file, maxDim = 2576) {
   const dataUrl = await new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -278,6 +305,10 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   useEffect(() => {
     if (aurora && scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [tab, aurora]);
+  // Leaving the menu clears the health filter. Returning later to a menu that is still
+  // hiding most of its dishes, with no memory of why, is the dead end this filter exists
+  // to avoid in the first place.
+  useEffect(() => { if (tab !== "menu") setMenuFocus(null); }, [tab]);
   // The team tab is gone (user, 2026-08-20). It held two unrelated things: the numbers the
   // owner checks daily, and the joining code they touch once. The numbers moved to the home
   // screen, the code and roster into settings — so the nav carries four destinations that
@@ -311,6 +342,8 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const [messagedToday, setMessagedToday] = useState({});      // id -> { body, readAt }
   const [broadcastOpen, setBroadcastOpen] = useState(false);   // one message to the whole team
   const [menuGroupView, setMenuGroupView] = useState(null); // open menu (menu_group) or null
+  // Which slice of the menu the home screen sent us to: "no-desc" | "no-allergens" | null.
+  const [menuFocus, setMenuFocus] = useState(null);
   const [editingBrief, setEditingBrief] = useState(false);
   const [onboarding, setOnboarding] = useState(false); // true if first time setup needed
   // The paste-a-menu import wizard is an OPERATOR tool now — owners never build their own
@@ -870,6 +903,10 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // menu, a bar menu, and seasonal ones. Finding one dish is two taps instead of scrolling
   // the whole list. A menu with no group set keeps the old flat behaviour.
   const menuGroups = [...new Set(items.map((i) => i.menuGroup).filter(Boolean))];
+  // Which menu a category belongs to. Every category in both live restaurants sits in
+  // exactly one menu, so the manager never has to answer this question themselves.
+  const menuGroupForCategory = (cat) =>
+    items.find((i) => i.category === cat && i.menuGroup)?.menuGroup ?? null;
   const shownCategories = menuGroupView
     ? [...new Set(items.filter((i) => i.menuGroup === menuGroupView).map((i) => i.category).filter(Boolean))]
     : existingCategories;
@@ -903,11 +940,19 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     window.scrollTo({ top: 0 });
   }, [showAddForm, editingItem?.id]);
 
-  const handleAddDish = () => {
+  const handleAddDish = (fromCategory) => {
     setShowAddForm(true);
     setEditingItem({
       name: "",
-      category: existingCategories[0] || "",
+      // ⚠️ Not simply existingCategories[0]. In STUDIO26 the first category is
+      // "הדרכת שירות" — a knowledge-card section — so every new dish silently landed
+      // among the service-training cards. Prefer whatever the manager is currently
+      // filtered to, then the first category that actually holds dishes.
+      category:
+        (typeof fromCategory === "string" && fromCategory) ||
+        existingCategories.find((c) => !isKnowledge({ category: c })) ||
+        existingCategories[0] ||
+        "",
       price: 0,
       description: "",
       ingredients: [],
@@ -936,6 +981,16 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       pitfalls: editingItem.pitfalls || [],
       kashrut: editingItem.kashrut || [],
       is_special: !!editingItem.isSpecial,
+      // ⚠️ Without this the photo uploads fine and then vanishes: the file lands in
+      // Storage, the form shows it, and the save writes every other column but this one.
+      // The trigger copies it on to published_menu, which is where the team reads it.
+      image_url: editingItem.image_url || null,
+      // 🔴 menu_group was never written, so every dish a manager added to a restaurant
+      // with more than one menu got NULL — and the waiter app filters by menu
+      // (`inMenu: c.menuGroup === menu`), so the dish was invisible to the entire team
+      // while looking perfectly fine in the manager's own list. Derived from the chosen
+      // category, which maps to exactly one menu in both live restaurants (verified).
+      menu_group: menuGroupForCategory(editingItem.category) ?? editingItem.menuGroup ?? null,
       // Inserts only — editing an existing dish must never re-star it ("לוודא שזו אכן
       // מנה חדשה ולא מנה קיימת ששונתה"). A manual star from the form wins either way.
       starred: !!editingItem.starred || (!editingItem.id && isStandaloneNewDish(items))
@@ -1359,7 +1414,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             onToggleStar={toggleStar}
             onBroadcast={() => setBroadcastOpen(true)}
             onGoSettings={() => { setTab("settings"); setOpenSetting(null); }}
-            onGoHealth={() => { setTab("settings"); setOpenSetting("health"); }}
+            onGoHealth={(kind) => { setMenuFocus(kind); setTab("menu"); }}
             onSelectMember={setSheetFor}
             onRows={(rows) => setLiveByMember(Object.fromEntries(rows.map((r) => [r.id, r])))}
             onMessage={setMessageFor}
@@ -1467,6 +1522,10 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             onAdd={handleAddDish}
             onOpenDish={openDishEditor}
             onToggleStar={toggleStar}
+            focus={menuFocus}
+            onClearFocus={() => setMenuFocus(null)}
+            needsAllergens={needsAllergens}
+            isKnowledge={isKnowledge}
             dishForm={showAddForm ? (
               <DishForm
                 item={editingItem}
@@ -1480,6 +1539,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 } : undefined}
                 existingCategories={existingCategories}
                 aurora
+                menuOf={menuGroups.length > 1 ? menuGroupForCategory : undefined}
               />
             ) : null}
             operatorLine={<OperatorLine restaurant={restaurant} />}
@@ -1714,7 +1774,17 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 emoji: "🩺",
                 title: "בדיקת בריאות התפריט",
                 summary: "מנות עם מידע חסר — תיקון קבוצות שלמות במכה",
-                node: <MenuHealthReview items={items} categories={existingCategories} onChanged={loadMenuItems} />,
+                node: (
+                  <MenuHealthReview
+                    /* Same inputs the home health card uses, so "24 מנות בלי אלרגיות"
+                       there and the group here cannot disagree. Knowledge cards are not
+                       dishes and drinks are not expected to carry allergens. */
+                    items={items.filter((i) => !isKnowledge(i))}
+                    categories={existingCategories}
+                    onChanged={loadMenuItems}
+                    needsAllergens={needsAllergens}
+                  />
+                ),
               },
               {
                 key: "team",
@@ -1725,6 +1795,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                   <TeamRoster
                     restaurant={restaurant}
                     members={teamMembers}
+                    tasksOff={tasksOff}
                     onRemoved={(id) => setTeamMembers((prev) => prev.filter((m) => m.id !== id))}
                   />
                 ),
@@ -1734,7 +1805,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 emoji: "🎯",
                 title: "שינוי מתקדם במסלול הלמידה",
                 summary: "דירוג הנושאים שנבחנים עליהם וסדר הקטגוריות",
-                node: <div id="learning-path-settings"><LearningPathSettings restaurant={restaurant} items={items} /></div>,
+                node: <div id="learning-path-settings"><LearningPathSettings restaurant={restaurant} items={items} bottomOffset={116} /></div>,
               },
               {
                 key: "tour",
@@ -2051,6 +2122,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       )}
       {messageFor && (
         <TeamMessageDialog
+          tasksOff={tasksOff}
           member={teamMembers.find((m) => m.id === messageFor.id) || messageFor}
           restaurantId={restaurant?.id}
           lastSent={messagedToday[messageFor.id]}
@@ -2060,6 +2132,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       )}
       {broadcastOpen && (
         <TeamMessageDialog
+          tasksOff={tasksOff}
           members={teamMembers}
           restaurantId={restaurant?.id}
           onClose={() => setBroadcastOpen(false)}
@@ -2074,6 +2147,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           teamCode={restaurant?.team_code}
           withWelcome={tourAutoRun}
           aurora={aurora}
+          tasksOff={tasksOff}
         />
       )}
     </div>
@@ -2946,27 +3020,111 @@ function CategoryComposer({ categories, onMerge }) {
   );
 }
 
-function DishForm({ item, onChange, onSave, onCancel, onDelete, existingCategories, aurora }) {
+function DishForm({ item, onChange, onSave, onCancel, onDelete, existingCategories, aurora, menuOf }) {
   // Two taps to delete, both inside the editor — the card itself no longer carries a
   // delete button at all.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [zoom, setZoom] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [photoErr, setPhotoErr] = useState("");
+  const isNew = !item.id;
+
+  const pickPhoto = async (file) => {
+    if (!file) return;
+    setPhotoErr(""); setUploading(true);
+    try {
+      onChange({ ...item, image_url: await uploadDishPhoto(file) });
+    } catch (e) {
+      setPhotoErr(e.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div id="dish-form" className="bg-[#16181c] rounded-lg p-4 border border-[#22252b] space-y-3">
-      {/* The dish's own photo, above its name. The owner opened this card by recognising
-          the picture in the list; losing it at the top of the editor makes them check
-          twice that they are editing the right dish. Read-only — photos are ours to set. */}
-      {aurora && item.image_url && (
+      {/* ⚠️ The only way out used to be a "ביטול" button below a long form — off-screen on
+          a phone the moment the editor opened. A form that fills the screen needs its exit
+          where the eye starts, not where the form happens to end (user, 29.8).
+          ⚠️ Skinned restaurants only, for now: the unskinned form is what Apple's reviewer
+          and the Play testers have open, and during a review round even an improvement is
+          a change. Lift the guard when the rounds are over. */}
+      {aurora && (
+      <div className="flex items-center gap-2 -mt-1">
+        <p className="flex-1 text-sm font-black text-[#eef0f6]">
+          {isNew ? "מנה חדשה" : "עריכת מנה"}
+        </p>
+        <button
+          onClick={onCancel}
+          aria-label={isNew ? "ביטול והסרת המנה החדשה" : "סגירה בלי לשמור"}
+          title={isNew ? "ביטול" : "סגירה בלי לשמור"}
+          className="w-9 h-9 rounded-lg bg-[#22252b] flex items-center justify-center text-[#8a8aa0] hover:text-[#eef0f6] transition flex-shrink-0"
+        >
+          <X size={16} />
+        </button>
+      </div>
+      )}
+
+      {/* The photo: the owner recognised the dish by it in the list, so it leads here too.
+          Tapping it opens it full size — a 56px thumbnail cannot show whether the picture
+          is the right one. */}
+      {aurora && (
         <div className="flex items-center gap-3">
-          <img
-            src={item.image_url}
-            alt=""
-            className="w-14 h-14 rounded-xl object-cover border border-[#22252b] flex-shrink-0"
-          />
-          <p className="text-[11px] text-[#8a8aa0] leading-relaxed">
-            התצלום של המנה, כפי שהצוות רואה אותו.
-            <br />להחלפה — שלחו לנו בקשה מתחתית התפריט.
-          </p>
+          {item.image_url ? (
+            <button
+              type="button"
+              onClick={() => setZoom(true)}
+              title="הגדלת התמונה"
+              className="flex-shrink-0 rounded-xl active:scale-95 transition-transform"
+            >
+              <img
+                src={item.image_url}
+                alt=""
+                className="w-16 h-16 rounded-xl object-cover border border-[#22252b]"
+              />
+            </button>
+          ) : (
+            <div className="w-16 h-16 rounded-xl bg-[#0c0d10] border border-dashed border-[#3a3d46] flex items-center justify-center text-[#5a5a6e] flex-shrink-0">
+              <Camera size={20} />
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <label className="inline-flex items-center gap-1.5 text-[12px] font-bold text-[var(--em,#22c08c)] cursor-pointer py-2">
+              <Camera size={13} />
+              {uploading ? "מעלה…" : item.image_url ? "החלפת התמונה" : "הוספת תמונה"}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={uploading}
+                onChange={(e) => { pickPhoto(e.target.files?.[0]); e.target.value = ""; }}
+              />
+            </label>
+            <p className="text-[11px] text-[#8a8aa0] leading-relaxed">
+              {item.image_url ? "הקישו על התמונה כדי להגדיל" : "כך הצוות יזהה את המנה ברשימה"}
+            </p>
+          </div>
         </div>
+      )}
+      {photoErr && (
+        <p className="text-[11px] text-[#ff8098] bg-[#3a1d22] border border-[#e0315a]/40 rounded-lg px-3 py-2">
+          {photoErr}
+        </p>
+      )}
+      {/* 🔴 Portalled to <body> on purpose. Under the skin every card surface carries
+          `backdrop-filter` (aurora.css §14), and ANY value other than `none` makes an
+          element the containing block for its `position:fixed` descendants — so this
+          overlay, rendered inside the form, came out 333×1322 (the form's box) instead of
+          filling the screen. Measured, not guessed. Same trap as the bottom nav. */}
+      {zoom && item.image_url && createPortal(
+        <button
+          onClick={() => setZoom(false)}
+          aria-label="סגירת התמונה"
+          className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-6"
+        >
+          <img src={item.image_url} alt="" className="max-w-[86%] max-h-[70vh] rounded-2xl object-contain shadow-2xl" />
+        </button>,
+        document.body
       )}
       <input
         type="text"
@@ -2983,7 +3141,14 @@ function DishForm({ item, onChange, onSave, onCancel, onDelete, existingCategori
           only as a fallback for a menu that has no categories yet. */}
       {existingCategories.length > 0 ? (
         <div className="space-y-2">
-          <p className="text-xs font-bold text-[#8a8aa0]">קטגוריה:</p>
+          <p className="text-xs font-bold text-[#8a8aa0]">
+            קטגוריה:
+            {/* Which menu this lands in. The manager never picks it — it follows the
+                category — but a dish quietly joining "תפריט הסושי" should say so. */}
+            {menuOf?.(item.category) ? (
+              <span className="font-normal text-[#5a5a6e]"> · יופיע ב{menuOf(item.category)}</span>
+            ) : null}
+          </p>
           <div className="flex flex-wrap gap-2">
             {existingCategories.map((c) => (
               <button

@@ -50,7 +50,11 @@ const ISSUES = [
     id: "no_allergens",
     title: "מנות בלי סימון אלרגנים",
     why: "יכול להיות תקין — אבל כדאי לוודא שבאמת אין",
-    match: (d) => !(d.allergens || []).length,
+    // ⚠️ `needsAllergens` is injected by the caller when it has one. Without it this counts
+    // every row — drinks included — and the manager saw "24" on the home screen and "75"
+    // here for the same thing, which makes both numbers untrustworthy. Callers that pass
+    // nothing keep the original behaviour exactly.
+    match: (d, needsAllergens) => !(d.allergens || []).length && (!needsAllergens || needsAllergens(d)),
     severity: "medium",
   },
   {
@@ -75,14 +79,14 @@ const SEVERITY = {
   low: { color: "#8a8aa0", bg: "#1c1e22" },
 };
 
-export default function MenuHealthReview({ items, categories, onChanged }) {
+export default function MenuHealthReview({ items, categories, onChanged, needsAllergens }) {
   const [openIssue, setOpenIssue] = useState(null);
   const [selected, setSelected] = useState(new Set());
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState("");
 
   const found = useMemo(
-    () => ISSUES.map((iss) => ({ ...iss, dishes: (items || []).filter(iss.match) })).filter((iss) => iss.dishes.length),
+    () => ISSUES.map((iss) => ({ ...iss, dishes: (items || []).filter((d) => iss.match(d, needsAllergens)) })).filter((iss) => iss.dishes.length),
     [items]
   );
 
@@ -127,7 +131,7 @@ export default function MenuHealthReview({ items, categories, onChanged }) {
     const { error } = await db.from("menu_items").update(patch).in("id", ids);
     setBusy(false);
     if (error) { setDone("שגיאה: " + error.message); return; }
-    setDone(`${label} — ${ids.length} מנות עודכנו`);
+    setDone(`${label} — ${ids.length === 1 ? "מנה אחת עודכנה" : `${ids.length} מנות עודכנו`}`);
     onChanged?.();
   };
 
@@ -148,7 +152,7 @@ export default function MenuHealthReview({ items, categories, onChanged }) {
       if (error) failed++;
     }
     setBusy(false);
-    setDone(failed ? `${ids.length - failed} עודכנו, ${failed} נכשלו` : `${mode === "add" ? "נוסף" : "הוסר"} "${allergen}" ל-${ids.length} מנות`);
+    setDone(failed ? `${ids.length - failed} עודכנו, ${failed} נכשלו` : `${mode === "add" ? "נוסף" : "הוסר"} "${allergen}" ל-${ids.length === 1 ? "מנה אחת" : `${ids.length} מנות`}`);
     onChanged?.();
   };
 

@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronUp, ChevronDown, Check, Info, Loader2, Sparkles } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { FACET_META, RECOMMENDED_FACETS, facetsForMenu, DEFAULT_PATH } from "../lib/examFacets";
+
+const catCount = (cat, n) => {
+  const card = (cat || "").startsWith("הדרכת");
+  if (n === 1) return card ? "כרטיס אחד" : "מנה אחת";
+  return `${n} ${card ? "כרטיסים" : "מנות"}`;
+};
 
 const db = supabase.schema("menu_app");
 
@@ -17,7 +24,7 @@ const db = supabase.schema("menu_app");
 const shortCat = (c) => String(c || "").split(/\s*[—–]\s*/)[0].trim();
 const snapshot = (ranked, catOrder, path) => JSON.stringify({ ranked, catOrder, path });
 
-export default function LearningPathSettings({ restaurant, items, onSaved }) {
+export default function LearningPathSettings({ restaurant, items, onSaved , bottomOffset = 74 }) {
   const menuCategories = useMemo(() => {
     const seen = [];
     for (const d of items || []) if (d.category && !seen.includes(d.category)) seen.push(d.category);
@@ -260,7 +267,7 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
               </span>
               <p className="text-xs font-bold text-[#eef0f6] flex-1 min-w-0 truncate" title={c}>{shortCat(c)}</p>
               <span className="text-[10px] text-[#8a8aa0] flex-shrink-0">
-                {(items || []).filter((d) => d.category === c).length} מנות
+                {catCount(c, (items || []).filter((d) => d.category === c).length)}
               </span>
               <div className="flex flex-col gap-0.5 flex-shrink-0">
                 <button onClick={() => moveCat(idx, -1)} disabled={idx === 0}
@@ -382,7 +389,18 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
           `overflow-hidden`, and an overflow-hidden ancestor silently disables position:
           sticky — the bar simply never appeared. Fixed is immune to that, and sits just
           above the bottom nav. */}
-      <div className="fixed inset-x-0 bottom-[74px] z-40 max-w-md mx-auto px-4 pointer-events-none">
+      {/* 🔴 And portalled to <body>. `fixed` only escapes an overflow-hidden ancestor — it
+          does NOT escape one with `backdrop-filter`, which makes that ancestor the
+          containing block instead of the viewport. Under the «אורורה» skin every card
+          surface carries it, so this bar was being laid out 3,712px down inside the panel:
+          the manager changed a setting and the save button was three screens below the
+          fold, so the change silently never saved. Measured, not guessed. Same trap as the
+          bottom nav, the dish-photo zoom and the waiter's sign-out dialog. */}
+      {/* ⚠️ The offset is a prop, not a literal: the «אורורה» tab strip is ~108px tall,
+          not 74, so the hard-coded value put the bar 34px underneath it. Measured. */}
+      {createPortal(
+      <div className="fixed inset-x-0 z-40 max-w-md mx-auto px-4 pointer-events-none"
+           style={{ bottom: `${bottomOffset}px` }}>
         {dirty ? (
           <div
             className="rounded-xl border border-[#6d5efc] p-2.5 flex items-center gap-2.5 shadow-xl shadow-black/70 pointer-events-auto"
@@ -408,7 +426,9 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
             <p className="text-[12px] font-black text-[#22c08c]">נשמר — הצוות מתעדכן מיד</p>
           </div>
         ) : null}
-      </div>
+      </div>,
+      document.body
+      )}
     </div>
   );
 }

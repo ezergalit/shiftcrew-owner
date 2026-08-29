@@ -113,7 +113,6 @@ export default function OwnerSettings({
   const isRecommended =
     path &&
     path.pass_threshold === DEFAULT_PATH.pass_threshold &&
-    path.daily_goal_minutes === DEFAULT_PATH.daily_goal_minutes &&
     path.general_exam_questions === DEFAULT_PATH.general_exam_questions &&
     path.baseline_enabled === DEFAULT_PATH.baseline_enabled &&
     path.gate_games === DEFAULT_PATH.gate_games;
@@ -206,13 +205,13 @@ export default function OwnerSettings({
               onChange={(v) => patch({ pass_threshold: v })}
             />
 
-            <p className="au-opt">יעד לימוד יומי לצוות</p>
-            <Choice
-              options={[5, 10, 15, 20].map((v) => ({ value: v, label: `${v} דק׳` }))}
-              value={path.daily_goal_minutes}
-              recommended={DEFAULT_PATH.daily_goal_minutes}
-              onChange={(v) => patch({ daily_goal_minutes: v })}
-            />
+            {/* 🚧 "יעד לימוד יומי" is deliberately NOT offered here. The waiter only ever
+                showed that goal as a ring on its home tab, and `features.tasks:false`
+                removes that tab entirely (MainApp redirects away from "home"), so
+                `exam_config.daily_goal_minutes` currently changes nothing for these
+                restaurants. A control that saves a value nobody reads is worse than no
+                control. The column is untouched, so restoring this is three lines once
+                the goal has somewhere to appear. */}
 
             <p className="au-opt">אורך המבחן המסכם</p>
             <Choice
@@ -255,7 +254,6 @@ export default function OwnerSettings({
                 className="au-wide mt-3"
                 onClick={() => patch({
                   pass_threshold: DEFAULT_PATH.pass_threshold,
-                  daily_goal_minutes: DEFAULT_PATH.daily_goal_minutes,
                   general_exam_questions: DEFAULT_PATH.general_exam_questions,
                   baseline_enabled: DEFAULT_PATH.baseline_enabled,
                   gate_games: DEFAULT_PATH.gate_games,

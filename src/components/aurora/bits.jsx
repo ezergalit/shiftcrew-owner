@@ -18,6 +18,13 @@ export const initials = (name) =>
 // about one waiter's colour is worse than either threshold being slightly off.
 export const pctColor = (p) => (p >= 75 ? "#22c08c" : p >= 45 ? "#f3c14b" : "#e0315a");
 
+// ⚠️ Knowledge cards are not dishes. SALON26 carries ten of them ("הדרכת שירות",
+// "מה חשוב לדעת על המאזטים") and STUDIO26 seventeen; they live in the menu so the team
+// learns them, but they have no allergens and never will. Same rule the waiter app uses
+// in pubToCard — keep the three copies in step.
+export const isKnowledge = (d) =>
+  (d?.category || "").startsWith("הדרכת") || (d?.name || "").startsWith("מה חשוב לדעת");
+
 // Hebrew disagrees with "1 חברי צוות" the way English disagrees with "1 members".
 export const membersLabel = (n) =>
   n === 0 ? "אין עדיין חברי צוות" : n === 1 ? "חבר צוות אחד" : `${n} חברי צוות`;

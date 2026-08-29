@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Copy, Check, UserMinus, AlertTriangle } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { membersLabel } from "./aurora/bits";
 
 const db = supabase.schema("menu_app");
 
@@ -8,7 +9,7 @@ const db = supabase.schema("menu_app");
 // neither is a daily job. They moved out of the main navigation into settings
 // (user, 2026-08-20); what the owner looks at every day is progress, and that now lives
 // on the home screen.
-export default function TeamRoster({ restaurant, members, onRemoved }) {
+export default function TeamRoster({ restaurant, members, onRemoved , tasksOff = false }) {
   const [copied, setCopied] = useState(false);
   const [copiedTrainee, setCopiedTrainee] = useState(false);
   const [confirming, setConfirming] = useState(null); // member id awaiting confirmation
@@ -90,8 +91,9 @@ export default function TeamRoster({ restaurant, members, onRemoved }) {
             </button>
           </div>
           <p className="text-[11px] text-[#8a8aa0] leading-relaxed mt-2">
-            למי שעוד לא במשמרות: כניסה עם הקוד הזה פותחת גרסה ללימוד התפריט בלבד —
-            בלי משימות משמרת ובלי העדכון היומי. כשמתחילים לעבוד, נכנסים עם קוד הצוות הרגיל.
+            {tasksOff
+              ? "למי שעוד לא במשמרות: כניסה עם הקוד הזה פותחת גרסה ללימוד התפריט בלבד. כשמתחילים לעבוד, נכנסים עם קוד הצוות הרגיל."
+              : "למי שעוד לא במשמרות: כניסה עם הקוד הזה פותחת גרסה ללימוד התפריט בלבד — בלי משימות משמרת ובלי העדכון היומי. כשמתחילים לעבוד, נכנסים עם קוד הצוות הרגיל."}
           </p>
         </div>
       )}
@@ -108,7 +110,7 @@ export default function TeamRoster({ restaurant, members, onRemoved }) {
         </p>
       ) : (
         <div className="space-y-1.5">
-          <p className="text-[11px] font-bold text-[#8a8aa0] px-1">{members.length} חברי צוות</p>
+          <p className="text-[11px] font-bold text-[#8a8aa0] px-1">{membersLabel(members.length)}</p>
           {members.map((m) => (
             <div key={m.id} className="bg-[#0c0d10] border border-[#22252b] rounded-xl p-2.5">
               <div className="flex items-center gap-2">

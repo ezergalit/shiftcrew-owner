@@ -28,7 +28,11 @@ const buildAuroraSteps = (teamCode) => [
   {
     tab: "home",
     title: "בריאות התפריט — מה חסר כדי ללמד",
-    body: "מנה בלי תיאור אי אפשר לבנות עליה שאלות, ומנה בלי אלרגיות היא שדה בטיחות ריק. הכרטיס הזה מוצא אותן בשבילכם — לחיצה על שורה פותחת את המנה, ואם יש כמה, את מסך התיקון הקבוצתי. מתחתיו: המנות שהצוות הכי טועה בהן, והקשה מדגישה מנה ⭐ כדי שתקפוץ ראשונה בתרגול.",
+    // ⚠️ Keep this in step with what the card actually does. It used to promise the
+    // bulk-fix screen; the rows now open the menu filtered to exactly those dishes. And
+    // the "struggles" card only appears once somebody has practised, so the tour — which
+    // runs right after the first import — must not describe it as if it were on screen.
+    body: "מנה בלי תיאור אי אפשר לבנות עליה שאלות, ומנה בלי אלרגיות היא שדה בטיחות ריק. הכרטיס הזה מוצא אותן בשבילכם — לחיצה על שורה פותחת את התפריט מסונן בדיוק למנות האלה, כדי להשלים אותן אחת אחרי השנייה. וכשהצוות יתחיל לתרגל, יופיע כאן גם מה שהוא הכי טועה בו — הקשה עליו מדגישה את המנה ⭐ כדי שתקפוץ ראשונה בתרגול.",
   },
   {
     tab: "menu",
@@ -85,8 +89,13 @@ const buildSteps = (teamCode) => [
   },
 ];
 
-export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, withWelcome = false, aurora = false }) {
-  const STEPS = aurora ? buildAuroraSteps(teamCode) : buildSteps(teamCode);
+export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, withWelcome = false, aurora = false, tasksOff = aurora }) {
+  // ⚠️ Two different flags. The CONTENT is chosen by `tasksOff`, because that is what
+  // removes the daily update, the checklists and the owner's task list that the original
+  // steps describe. The COLOUR is chosen by `aurora`. They happen to be on together today,
+  // and defaulting tasksOff to aurora keeps that true, but a restaurant given one without
+  // the other would otherwise be toured through screens it does not have.
+  const STEPS = tasksOff ? buildAuroraSteps(teamCode) : buildSteps(teamCode);
   const [welcome, setWelcome] = useState(withWelcome);
   const [step, setStep] = useState(0);
   const s = STEPS[step];

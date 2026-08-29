@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import LearningStatus from "../LearningStatus";
 import WaiterPreview from "../WaiterPreview";
 import { greetingFor } from "../Greeting";
-import { Tile } from "./bits";
+import { Tile, isKnowledge } from "./bits";
 
 // The manager's home screen under the «אורורה» skin.
 //
@@ -26,14 +26,6 @@ function HealthRow({ tone, label, text, onClick }) {
     </Tag>
   );
 }
-
-// ⚠️ Knowledge cards are not dishes. SALON26 carries ten of them ("הדרכת שירות",
-// "מה חשוב לדעת על המאזטים") and STUDIO26 seventeen; they live in the menu so the team
-// learns them, but they have no allergens and never will. Counting them as "missing a
-// safety field" turned a real warning into noise — 21 alarming red items, none of them
-// actionable. Same rule the waiter app uses in pubToCard.
-const isKnowledge = (d) =>
-  (d.category || "").startsWith("הדרכת") || (d.name || "").startsWith("מה חשוב לדעת");
 
 // Two names read as a sentence; more than two do not. Past that, the count is the message
 // and the bulk-fix screen is the answer.
@@ -167,7 +159,7 @@ export default function OwnerHome({
                  the work we are supposed to be removing. */
               onClick={health.noDesc.length === 1
                 ? () => onOpenDish(health.noDesc[0])
-                : onGoHealth}
+                : () => onGoHealth("no-desc")}
             />
           )}
           {health.noAllergens.length > 0 && (
@@ -177,7 +169,7 @@ export default function OwnerHome({
               text={`${nameList(health.noAllergens)} — שדה בטיחות, חובה לסמן`}
               onClick={health.noAllergens.length === 1
                 ? () => onOpenDish(health.noAllergens[0])
-                : onGoHealth}
+                : () => onGoHealth("no-allergens")}
             />
           )}
           {health.ready.length === 0 && dishes.length === 0 ? (
