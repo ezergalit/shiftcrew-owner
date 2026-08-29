@@ -93,6 +93,13 @@ export default function OwnerLogin({ onGranted }) {
           setBusy(false);
           return;
         }
+        // A pending deletion is not a wrong password, and saying so would send the
+        // owner hunting for a typo instead of telling us they changed their mind.
+        if (data?.error === "deletion_pending") {
+          setErr("החשבון סומן למחיקה והגישה אליו סגורה. אם זו הייתה טעות — פנו אלינו והחשבון יוחזר.");
+          setBusy(false);
+          return;
+        }
         const restaurant = data?.restaurant;
         if (!restaurant) {
           setErr("קוד או סיסמה שגויים.");

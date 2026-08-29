@@ -74,9 +74,12 @@ export default function TeamRoster({ restaurant, members, onRemoved , tasksOff =
         </p>
       </div>
 
-      {/* A second entry code for brand-new hires: same app, learning-only — no shift
-          tasks, no daily brief. The mode is decided by which code they typed. */}
-      {restaurant?.trainee_code && (
+      {/* 🚫 The trainee code is switched off for now (user, 29.8: "cancel the code for
+          waiters that are starting out"). Hidden only where the aurora restaurants look —
+          `trainee_code`, `team_join`'s trainee branch and the waiter's trainee mode are all
+          untouched, so a code already in circulation keeps working and this is one line to
+          undo. Everyone else still sees it. */}
+      {restaurant?.trainee_code && !tasksOff && (
         <div className="bg-[#0c0d10] border border-[#22252b] rounded-xl p-3.5">
           <p className="text-[11px] font-bold text-[#8a8aa0] mb-1">קוד מלצרים מתחילים</p>
           <div className="flex items-center gap-2">

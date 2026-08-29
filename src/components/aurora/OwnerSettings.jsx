@@ -143,13 +143,9 @@ export default function OwnerSettings({
             {copied ? "הקוד הועתק ✓" : "העתקת הקוד"}
           </button>
         </div>
-        {restaurant?.trainee_code && (
-          <p className="text-[11.5px] text-[#8a919e] mt-3.5 leading-relaxed">
-            קוד לעובד בהכשרה: <b className="text-[#eef0f6] tracking-wider" dir="ltr">{restaurant.trainee_code}</b>
-            <br />
-            נכנס לאותה אפליקציה, בלי משמרת — רק לימוד התפריט
-          </p>
-        )}
+        {/* 🚫 The trainee code is hidden for now (user, 29.8: "cancel the code for waiters
+            that are starting out"). The column and the server path are untouched — a code
+            that was already shared still works — this is only the manager UI. */}
       </div>
 
       {/* ── the team ─────────────────────────────────────────────────────── */}

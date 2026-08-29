@@ -29,6 +29,7 @@ import { FLAG_GROUPS, FLAG_GROUP_BY_KEY, effectiveTrackedFlags } from "../lib/di
 import { supabase } from "../lib/supabase";
 import { getSessionToken } from "../lib/appSession";
 import { membersLabel, isKnowledge } from "../components/aurora/bits";
+import DishEditor from "../components/aurora/DishEditor";
 import OwnerHome from "../components/aurora/OwnerHome";
 import OwnerMenu from "../components/aurora/OwnerMenu";
 import OwnerSettings from "../components/aurora/OwnerSettings";
@@ -1509,9 +1510,17 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             restaurant={restaurant}
             items={items}
             onAdd={handleAddDish}
+            /* ⚠️ These two went out with the home-screen cleanup, which also owned a
+               `focus` filter fed from the health card. The filter was right to go; these
+               were not — they are the menu tab's own edit and star, and without them the
+               "עריכת המנה" button and every ⭐ silently did nothing. */
+            onOpenDish={openDishEditor}
+            onToggleStar={toggleStar}
             scrollRef={scrollRef}
             dishForm={showAddForm ? (
-              <DishForm
+              /* The skinned editor: labelled fields, and closed lists collapsed to the
+                 choice. The unskinned DishForm is untouched and still serves everyone else. */
+              <DishEditor
                 item={editingItem}
                 onChange={setEditingItem}
                 onSave={handleSaveDish}
@@ -1522,7 +1531,8 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                   setEditingItem(null);
                 } : undefined}
                 existingCategories={existingCategories}
-                aurora
+                restaurant={restaurant}
+                uploadPhoto={uploadDishPhoto}
                 menuOf={menuGroups.length > 1 ? menuGroupForCategory : undefined}
               />
             ) : null}

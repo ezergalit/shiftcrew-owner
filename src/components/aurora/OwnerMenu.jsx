@@ -102,6 +102,106 @@ function Dish({ item, flagGroups, tone, merged, onOpen, onToggleStar }) {
   );
 }
 
+// 🔴 This component was deleted by the home-screen cleanup (b5d8686) while its call site
+// stayed — a bare `<DishPreview>` is just an undefined global to the bundler, so the build
+// was green and every dish tap threw ReferenceError in production. Fifth time in this
+// project. **A green build proves nothing about JSX identifiers.**
+//
+// Tapping a dish used to drop the manager straight into the full edit form — every field
+// at once, when all they wanted was to check what is in it (user, 29.8: "it opens
+// everything instead of a summary"). Reading and editing are different jobs: this is the
+// reading one, the same shape the waiter sees, with one button into the other.
+//
+// ⚠️ **Only what is actually set appears** (user, 29.8: "כל מה שלא מסומן לא צריך להיות
+// פה, שיהיה קצר ולעניין"). No empty ingredient block, no "no warnings recorded" card, no
+// nine category chips — one line naming the category this dish is in. A preview that
+// lists what a dish does *not* have is as long as the edit form and reads like a form.
+function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleStar }) {
+  // In merged mode pregnancy values are shown under the pitfalls heading, so the two
+  // read as the one group the restaurant actually thinks in.
+  const groups = flagGroups
+    .map((g) => ({
+      g,
+      vals: merged && g.key === "pitfalls"
+        ? [...(item.pregnancy || []), ...(item.pitfalls || [])]
+        : item[g.key] || [],
+    }))
+    .filter((x) => x.vals.length > 0 && !(merged && x.g.key === "pregnancy"));
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2.5">
+        <button
+          type="button" onClick={onBack} aria-label="חזרה לתפריט"
+          className="w-10 h-10 rounded-xl bg-[#16181c] border border-[#22252b] flex items-center justify-center text-[#eef0f6] flex-none"
+        >
+          <ChevronRight size={19} />
+        </button>
+        {/* The one category it is in — not a row of the ones it is not. */}
+        <p className="flex-1 min-w-0 text-[11px] font-black text-[#8a919e] truncate">{item.category}</p>
+        <button
+          type="button"
+          onClick={() => onToggleStar(item)}
+          aria-label={item.starred ? `הסרת הדגשה מ${item.name}` : `הדגשת ${item.name}`}
+          className={`au-star ${item.starred ? "on" : ""}`}
+        >
+          <Star size={18} fill={item.starred ? "currentColor" : "none"} />
+        </button>
+      </div>
+
+      {item.image_url && (
+        <img src={item.image_url} alt="" className="w-full h-44 object-cover rounded-2xl border border-[#22252b]" />
+      )}
+
+      <div className="glass">
+        <div className="flex items-start gap-2">
+          <h2 className="flex-1 min-w-0 text-[19px] font-black text-[#eef0f6] leading-snug">{item.name}</h2>
+          {item.price ? <span className="text-[16px] font-black text-[#eef0f6] tabular-nums">{item.price} ₪</span> : null}
+        </div>
+        {item.description && (
+          <p className="text-[13px] text-[#8a919e] leading-relaxed mt-2">{item.description}</p>
+        )}
+      </div>
+
+      {item.ingredients?.length > 0 && (
+        <div className="glass">
+          <p className="text-[11px] font-black text-[#8a919e] mb-2">מרכיבים</p>
+          <div className="flex flex-wrap gap-1.5">
+            {item.ingredients.map((v) => (
+              <span key={v} className="text-[12.5px] font-bold px-2.5 py-1.5 rounded-lg bg-[#22252b] text-[#eef0f6]">{v}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* The warning groups, in their own colours. Nothing marked ⇒ no card at all. */}
+      {groups.length > 0 && (
+        <div className="glass space-y-2">
+          {groups.map(({ g, vals }) => (
+            <div key={g.key}>
+              <p className="text-[11px] font-black text-[#8a919e] mb-1.5">
+                {merged && g.key === "pitfalls" ? "מוקשים ורגישות" : KEY_LABEL[g.key] || g.label}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {vals.map((v) => (
+                  <span key={v} className={`chip ${tone[g.key] || "amber"}`}><i className="dot" />{v}</span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* The one thing missing that actually blocks teaching gets a line — a dish with no
+          description cannot generate a single question. Everything else stays quiet. */}
+      {!item.description && <p className="au-warn">חסר תיאור — בלי תיאור אי אפשר לבנות שאלות</p>}
+
+      <button type="button" onClick={() => onEdit(item)} className="au-pill w-full justify-center py-3">
+        עריכת המנה
+      </button>
+    </div>
+  );
+}
+
 export default function OwnerMenu({
   restaurant,
   items,
@@ -175,12 +275,6 @@ export default function OwnerMenu({
     return out;
   }, [shown, cat, q]);
 
-  // Editing is a screen, not a panel. The form is long on a phone, and leaving the
-  // search, the filters and 152 cards scrolling underneath it made it unclear whether
-  // you were editing one dish or browsing the menu. While the editor is open it is the
-  // only thing here — its own close button is the way out.
-  if (dishForm) return <div className="space-y-3">{dishForm}</div>;
-
   // Put the manager back exactly where they were reading.
   useEffect(() => {
     if (!viewing && listScroll.current && scrollRef?.current) {
@@ -188,6 +282,17 @@ export default function OwnerMenu({
       requestAnimationFrame(() => { if (scrollRef.current) scrollRef.current.scrollTop = y; });
     }
   }, [viewing, scrollRef]);
+
+  // ⚠️ Every hook above every early return. This useEffect used to sit *below* the
+  // `dishForm` return, so opening the editor rendered one hook fewer than the list did
+  // and React threw "Rendered fewer hooks than expected" — editing a dish crashed the
+  // app outright. Fourth time in this project, and the build was green every time.
+
+  // Editing is a screen, not a panel. The form is long on a phone, and leaving the
+  // search, the filters and 152 cards scrolling underneath it made it unclear whether
+  // you were editing one dish or browsing the menu. While the editor is open it is the
+  // only thing here — its own close button is the way out.
+  if (dishForm) return <div className="space-y-3">{dishForm}</div>;
 
   if (viewing) {
     const fresh = items.find((i) => i.id === viewing.id) || viewing;
