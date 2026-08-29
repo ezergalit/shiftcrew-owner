@@ -305,10 +305,6 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   useEffect(() => {
     if (aurora && scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [tab, aurora]);
-  // Leaving the menu clears the health filter. Returning later to a menu that is still
-  // hiding most of its dishes, with no memory of why, is the dead end this filter exists
-  // to avoid in the first place.
-  useEffect(() => { if (tab !== "menu") setMenuFocus(null); }, [tab]);
   // The team tab is gone (user, 2026-08-20). It held two unrelated things: the numbers the
   // owner checks daily, and the joining code they touch once. The numbers moved to the home
   // screen, the code and roster into settings — so the nav carries four destinations that
@@ -342,8 +338,6 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const [messagedToday, setMessagedToday] = useState({});      // id -> { body, readAt }
   const [broadcastOpen, setBroadcastOpen] = useState(false);   // one message to the whole team
   const [menuGroupView, setMenuGroupView] = useState(null); // open menu (menu_group) or null
-  // Which slice of the menu the home screen sent us to: "no-desc" | "no-allergens" | null.
-  const [menuFocus, setMenuFocus] = useState(null);
   const [editingBrief, setEditingBrief] = useState(false);
   const [onboarding, setOnboarding] = useState(false); // true if first time setup needed
   // The paste-a-menu import wizard is an OPERATOR tool now — owners never build their own
@@ -1407,14 +1401,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           <OwnerHome
             restaurant={restaurant}
             items={items}
-            needsAllergens={needsAllergens}
-            progressByMember={progressByMember}
             teamMembers={teamMembers}
-            onOpenDish={openDishEditor}
-            onToggleStar={toggleStar}
             onBroadcast={() => setBroadcastOpen(true)}
             onGoSettings={() => { setTab("settings"); setOpenSetting(null); }}
-            onGoHealth={(kind) => { setMenuFocus(kind); setTab("menu"); }}
             onSelectMember={setSheetFor}
             onRows={(rows) => setLiveByMember(Object.fromEntries(rows.map((r) => [r.id, r])))}
             onMessage={setMessageFor}
@@ -1520,12 +1509,6 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             restaurant={restaurant}
             items={items}
             onAdd={handleAddDish}
-            onOpenDish={openDishEditor}
-            onToggleStar={toggleStar}
-            focus={menuFocus}
-            onClearFocus={() => setMenuFocus(null)}
-            needsAllergens={needsAllergens}
-            isKnowledge={isKnowledge}
             scrollRef={scrollRef}
             dishForm={showAddForm ? (
               <DishForm
