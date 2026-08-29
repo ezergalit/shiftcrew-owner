@@ -55,6 +55,7 @@ export default function OwnerSettings({
         daily_goal_minutes: data?.daily_goal_minutes ?? DEFAULT_PATH.daily_goal_minutes,
         general_exam_questions: data?.general_exam_questions ?? DEFAULT_PATH.general_exam_questions,
         baseline_enabled: data?.baseline_enabled ?? DEFAULT_PATH.baseline_enabled,
+        baseline_minutes: data?.baseline_minutes ?? DEFAULT_PATH.baseline_minutes,
         gate_games: data?.gate_games ?? DEFAULT_PATH.gate_games,
       });
     })();
@@ -115,6 +116,7 @@ export default function OwnerSettings({
     path.pass_threshold === DEFAULT_PATH.pass_threshold &&
     path.general_exam_questions === DEFAULT_PATH.general_exam_questions &&
     path.baseline_enabled === DEFAULT_PATH.baseline_enabled &&
+    path.baseline_minutes === DEFAULT_PATH.baseline_minutes &&
     path.gate_games === DEFAULT_PATH.gate_games;
 
   return (
@@ -234,6 +236,21 @@ export default function OwnerSettings({
                 onChange={(v) => patch({ baseline_enabled: v })}
               />
             </div>
+
+            {/* Only while the intake exam is on — a length for a test nobody sits is a
+                control that does nothing, which is what we just removed elsewhere.
+                The waiter reads this at BaselineIntake.jsx:77. */}
+            {path.baseline_enabled && (
+              <>
+                <p className="au-opt">אורך בוחן ההיכרות</p>
+                <Choice
+                  options={[3, 5, 7, 10, 15].map((v) => ({ value: v, label: `${v} דק׳` }))}
+                  value={path.baseline_minutes}
+                  recommended={DEFAULT_PATH.baseline_minutes}
+                  onChange={(v) => patch({ baseline_minutes: v })}
+                />
+              </>
+            )}
             <div className="srow">
               <span>
                 תרגול מוגבל למה שכבר נפתח
@@ -256,6 +273,7 @@ export default function OwnerSettings({
                   pass_threshold: DEFAULT_PATH.pass_threshold,
                   general_exam_questions: DEFAULT_PATH.general_exam_questions,
                   baseline_enabled: DEFAULT_PATH.baseline_enabled,
+                  baseline_minutes: DEFAULT_PATH.baseline_minutes,
                   gate_games: DEFAULT_PATH.gate_games,
                 })}
               >

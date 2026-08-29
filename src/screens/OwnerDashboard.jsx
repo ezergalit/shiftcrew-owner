@@ -1526,6 +1526,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             onClearFocus={() => setMenuFocus(null)}
             needsAllergens={needsAllergens}
             isKnowledge={isKnowledge}
+            scrollRef={scrollRef}
             dishForm={showAddForm ? (
               <DishForm
                 item={editingItem}

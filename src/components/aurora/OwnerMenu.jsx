@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Star } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Star, ChevronRight } from "lucide-react";
 import { categoryVisual } from "../../lib/categoryVisual";
 import { FLAG_GROUPS, effectiveTrackedFlags } from "../../lib/dishFlags";
 
@@ -105,6 +105,89 @@ const FOCUS = {
   "no-allergens": { label: "בלי אלרגיות", match: null }, // filled in from props
 };
 
+// Tapping a dish used to drop the manager straight into the full edit form — every field
+// at once, when all they wanted was to check what is in it (user, 29.8: "it opens
+// everything instead of a summary"). Reading and editing are different jobs: this is the
+// reading one, the same shape the waiter sees, with one button into the other.
+function DishPreview({ item, flagGroups, onBack, onEdit, onToggleStar }) {
+  const vis = categoryVisual(item.category);
+  const groups = flagGroups
+    .map((g) => ({ g, vals: item[g.key] || [] }))
+    .filter((x) => x.vals.length > 0);
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2.5">
+        <button
+          type="button" onClick={onBack} aria-label="חזרה לתפריט"
+          className="w-10 h-10 rounded-xl bg-[#16181c] border border-[#22252b] flex items-center justify-center text-[#eef0f6] flex-none"
+        >
+          <ChevronRight size={19} />
+        </button>
+        <p className="flex-1 min-w-0 text-[11px] font-black text-[#8a919e] truncate">{item.category}</p>
+        <button
+          type="button"
+          onClick={() => onToggleStar(item)}
+          aria-label={item.starred ? `הסרת הדגשה מ${item.name}` : `הדגשת ${item.name}`}
+          className={`au-star ${item.starred ? "on" : ""}`}
+        >
+          <Star size={18} fill={item.starred ? "currentColor" : "none"} />
+        </button>
+      </div>
+
+      {item.image_url && (
+        <img src={item.image_url} alt="" className="w-full h-44 object-cover rounded-2xl border border-[#22252b]" />
+      )}
+
+      <div className="glass">
+        <div className="flex items-start gap-2">
+          <h2 className="flex-1 min-w-0 text-[19px] font-black text-[#eef0f6] leading-snug">{item.name}</h2>
+          {item.price ? <span className="text-[16px] font-black text-[#eef0f6] tabular-nums">{item.price} ₪</span> : null}
+        </div>
+        {item.description
+          ? <p className="text-[13px] text-[#8a919e] leading-relaxed mt-2">{item.description}</p>
+          : <p className="au-warn mt-2">חסר תיאור — בלי תיאור אי אפשר לבנות שאלות</p>}
+      </div>
+
+      {item.ingredients?.length > 0 && (
+        <div className="glass">
+          <p className="text-[11px] font-black text-[#8a919e] mb-2">מרכיבים</p>
+          <div className="flex flex-wrap gap-1.5">
+            {item.ingredients.map((v) => (
+              <span key={v} className="text-[12.5px] font-bold px-2.5 py-1.5 rounded-lg bg-[#22252b] text-[#eef0f6]">{v}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* The warning groups, in their own colours — the whole reason for opening a dish
+          in a hurry. An empty group is not shown; "no allergens listed" is said once. */}
+      <div className="glass">
+        <p className="text-[11px] font-black text-[#8a919e] mb-2">אזהרות</p>
+        {groups.length === 0 ? (
+          <p className="text-[12.5px] text-[#6b7280]">לא סומנו אזהרות למנה הזו.</p>
+        ) : (
+          <div className="space-y-2">
+            {groups.map(({ g, vals }) => (
+              <div key={g.key}>
+                <p className="text-[11px] text-[#6b7280] mb-1">{KEY_LABEL[g.key] || g.label}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {vals.map((v) => (
+                    <span key={v} className={`chip ${TONE[g.key] || "amber"}`}><i className="dot" />{v}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <button type="button" onClick={() => onEdit(item)} className="au-pill w-full justify-center py-3">
+        עריכת המנה
+      </button>
+    </div>
+  );
+}
+
 export default function OwnerMenu({
   restaurant,
   items,
@@ -116,12 +199,18 @@ export default function OwnerMenu({
   emptyNote,
   focus = null,
   onClearFocus,
+  scrollRef,
   needsAllergens,
   isKnowledge,
 }) {
   const [group, setGroup] = useState(null);   // null = every menu
   const [cat, setCat] = useState(null);       // null = every category
   const [q, setQ] = useState("");
+  const [viewing, setViewing] = useState(null);   // the dish being READ, not edited
+  // ⚠️ Where the list was scrolled when a dish was opened. Coming back to the top of a
+  // 152-dish menu after glancing at one dish is what makes "briefly go over the dishes"
+  // impossible — you lose your place every single time.
+  const listScroll = useRef(0);
 
   const flagGroups = useMemo(() => {
     const tracked = effectiveTrackedFlags(restaurant?.tracked_flags);
@@ -182,13 +271,34 @@ export default function OwnerMenu({
   // only thing here — its own close button is the way out.
   if (dishForm) return <div className="space-y-3">{dishForm}</div>;
 
+  // Put the manager back exactly where they were reading.
+  useEffect(() => {
+    if (!viewing && listScroll.current && scrollRef?.current) {
+      const y = listScroll.current;
+      requestAnimationFrame(() => { if (scrollRef.current) scrollRef.current.scrollTop = y; });
+    }
+  }, [viewing, scrollRef]);
+
+  if (viewing) {
+    const fresh = items.find((i) => i.id === viewing.id) || viewing;
+    return (
+      <DishPreview
+        item={fresh}
+        flagGroups={flagGroups}
+        onBack={() => setViewing(null)}
+        onEdit={(d) => { setViewing(null); onOpenDish(d); }}
+        onToggleStar={onToggleStar}
+      />
+    );
+  }
+
   return (
     <div className="space-y-3">
       <div className="au-head">
         <h1 className="flex-1 min-w-0">התפריט</h1>
         <button type="button" className="au-pill flex-none" onClick={() => onAdd(cat)}>+ מנה חדשה</button>
       </div>
-      <p className="au-hint">לחיצה על מנה פותחת אותה לעריכה · השינוי מגיע לצוות מיד</p>
+      <p className="au-hint">לחיצה על מנה פותחת אותה לעיון · משם אפשר לערוך</p>
 
       {/* Arrived from "בריאות התפריט". Says what is being shown and how to leave it —
           a filtered list with no explanation reads as a menu that lost most of its dishes. */}
@@ -291,7 +401,10 @@ export default function OwnerMenu({
               key={item.id}
               item={item}
               flagGroups={flagGroups}
-              onOpen={onOpenDish}
+              onOpen={(d) => {
+                listScroll.current = scrollRef?.current?.scrollTop || 0;
+                setViewing(d);
+              }}
               onToggleStar={onToggleStar}
             />
           ))}
