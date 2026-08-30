@@ -132,7 +132,11 @@
    הצוות, הסיור המודרך) — זה מבנה קיים שלא הפריע כשה-div היה סתם רקע אפור. ברגע
    שהוא קיבל מחלקה עם `flex-direction:column` על כל כפתור צאצא, כל כפתור בכל דיאלוג
    נשבר לשתי שורות ("הבא" מעל החץ). ראיתי את זה רק בדפדפן — ה-build היה ירוק. */
-.aurora-skin .au-nav {padding:10px 14px calc(24px + env(safe-area-inset-bottom));
+ /* ⚠️ 4px, not 24px. On a phone the inset already adds ~34px for the home indicator,
+    so 24px on top of it left a band of pure black under the labels with nothing in it
+    (user, 30.8: "יש רווח שחור שאין בו כלום"). The waiter's bar already used 4px — the
+    two bars are the same component to the eye and should measure the same. */
+.aurora-skin .au-nav {padding:6px 14px calc(4px + env(safe-area-inset-bottom));
   background:rgba(12,13,16,.85); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
   border-top:1px solid rgba(238,240,246,.08)}
 .aurora-skin .au-tabs > button {border:0; background:transparent; cursor:pointer; font:inherit;
@@ -414,3 +418,11 @@
   font:inherit; font-size:12.5px; font-weight:700; color:var(--dim);
   background:transparent; border:0; padding:6px 2px; margin:-2px}
 .aurora-skin .au-back:hover{color:var(--em)}
+
+/* מסך עיון במנה (ניהול) — שכבה מלאה מעל הסרגל התחתון.
+   ⚠️ הריפוד למטה חייב לכלול את ה-safe-area: השורה האחרונה כאן היא הפייג'ר, ובלעדיו
+   הוא יושב על פס הבית. למעלה — אותו חישוב של .au-screen, כדי שכפתור החזרה לא ייכנס
+   מתחת למגרעת. */
+.aurora-skin .au-preview{
+  padding:calc(18px + env(safe-area-inset-top, 0px)) 20px calc(24px + env(safe-area-inset-bottom, 0px));
+  -webkit-overflow-scrolling:touch}

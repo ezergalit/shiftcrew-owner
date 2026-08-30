@@ -144,8 +144,18 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
         : item[g.key] || [],
     }))
     .filter((x) => x.vals.length > 0 && !(merged && x.g.key === "pregnancy"));
-  return (
-    <div className="space-y-3">
+  // 🔴 Portalled, and it covers the tab bar — the same trap the waiter's dish screen
+  // fell into (user, 30.8: "there is still no next dish button", said three times).
+  // `.aurora-skin` sets `isolation:isolate`, so anything rendered inside it is sealed
+  // into that stacking context, and the bottom nav — which paints a backdrop-filter
+  // layer later in the very same context — covers the overlay's lower edge. That edge
+  // is exactly where the pager lives. A 16px spacer never had a chance: the nav is
+  // `24px + safe-area-inset-bottom` tall, i.e. ~58px on a phone and 24px in a desktop
+  // browser, which is why measuring here kept saying it was fine.
+  // The skin class stays on the wrapper so the scoped aurora CSS still applies.
+  return createPortal(
+    <div className="aurora-skin fixed inset-0 z-[70] bg-[#0c0d10]" dir="rtl">
+     <div className="h-full overflow-y-auto au-preview space-y-3">
       <div className="flex items-center gap-2.5">
         <button
           type="button" onClick={onBack} aria-label="חזרה לתפריט"
@@ -251,18 +261,16 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
           </button>
         </div>
       )}
-      {/* The tab bar floats over the scroller, so the last control needs room or it sits
-          half-under it — which is exactly where the pager landed. */}
-      <div className="h-4" />
-
-      {/* Portalled: every surface here carries backdrop-filter, which would otherwise
-          make this overlay the size of the card instead of the screen. */}
+      {/* ⚠️ z-[80]: above the preview overlay itself (z-70), or the zoomed photo opens
+          behind the screen that launched it. */}
       {zoom && createPortal(
         <button onClick={() => setZoom(false)} aria-label="סגירת התמונה"
-          className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-5">
+          className="fixed inset-0 z-[80] bg-black/95 flex items-center justify-center p-5">
           <img src={item.image_url} alt={item.name} className="max-w-full max-h-full rounded-2xl object-contain" />
         </button>, document.body)}
-    </div>
+     </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -501,7 +509,9 @@ export default function OwnerMenu({
           <p className="au-hint">בוחרים תפריט, ואז קטגוריה — לחיצה על מנה פותחת אותה לעיון</p>
           {items.length === 0 && emptyNote}
           <div className="flex flex-col gap-3">
-            {menuGroups.map(menuTile)}
+            {/* ⚠️ Service training comes FIRST (user, 30.8), before the food menus. It is
+                how the house works — the thing a manager checks before they check a
+                dish — so it opens the list rather than trailing it. */}
             {guides.length > 0 && (
               <button type="button" className="glass cat" onClick={() => { setGroup(SERVICE); setCat(null); }}>
                 <span className="icon" aria-hidden>🎓</span>
@@ -512,6 +522,7 @@ export default function OwnerMenu({
                 <ChevronLeft size={16} className="chev" />
               </button>
             )}
+            {menuGroups.map(menuTile)}
           </div>
         </>
       )}
