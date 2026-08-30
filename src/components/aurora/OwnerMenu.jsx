@@ -315,8 +315,25 @@ export default function OwnerMenu({
     [flagGroups, merged],
   );
 
-  const guides = useMemo(() => (items || []).filter(isGuide), [items]);
   const dishes = useMemo(() => (items || []).filter((i) => !isGuide(i)), [items]);
+  // The service box holds only the guide categories whose menu_group serves no food —
+  // the standalone "הדרכות שירות" group. הדרכת סושי sits inside תפריט סושי and הדרכת
+  // בר inside the bar menu (user, 30.8), and a food category's "מה חשוב לדעת" card
+  // stays with its dishes. Same data-driven rule as the waiter's MenuBrowser: move a
+  // guide's menu_group in the DB and it changes box with no code change.
+  const guides = useMemo(() => {
+    const dishGroups = new Set(dishes.map((i) => i.menuGroup).filter(Boolean));
+    const byCat = new Map();
+    for (const i of items || []) {
+      if (!i.category) continue;
+      if (!byCat.has(i.category)) byCat.set(i.category, []);
+      byCat.get(i.category).push(i);
+    }
+    const svcCats = [...byCat.entries()]
+      .filter(([, v]) => v.every(isGuide) && v.every((x) => !x.menuGroup || !dishGroups.has(x.menuGroup)))
+      .map(([k]) => k);
+    return (items || []).filter((i) => svcCats.includes(i.category));
+  }, [items, dishes]);
 
   // Menu groups describe the food menus only. A guide carries a menu_group for
   // bookkeeping, and letting it raise a chip would offer the owner a menu filter that
@@ -325,10 +342,15 @@ export default function OwnerMenu({
     () => [...new Set(dishes.map((i) => i.menuGroup).filter(Boolean))],
     [dishes]
   );
-  const pool = dishes;
+  // Everything that is not in the service box — dishes, each category's "מה חשוב
+  // לדעת" card, and the guide categories that live inside a menu.
+  const pool = useMemo(() => {
+    const svc = new Set(guides.map((i) => i.id));
+    return (items || []).filter((i) => !svc.has(i.id));
+  }, [items, guides]);
   // The pool the prev/next walk moves through: whichever menu (or the guides) is open.
   const inGroupPoolForWalk = group === SERVICE ? guides
-    : group ? dishes.filter((i) => i.menuGroup === group) : dishes;
+    : group ? pool.filter((i) => i.menuGroup === group) : pool;
   const inGroup = useMemo(
     () => (group ? pool.filter((i) => i.menuGroup === group) : pool),
     [pool, group]
@@ -462,16 +484,19 @@ export default function OwnerMenu({
   // category of every menu at once; now it is menu → category → dish, and service
   // training is a box of its own rather than a switch at the top.
   const menuTile = (m2) => {
-    const inG = dishes.filter((i) => i.menuGroup === m2);
+    const inG = pool.filter((i) => i.menuGroup === m2);
     const nCats = new Set(inG.map((i) => i.category)).size;
-    const photo = inG.find((i) => i.image_url)?.image_url;
-    const vis = categoryVisual(inG[0]?.category || m2);
+    // Count and dress the tile by its FOOD: a guide sits first in the group by
+    // position, and letting it pick the label turns "40 מנות" into "כרטיסים".
+    const food = inG.filter((i) => !isGuide(i));
+    const photo = food.find((i) => i.image_url)?.image_url || inG.find((i) => i.image_url)?.image_url;
+    const vis = categoryVisual(food[0]?.category || m2);
     return (
       <button key={m2} type="button" className="glass cat" onClick={() => { setGroup(m2); setCat(null); }}>
         <span className="icon" aria-hidden>{photo ? <img src={photo} alt="" loading="lazy" /> : vis.emoji}</span>
         <span className="flex-1 min-w-0">
           <h3 className="line-clamp-1">{m2}</h3>
-          <p>{nCats === 1 ? "קטגוריה אחת" : `${nCats} קטגוריות`} · {countLabel(inG[0]?.category, inG.length)}</p>
+          <p>{nCats === 1 ? "קטגוריה אחת" : `${nCats} קטגוריות`} · {countLabel(food[0]?.category, food.length)}</p>
         </span>
         <ChevronLeft size={16} className="chev" />
       </button>
@@ -488,7 +513,7 @@ export default function OwnerMenu({
     );
   };
 
-  const inGroupPool = group === SERVICE ? guides : dishes.filter((i) => i.menuGroup === group);
+  const inGroupPool = group === SERVICE ? guides : pool.filter((i) => i.menuGroup === group);
   const groupCats = [...new Set(inGroupPool.map((i) => i.category).filter(Boolean))];
   const title = group === SERVICE ? "הדרכות שירות" : group || "התפריט";
 
