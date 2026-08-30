@@ -1826,20 +1826,37 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 summary: "דירוג הנושאים שנבחנים עליהם וסדר הקטגוריות",
                 node: <div id="learning-path-settings"><LearningPathSettings restaurant={restaurant} items={items} bottomOffset={116} /></div>,
               },
-              {
-                key: "tour",
-                emoji: "🧭",
-                title: "סיור מודרך באפליקציה",
-                summary: "לעבור שוב על מה שיש בכל טאב",
-                node: (
-                  <button
-                    onClick={() => { setTourActive(true); setTab("home"); }}
-                    className="au-wide"
-                  >
-                    🧭 להתחיל את הסיור
-                  </button>
-                ),
-              },
+              /* ⚠️ A restaurant with its own video never sees the step-by-step tour —
+                 not on first run and not here (user, 29.8: "כנ״ל כשרוצים לראות אותו
+                 מחדש בהגדרות תשים אותו ולא את ההסבר"). Two different explanations of
+                 the same app is one too many, and the tour is the one that keeps going
+                 stale every time a tab moves. */
+              restaurant?.owner_welcome_video_url
+                ? {
+                    key: "tour",
+                    emoji: "🎬",
+                    title: "סרטון ההדרכה",
+                    summary: "לצפות שוב — איך עובדים עם האפליקציה",
+                    node: (
+                      <button onClick={() => setWelcomeVideo(true)} className="au-wide">
+                        🎬 לצפות בסרטון
+                      </button>
+                    ),
+                  }
+                : {
+                    key: "tour",
+                    emoji: "🧭",
+                    title: "סיור מודרך באפליקציה",
+                    summary: "לעבור שוב על מה שיש בכל טאב",
+                    node: (
+                      <button
+                        onClick={() => { setTourActive(true); setTab("home"); }}
+                        className="au-wide"
+                      >
+                        🧭 להתחיל את הסיור
+                      </button>
+                    ),
+                  },
               {
                 key: "feedback",
                 emoji: "💡",
