@@ -2071,7 +2071,10 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             indicator TWICE — ~72px of black under the labels on a real iPhone, and
             nothing at all in a desktop browser where the inset is 0. That is the gap
             the user kept reporting. The legacy skin has no `.au-nav`, so it keeps it. */}
-        <div className={`grid grid-cols-3 gap-1 p-2 ${aurora ? "au-tabs" : "pb-[max(0.5rem,env(safe-area-inset-bottom))]"}`}>
+        {/* Under aurora the padding belongs to `.au-nav` alone — the p-2 here added
+            8px above AND below the pills, and the space below is what read as "רווח
+            בין הטאב לסוף הטלפון" (user, 30.8). The buttons carry their own 8px. */}
+        <div className={`grid grid-cols-3 gap-1 ${aurora ? "au-tabs" : "p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]"}`}>
           <NavButton aurora={aurora} emoji="🏠" icon={<Home size={18} />} label="בית" active={tab === "home"} onClick={() => setTab("home")} />
           <NavButton aurora={aurora} emoji="📖" icon={<BookOpen size={18} />} label="תפריט" active={tab === "menu"} onClick={() => setTab("menu")} />
           <NavButton aurora={aurora} emoji="⚙️" icon={<Settings size={18} />} label="הגדרות" active={tab === "settings"} onClick={() => setTab("settings")} />

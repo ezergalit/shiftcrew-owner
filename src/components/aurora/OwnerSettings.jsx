@@ -138,7 +138,10 @@ export default function OwnerSettings({
         )}
       </div>
 
-      {/* ── the restaurant ───────────────────────────────────────────────── */}
+      {/* ── one accordion, one open at a time ────────────────────────────────
+          פרטי המסעדה used to sit in a glass card of its own above this group — same
+          Section component, same behaviour, but the separate container read as a
+          different kind of thing (user, 30.8: "צריך להיות חלק משאר הטאבים"). */}
       <div className="glass">
         <Section
           emoji="🏛️"
@@ -154,10 +157,6 @@ export default function OwnerSettings({
           <div className="srow"><span>מנות בתפריט</span><span className="v">{itemCount}</span></div>
           <div className="srow"><span>קוד בעלים (לכניסה)</span><span className="v tracking-wider" dir="ltr">{restaurant?.owner_code}</span></div>
         </Section>
-      </div>
-
-      {/* ── everything heavier, one open at a time ───────────────────────── */}
-      <div className="glass">
         {sections.map((s) => (
           <Section
             key={s.key}

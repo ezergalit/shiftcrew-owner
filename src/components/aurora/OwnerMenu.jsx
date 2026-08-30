@@ -153,9 +153,10 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
   // `24px + safe-area-inset-bottom` tall, i.e. ~58px on a phone and 24px in a desktop
   // browser, which is why measuring here kept saying it was fine.
   // The skin class stays on the wrapper so the scoped aurora CSS still applies.
+  const paged = pos && pos.total > 1;
   return createPortal(
-    <div className="aurora-skin fixed inset-0 z-[70] bg-[#0c0d10]" dir="rtl">
-     <div className="h-full overflow-y-auto au-preview space-y-3">
+    <div className="aurora-skin fixed inset-0 z-[70] bg-[#0c0d10] flex flex-col" dir="rtl">
+     <div className={`flex-1 min-h-0 overflow-y-auto au-preview space-y-3 ${paged ? "paged" : ""}`}>
       <div className="flex items-center gap-2.5">
         <button
           type="button" onClick={onBack} aria-label="חזרה לתפריט"
@@ -164,7 +165,9 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
           <ChevronRight size={19} />
         </button>
         {/* The one category it is in — not a row of the ones it is not. */}
-        <p className="flex-1 min-w-0 text-[11px] font-black text-[#8a919e] truncate">{item.category}</p>
+        <p className="flex-1 min-w-0 text-[11px] font-black text-[#8a919e] truncate">
+          {item.category}{paged ? ` · ${pos.i}/${pos.total}` : ""}
+        </p>
         {!guide && (
           <button
             type="button"
@@ -237,30 +240,6 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
         {guide ? "עריכת ההדרכה" : "עריכת המנה"}
       </button>
 
-      {/* Walk the category without going back to the list. Reviewing a menu means
-          reading it in order (user, 29.8: "אין אופציה לגולל למנה הבאה"); bouncing out to
-          a 152-row list between every two dishes is what made that impossible.
-          ⚠️ In RTL the NEXT item sits on the LEFT — the arrows point the way the eye
-          travels, not the way the array is indexed. */}
-      {pos && pos.total > 1 && (
-        <div className="flex items-center gap-2">
-          <button
-            type="button" onClick={onNext} disabled={!onNext}
-            className="flex-1 py-3 rounded-xl bg-[#16181c] border border-[#22252b] text-[13px] font-black text-[#eef0f6] disabled:opacity-30 flex items-center justify-center gap-1.5"
-          >
-            {lastInCat ? "סיימתי את הקטגוריה" : <><ChevronLeft size={16} /> {guide ? "ההדרכה הבאה" : "המנה הבאה"}</>}
-          </button>
-          <span className="text-[11px] font-bold text-[#5a5a6e] tabular-nums flex-none px-1">
-            {pos.i} / {pos.total}
-          </span>
-          <button
-            type="button" onClick={onPrev} disabled={!onPrev}
-            className="flex-1 py-3 rounded-xl bg-[#16181c] border border-[#22252b] text-[13px] font-black text-[#eef0f6] disabled:opacity-30 flex items-center justify-center gap-1.5"
-          >
-            הקודמת <ChevronRight size={16} />
-          </button>
-        </div>
-      )}
       {/* ⚠️ z-[80]: above the preview overlay itself (z-70), or the zoomed photo opens
           behind the screen that launched it. */}
       {zoom && createPortal(
@@ -269,6 +248,30 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
           <img src={item.image_url} alt={item.name} className="max-w-full max-h-full rounded-2xl object-contain" />
         </button>, document.body)}
      </div>
+
+      {/* The pager is a bar of its own, outside the scroll — identical to the waiter's
+          (user, 30.8: "כפתור המנה הבאה צריך להיות בדיוק כמו אפליקציית המלצרים… נשאר
+          איתך בזמן שאתה מגולל במנה ארוכה"). Big, green, and pinned: walking the menu
+          is the main control of this screen, and on a long dish the inline version
+          lived below the fold — invisible exactly when the dish had the most to read.
+          ⚠️ In RTL the NEXT item sits on the LEFT — DOM order: prev first (right). */}
+      {paged && (
+        <div className="flex-shrink-0 border-t border-[#22252b] bg-[#16181c] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex items-center gap-2">
+          <button
+            type="button" onClick={onPrev} disabled={!onPrev}
+            className="flex-1 py-3 min-h-[48px] rounded-xl font-black text-sm bg-[#20232b] text-[#eef0f6] disabled:opacity-30 flex items-center justify-center gap-1.5"
+          >
+            <ChevronRight size={17} /> הקודמת
+          </button>
+          <button
+            type="button" onClick={onNext} disabled={!onNext}
+            className="flex-1 py-3 min-h-[48px] rounded-xl font-black text-sm text-white disabled:opacity-30 flex items-center justify-center gap-1.5"
+            style={{ background: "linear-gradient(135deg,#22c08c,#17805d)" }}
+          >
+            {lastInCat ? "סיימתי את הקטגוריה" : <>{guide ? "ההדרכה הבאה" : "המנה הבאה"} <ChevronLeft size={17} /></>}
+          </button>
+        </div>
+      )}
     </div>,
     document.body,
   );

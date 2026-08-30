@@ -429,3 +429,6 @@
 .aurora-skin .au-preview{
   padding:calc(18px + env(safe-area-inset-top, 0px)) 20px calc(24px + env(safe-area-inset-bottom, 0px));
   -webkit-overflow-scrolling:touch}
+/* When the pager bar sits under the scroller, the bar owns the safe-area — paying the
+   inset here too is the exact double-padding that hollowed out the tab bars. */
+.aurora-skin .au-preview.paged{padding-bottom:18px}

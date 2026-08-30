@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Smartphone, X, RotateCw, ExternalLink } from "lucide-react";
 
 // Live preview of the team (waiter) app inside the owner app (user request, 2026-08-20):
@@ -15,6 +16,10 @@ export default function WaiterPreview({ teamCode, variant }) {
   const [open, setOpen] = useState(false);
   // Bumping the key remounts the iframe — the only reliable cross-origin "refresh".
   const [nonce, setNonce] = useState(0);
+  // A new stamp on every open and every refresh tap. The iframe URL must change or a
+  // WebView shell happily serves yesterday's cached index.html — which is exactly how
+  // the preview drifted behind the real waiter app (user, 30.8: "כרגע זה לא מעודכן").
+  const stamp = useMemo(() => Date.now(), [nonce, open]);
 
   // The waiter app's own exit button, inside the frame, asks to be let out. It cannot
   // close this overlay itself — different origin — so it posts and we close.
@@ -52,8 +57,13 @@ export default function WaiterPreview({ teamCode, variant }) {
     );
   }
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/80 flex flex-col" dir="rtl">
+  // 🔴 Portalled to <body>. Under the «אורורה» skin this overlay used to render inside
+  // `.aurora-skin`, whose `isolation:isolate` seals it into that stacking context — so
+  // the bottom nav's backdrop-filter layer painted OVER the preview (user, 30.8:
+  // "השורה של הבית תפריט והגדרות מסתיר את התצוגה"). Same trap as every other
+  // full-screen layer in this app; the portal is the fix, not a higher z-index.
+  return createPortal(
+    <div className="fixed inset-0 z-[70] bg-black/90 flex flex-col" dir="rtl">
       <div className="flex items-center justify-between px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 bg-[#16181c] border-b border-[#22252b]">
         <div>
           <p className="text-sm font-black text-[#eef0f6]">כך נראית האפליקציה אצל הצוות</p>
@@ -93,12 +103,13 @@ export default function WaiterPreview({ teamCode, variant }) {
               localStorage and skips the profile/shift/brief gates. */}
           <iframe
             key={nonce}
-            src={teamCode ? `${WAITER_URL}/?preview=${encodeURIComponent(teamCode)}` : WAITER_URL}
+            src={teamCode ? `${WAITER_URL}/?preview=${encodeURIComponent(teamCode)}&t=${stamp}` : `${WAITER_URL}/?t=${stamp}`}
             title="תצוגת אפליקציית הצוות"
             className="w-full h-full border-0"
           />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
