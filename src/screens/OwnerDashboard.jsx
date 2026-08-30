@@ -16,6 +16,7 @@ import OperatorLine from "../components/OperatorLine";
 import SmartSuggestions from "../components/SmartSuggestions";
 import { categoryVisual } from "../lib/categoryVisual";
 import GuidedTour from "../components/GuidedTour";
+import OwnerWelcomeVideo from "./OwnerWelcomeVideo";
 import BriefAssistant, { TagField, BriefCarryOver } from "../components/BriefAssistant";
 import BriefReadBoard from "../components/BriefReadBoard";
 import CuisineSelector from "../components/CuisineSelector";
@@ -30,6 +31,7 @@ import { supabase } from "../lib/supabase";
 import { getSessionToken } from "../lib/appSession";
 import { membersLabel, isKnowledge } from "../components/aurora/bits";
 import DishEditor from "../components/aurora/DishEditor";
+import { isGuide } from "../components/aurora/OwnerMenu";
 import OwnerHome from "../components/aurora/OwnerHome";
 import OwnerMenu from "../components/aurora/OwnerMenu";
 import OwnerSettings from "../components/aurora/OwnerSettings";
@@ -50,7 +52,7 @@ const needsAllergens = (d) => {
   const c = d.category || "";
   return !DRINK_CAT_RE.test(c) || BREW_CAT_RE.test(c);
 };
-export const RESTAURANT_COLUMNS = "id, name, owner_code, team_code, created_at, phone, address, description, cuisine_types, important_allergens, service_style, service_notes, onboarding_completed, onboarding_step, tracked_flags, dismissed_menu_tasks, owner_name, owner_gender, trainee_code, features";
+export const RESTAURANT_COLUMNS = "id, name, owner_code, team_code, created_at, phone, address, description, cuisine_types, important_allergens, service_style, service_notes, onboarding_completed, onboarding_step, tracked_flags, dismissed_menu_tasks, owner_name, owner_gender, trainee_code, features, owner_welcome_video_url";
 
 function fromDbRestaurant(r) {
   return {
@@ -491,12 +493,22 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // always the first thing a new owner sees. Waits for menuLoaded — deciding on the initial
   // empty `items` state opened the import wizard over a full menu (race caught live on the
   // DEMO26 restaurant, 2026-08-16).
+  // ⚠️ A restaurant with its own video shows that instead of the step-by-step tour
+  // (user, 2026-08-29). Same one-time flag, same slot — so the rest of the first-run
+  // flow, including the import wizard that opens after it, is untouched. The tour has
+  // gone stale three times because it describes screens; a video is the restaurant's
+  // own and does not silently rot when a tab moves.
+  const [welcomeVideo, setWelcomeVideo] = useState(false);
   useEffect(() => {
     if (!menuLoaded || !restaurant) return;
     if (!localStorage.getItem(`menu-app-tour-done:${restaurant.id}`)) {
       localStorage.setItem(`menu-app-tour-done:${restaurant.id}`, "1");
-      setTourAutoRun(true);
-      setTourActive(true);
+      if (restaurant.owner_welcome_video_url) {
+        setWelcomeVideo(true);
+      } else {
+        setTourAutoRun(true);
+        setTourActive(true);
+      }
       setTab("home");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1341,6 +1353,16 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   }
 
   // Main App
+  // Ahead of the dashboard: the restaurant's own tour video, once.
+  if (welcomeVideo && restaurant?.owner_welcome_video_url) {
+    return (
+      <OwnerWelcomeVideo
+        restaurant={restaurant}
+        onDone={() => setWelcomeVideo(false)}
+      />
+    );
+  }
+
   return (
     <div className={`h-screen mx-auto text-[#eef0f6] flex flex-col ${aurora ? "aurora-skin" : "max-w-md bg-[#0c0d10]"}`} dir="rtl">
       {aurora && (<><div className="aurora" aria-hidden><i /><i /><i /></div><div className="grain" aria-hidden /></>)}
@@ -1521,6 +1543,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
               /* The skinned editor: labelled fields, and closed lists collapsed to the
                  choice. The unskinned DishForm is untouched and still serves everyone else. */
               <DishEditor
+                /* A service card edits as a guide: no price, no allergens, no ⭐, and
+                   every label says "הדרכה" instead of "מנה". */
+                guide={isGuide(editingItem || {})}
                 item={editingItem}
                 onChange={setEditingItem}
                 onSave={handleSaveDish}

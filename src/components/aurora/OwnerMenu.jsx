@@ -1,5 +1,6 @@
+
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Star, ChevronRight } from "lucide-react";
+import { Star, ChevronRight, ChevronLeft } from "lucide-react";
 import { categoryVisual } from "../../lib/categoryVisual";
 import { FLAG_GROUPS, effectiveTrackedFlags } from "../../lib/dishFlags";
 
@@ -37,6 +38,12 @@ const KEY_LABEL = {
 
 // A "הדרכת·" category holds knowledge cards, not dishes — calling six service-training
 // cards "6 מנות" is the kind of small wrongness that makes an owner distrust the rest.
+//
+// ⚠️ Same rule as `pubToCard` on the waiter side and `examFixed`. It is duplicated across
+// two repos on purpose (no shared package); change it in all three or the two apps will
+// disagree about what a dish is.
+export const isGuide = (i) =>
+  (i.category || "").startsWith("הדרכת") || (i.name || "").startsWith("מה חשוב לדעת");
 const countLabel = (cat, n) => {
   const card = (cat || "").startsWith("הדרכת");
   if (n === 1) return card ? "כרטיס אחד" : "מנה אחת";
@@ -116,7 +123,11 @@ function Dish({ item, flagGroups, tone, merged, onOpen, onToggleStar }) {
 // פה, שיהיה קצר ולעניין"). No empty ingredient block, no "no warnings recorded" card, no
 // nine category chips — one line naming the category this dish is in. A preview that
 // lists what a dish does *not* have is as long as the edit form and reads like a form.
-function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleStar }) {
+function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleStar, onPrev, onNext, pos }) {
+  // A guide is not a dish, so it must not be read like one — no price, no warning
+  // groups, no ⭐, and the button says what it edits (user, 29.8: "it cant say edit
+  // dish on a service").
+  const guide = isGuide(item);
   // In merged mode pregnancy values are shown under the pitfalls heading, so the two
   // read as the one group the restaurant actually thinks in.
   const groups = flagGroups
@@ -138,14 +149,16 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
         </button>
         {/* The one category it is in — not a row of the ones it is not. */}
         <p className="flex-1 min-w-0 text-[11px] font-black text-[#8a919e] truncate">{item.category}</p>
-        <button
-          type="button"
-          onClick={() => onToggleStar(item)}
-          aria-label={item.starred ? `הסרת הדגשה מ${item.name}` : `הדגשת ${item.name}`}
-          className={`au-star ${item.starred ? "on" : ""}`}
-        >
-          <Star size={18} fill={item.starred ? "currentColor" : "none"} />
-        </button>
+        {!guide && (
+          <button
+            type="button"
+            onClick={() => onToggleStar(item)}
+            aria-label={item.starred ? `הסרת הדגשה מ${item.name}` : `הדגשת ${item.name}`}
+            className={`au-star ${item.starred ? "on" : ""}`}
+          >
+            <Star size={18} fill={item.starred ? "currentColor" : "none"} />
+          </button>
+        )}
       </div>
 
       {item.image_url && (
@@ -155,7 +168,7 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
       <div className="glass">
         <div className="flex items-start gap-2">
           <h2 className="flex-1 min-w-0 text-[19px] font-black text-[#eef0f6] leading-snug">{item.name}</h2>
-          {item.price ? <span className="text-[16px] font-black text-[#eef0f6] tabular-nums">{item.price} ₪</span> : null}
+          {!guide && item.price ? <span className="text-[16px] font-black text-[#eef0f6] tabular-nums">{item.price} ₪</span> : null}
         </div>
         {item.description && (
           <p className="text-[13px] text-[#8a919e] leading-relaxed mt-2">{item.description}</p>
@@ -164,7 +177,7 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
 
       {item.ingredients?.length > 0 && (
         <div className="glass">
-          <p className="text-[11px] font-black text-[#8a919e] mb-2">מרכיבים</p>
+          <p className="text-[11px] font-black text-[#8a919e] mb-2">{guide ? "נקודות מפתח" : "מרכיבים"}</p>
           <div className="flex flex-wrap gap-1.5">
             {item.ingredients.map((v) => (
               <span key={v} className="text-[12.5px] font-bold px-2.5 py-1.5 rounded-lg bg-[#22252b] text-[#eef0f6]">{v}</span>
@@ -173,8 +186,9 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
         </div>
       )}
 
-      {/* The warning groups, in their own colours. Nothing marked ⇒ no card at all. */}
-      {groups.length > 0 && (
+      {/* The warning groups, in their own colours. Nothing marked ⇒ no card at all.
+          A guide has none by definition. */}
+      {!guide && groups.length > 0 && (
         <div className="glass space-y-2">
           {groups.map(({ g, vals }) => (
             <div key={g.key}>
@@ -196,8 +210,36 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
       {!item.description && <p className="au-warn">חסר תיאור — בלי תיאור אי אפשר לבנות שאלות</p>}
 
       <button type="button" onClick={() => onEdit(item)} className="au-pill w-full justify-center py-3">
-        עריכת המנה
+        {guide ? "עריכת ההדרכה" : "עריכת המנה"}
       </button>
+
+      {/* Walk the category without going back to the list. Reviewing a menu means
+          reading it in order (user, 29.8: "אין אופציה לגולל למנה הבאה"); bouncing out to
+          a 152-row list between every two dishes is what made that impossible.
+          ⚠️ In RTL the NEXT item sits on the LEFT — the arrows point the way the eye
+          travels, not the way the array is indexed. */}
+      {pos && pos.total > 1 && (
+        <div className="flex items-center gap-2">
+          <button
+            type="button" onClick={onNext} disabled={!onNext}
+            className="flex-1 py-3 rounded-xl bg-[#16181c] border border-[#22252b] text-[13px] font-black text-[#eef0f6] disabled:opacity-30 flex items-center justify-center gap-1.5"
+          >
+            <ChevronLeft size={16} /> {guide ? "ההדרכה הבאה" : "המנה הבאה"}
+          </button>
+          <span className="text-[11px] font-bold text-[#5a5a6e] tabular-nums flex-none px-1">
+            {pos.i} / {pos.total}
+          </span>
+          <button
+            type="button" onClick={onPrev} disabled={!onPrev}
+            className="flex-1 py-3 rounded-xl bg-[#16181c] border border-[#22252b] text-[13px] font-black text-[#eef0f6] disabled:opacity-30 flex items-center justify-center gap-1.5"
+          >
+            הקודמת <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
+      {/* The tab bar floats over the scroller, so the last control needs room or it sits
+          half-under it — which is exactly where the pager landed. */}
+      <div className="h-4" />
     </div>
   );
 }
@@ -217,6 +259,9 @@ export default function OwnerMenu({
   const [cat, setCat] = useState(null);       // null = every category
   const [q, setQ] = useState("");
   const [viewing, setViewing] = useState(null);   // the dish being READ, not edited
+  // "menu" | "guides" — service training is not the menu (user, 29.8), so it is a
+  // section of its own rather than a category chip sitting among the courses.
+  const [view, setView] = useState("menu");
   // ⚠️ Where the list was scrolled when a dish was opened. Coming back to the top of a
   // 152-dish menu after glancing at one dish is what makes "briefly go over the dishes"
   // impossible — you lose your place every single time.
@@ -236,14 +281,20 @@ export default function OwnerMenu({
     [flagGroups, merged],
   );
 
-  const menuGroups = useMemo(
-    () => [...new Set(items.map((i) => i.menuGroup).filter(Boolean))],
-    [items]
-  );
+  const guides = useMemo(() => (items || []).filter(isGuide), [items]);
+  const dishes = useMemo(() => (items || []).filter((i) => !isGuide(i)), [items]);
 
+  // Menu groups describe the food menus only. A guide carries a menu_group for
+  // bookkeeping, and letting it raise a chip would offer the owner a menu filter that
+  // selects no dishes.
+  const menuGroups = useMemo(
+    () => [...new Set(dishes.map((i) => i.menuGroup).filter(Boolean))],
+    [dishes]
+  );
+  const pool = view === "guides" ? guides : dishes;
   const inGroup = useMemo(
-    () => (group ? items.filter((i) => i.menuGroup === group) : items),
-    [items, group]
+    () => (group ? pool.filter((i) => i.menuGroup === group) : pool),
+    [pool, group]
   );
 
   const categories = useMemo(
@@ -296,35 +347,69 @@ export default function OwnerMenu({
 
   if (viewing) {
     const fresh = items.find((i) => i.id === viewing.id) || viewing;
+    // Siblings = the same category, in menu order. The category is the unit an owner
+    // reviews; walking across categories would silently cross from starters into wine.
+    const sibs = (viewing.category ? pool.filter((i) => i.category === viewing.category) : pool)
+      .slice()
+      .sort((a, b) => (a.menuPosition ?? 0) - (b.menuPosition ?? 0));
+    const at = sibs.findIndex((i) => i.id === fresh.id);
+    const go = (n) => { listScroll.current = listScroll.current; setViewing(sibs[n]); };
     return (
       <DishPreview
         item={fresh}
         flagGroups={flagGroups}
         tone={tone}
         merged={merged}
+        pos={{ i: at + 1, total: sibs.length }}
+        onPrev={at > 0 ? () => go(at - 1) : undefined}
+        onNext={at >= 0 && at < sibs.length - 1 ? () => go(at + 1) : undefined}
         onBack={() => setViewing(null)}
         onEdit={(d) => { setViewing(null); onOpenDish(d); }}
         onToggleStar={onToggleStar}
       />
     );
   }
-
   return (
     <div className="space-y-3">
       <div className="au-head">
-        <h1 className="flex-1 min-w-0">התפריט</h1>
-        <button type="button" className="au-pill flex-none" onClick={() => onAdd(cat)}>+ מנה חדשה</button>
+        <h1 className="flex-1 min-w-0">{view === "guides" ? "הדרכות שירות" : "התפריט"}</h1>
+        <button type="button" className="au-pill flex-none" onClick={() => onAdd(cat)}>
+          + {view === "guides" ? "הדרכה חדשה" : "מנה חדשה"}
+        </button>
       </div>
-      <p className="au-hint">לחיצה על מנה פותחת אותה לעיון · משם אפשר לערוך</p>
 
-      {items.length > 6 && (
+      {/* ⚠️ Two sections, not one list with an extra category chip. Service training is
+          not food (user, 29.8: "הדרכת שירות צריך להיות בsection שונה מתפריט המסעדה
+          מכיוון שזה לא תפריט"), and while it sat among the courses every count, filter
+          and label treated it as something a guest could order. Shown only when the
+          restaurant actually has guides — one tab is not a choice. */}
+      {guides.length > 0 && (
+        <div className="au-filter">
+          <button type="button" className={`au-fchip ${view === "menu" ? "on" : ""}`}
+            onClick={() => { setView("menu"); setCat(null); setQ(""); }}>
+            התפריט · {dishes.length}
+          </button>
+          <button type="button" className={`au-fchip ${view === "guides" ? "on" : ""}`}
+            onClick={() => { setView("guides"); setCat(null); setGroup(null); setQ(""); }}>
+            הדרכות שירות · {guides.length}
+          </button>
+        </div>
+      )}
+
+      <p className="au-hint">
+        {view === "guides"
+          ? "כרטיסי ידע שהצוות לומד ונבחן עליהם — לא מנות בתפריט"
+          : "לחיצה על מנה פותחת אותה לעיון · משם אפשר לערוך"}
+      </p>
+
+      {pool.length > 6 && (
         <div className="search">
           <span aria-hidden>🔍</span>
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="חיפוש מנה"
-            aria-label="חיפוש מנה בתפריט"
+            placeholder={view === "guides" ? "חיפוש הדרכה" : "חיפוש מנה"}
+            aria-label={view === "guides" ? "חיפוש הדרכה" : "חיפוש מנה בתפריט"}
           />
           {q && (
             <button type="button" onClick={() => setQ("")} aria-label="ניקוי החיפוש" className="au-x">✕</button>
@@ -334,7 +419,7 @@ export default function OwnerMenu({
 
       {/* Menu group first, category second — a restaurant with one menu never sees the
           first row at all. */}
-      {menuGroups.length > 1 && (
+      {view === "menu" && menuGroups.length > 1 && (
         <div className="au-filter">
           <button type="button" className={`au-fchip ${!group ? "on" : ""}`}
             onClick={() => { setGroup(null); setCat(null); }}>כל התפריטים</button>
@@ -359,7 +444,7 @@ export default function OwnerMenu({
 
       {items.length === 0 && emptyNote}
 
-      {items.length > 0 && shown.length === 0 && (
+      {pool.length > 0 && shown.length === 0 && (
         <p className="text-[13px] text-[#8a919e] text-center py-6 leading-relaxed">
           אין מנה שמתאימה לחיפוש.
           <br />

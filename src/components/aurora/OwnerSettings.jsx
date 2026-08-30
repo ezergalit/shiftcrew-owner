@@ -26,6 +26,48 @@ function Toggle({ on, onChange, label }) {
   );
 }
 
+
+// Signing out costs the owner their password to get back in, and the button sits at the
+// end of a long scroll where a stray tap lands. Same two-step + 5-second wait the waiter
+// app uses — two apps asking the same question should ask it the same way.
+function SignOutConfirm({ onSignOut }) {
+  const [asking, setAsking] = useState(false);
+  const [left, setLeft] = useState(5);
+
+  useEffect(() => {
+    if (!asking) return;
+    setLeft(5);
+    const t = setInterval(() => setLeft((n) => (n <= 1 ? (clearInterval(t), 0) : n - 1)), 1000);
+    return () => clearInterval(t);
+  }, [asking]);
+
+  if (!asking) {
+    return (
+      <button type="button" className="au-wide danger" onClick={() => setAsking(true)}>
+        יציאה מהחשבון
+      </button>
+    );
+  }
+  return (
+    <div className="glass space-y-2.5">
+      <p className="text-[13px] font-black text-[#eef0f6]">לצאת מהחשבון?</p>
+      <p className="text-[12px] text-[#8a919e] leading-relaxed">
+        כדי להיכנס שוב תצטרכו את קוד הבעלים ואת הסיסמה.
+      </p>
+      <div className="flex gap-2">
+        <button type="button" onClick={() => setAsking(false)}
+          className="flex-1 py-2.5 rounded-xl bg-[#22252b] text-[#c4c4d4] text-[13px] font-black">
+          להישאר
+        </button>
+        <button type="button" onClick={onSignOut} disabled={left > 0}
+          className="flex-1 py-2.5 rounded-xl bg-[#e0315a] text-white text-[13px] font-black disabled:opacity-40">
+          {left > 0 ? `${left}` : "יציאה"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function OwnerSettings({
   restaurant,
   teamMembers,
@@ -175,8 +217,19 @@ export default function OwnerSettings({
         )}
       </div>
 
-      {/* ── the learning path ────────────────────────────────────────────── */}
+      {/* ── the learning path ─────────────────────────────────────────────
+          ⚠️ Collapsed by default (user, 29.8: "תשים את מסלול הלמידה בתור אופציה
+          סגורה שלא תמיד פתוחה"). It is configured once and then almost never touched,
+          so open it was four screens of controls standing between the owner and the
+          things they actually come here for. */}
       <div className="glass">
+        <Section
+          emoji="🎓"
+          title="מסלול הלמידה"
+          summary={isRecommended ? "מוגדר לפי ההמלצה שלנו" : "כווננתם את המסלול"}
+          open={openSetting === "path"}
+          onToggle={() => setOpenSetting(openSetting === "path" ? null : "path")}
+        >
         <div className="au-cardhead">
           <b>מסלול הלמידה</b>
           <span>
@@ -233,19 +286,15 @@ export default function OwnerSettings({
               />
             </div>
 
-            {/* Only while the intake exam is on — a length for a test nobody sits is a
-                control that does nothing, which is what we just removed elsewhere.
-                The waiter reads this at BaselineIntake.jsx:77. */}
+            {/* 🚫 The length picker is gone: the intake exam is a fixed 8 questions
+                (user, 29.8), so a minutes control would set a number nothing reads —
+                exactly the kind of dead switch we keep removing. `baseline_minutes`
+                still exists in exam_config and is left untouched, in case the length
+                ever becomes the owner's decision again. */}
             {path.baseline_enabled && (
-              <>
-                <p className="au-opt">אורך בוחן ההיכרות</p>
-                <Choice
-                  options={[3, 5, 7, 10, 15].map((v) => ({ value: v, label: `${v} דק׳` }))}
-                  value={path.baseline_minutes}
-                  recommended={DEFAULT_PATH.baseline_minutes}
-                  onChange={(v) => patch({ baseline_minutes: v })}
-                />
-              </>
+              <p className="text-[12px] text-[#8a919e] leading-relaxed -mt-1 mb-2">
+                בוחן ההיכרות הוא 8 שאלות — מספיק כדי למקם עובד חדש, בלי להתיש אותו ביום הראשון.
+              </p>
             )}
             <div className="srow">
               <span>
@@ -278,17 +327,25 @@ export default function OwnerSettings({
             )}
           </>
         )}
+        </Section>
       </div>
 
       {/* ── the restaurant ───────────────────────────────────────────────── */}
       <div className="glass">
-        <div className="au-cardhead"><b>המסעדה</b></div>
-        <div className="srow"><span>שם המסעדה</span><span className="v truncate">{restaurant?.name}</span></div>
-        {restaurant?.cuisine_types?.length > 0 && (
-          <div className="srow"><span>סוג מטבח</span><span className="v truncate">{restaurant.cuisine_types.join(" · ")}</span></div>
-        )}
-        <div className="srow"><span>מנות בתפריט</span><span className="v">{itemCount}</span></div>
-        <div className="srow"><span>קוד בעלים (לכניסה)</span><span className="v tracking-wider" dir="ltr">{restaurant?.owner_code}</span></div>
+        <Section
+          emoji="🏛️"
+          title="פרטי המסעדה"
+          summary={restaurant?.name}
+          open={openSetting === "restaurant"}
+          onToggle={() => setOpenSetting(openSetting === "restaurant" ? null : "restaurant")}
+        >
+          <div className="srow"><span>שם המסעדה</span><span className="v truncate">{restaurant?.name}</span></div>
+          {restaurant?.cuisine_types?.length > 0 && (
+            <div className="srow"><span>סוג מטבח</span><span className="v truncate">{restaurant.cuisine_types.join(" · ")}</span></div>
+          )}
+          <div className="srow"><span>מנות בתפריט</span><span className="v">{itemCount}</span></div>
+          <div className="srow"><span>קוד בעלים (לכניסה)</span><span className="v tracking-wider" dir="ltr">{restaurant?.owner_code}</span></div>
+        </Section>
       </div>
 
       {/* ── everything heavier, one open at a time ───────────────────────── */}
@@ -308,10 +365,11 @@ export default function OwnerSettings({
       </div>
 
       {/* Rare, and the only destructive thing on the screen — so it sits at the very
-          bottom rather than beside the tabs the owner taps all day. */}
-      <button type="button" className="au-wide danger" onClick={onSignOut}>
-        יציאה מהחשבון
-      </button>
+          bottom rather than beside the tabs the owner taps all day.
+          ⚠️ Behind a 5-second confirm (user, 29.8), the same shape the waiter app uses:
+          signing out costs the owner their password to get back in, and it used to be
+          one stray tap at the end of a long scroll. */}
+      <SignOutConfirm onSignOut={onSignOut} />
       <div className="h-2" />
     </div>
   );

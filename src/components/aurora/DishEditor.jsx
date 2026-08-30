@@ -121,7 +121,7 @@ function Tags({ values, onChange, placeholder }) {
 
 export default function DishEditor({
   item, onChange, onSave, onCancel, onDelete,
-  existingCategories, restaurant, uploadPhoto, menuOf,
+  existingCategories, restaurant, uploadPhoto, menuOf, guide = false,
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [zoom, setZoom] = useState(false);
@@ -145,7 +145,9 @@ export default function DishEditor({
   return (
     <div id="dish-form" className="space-y-4">
       <div className="flex items-center gap-2">
-        <p className="flex-1 text-[17px] font-black text-[#eef0f6]">{isNew ? "מנה חדשה" : "עריכת מנה"}</p>
+        <p className="flex-1 text-[17px] font-black text-[#eef0f6]">
+          {guide ? (isNew ? "הדרכה חדשה" : "עריכת הדרכה") : (isNew ? "מנה חדשה" : "עריכת מנה")}
+        </p>
         <button
           onClick={onCancel} aria-label="סגירה בלי לשמור" title="סגירה בלי לשמור"
           className="w-10 h-10 rounded-xl bg-[#22252b] flex items-center justify-center text-[#8a8aa0] flex-none"
@@ -153,7 +155,7 @@ export default function DishEditor({
       </div>
 
       <div className="glass space-y-4">
-        <Field label="תמונת המנה" hint="כך הצוות מזהה אותה ברשימה">
+        <Field label={guide ? "תמונה" : "תמונת המנה"} hint={guide ? "מופיעה על כרטיס ההדרכה" : "כך הצוות מזהה אותה ברשימה"}>
           <div className="flex items-center gap-3">
             {item.image_url ? (
               <button type="button" onClick={() => setZoom(true)} title="הגדלת התמונה" className="flex-none">
@@ -174,9 +176,9 @@ export default function DishEditor({
           {photoErr && <p className="text-[11px] text-[#ff8098] mt-1">{photoErr}</p>}
         </Field>
 
-        <Field label="שם המנה">
+        <Field label={guide ? "נושא ההדרכה" : "שם המנה"}>
           <input value={item.name} onChange={(e) => onChange({ ...item, name: e.target.value })}
-            placeholder="למשל: סלט יווני" dir="rtl" className={INPUT} />
+            placeholder={guide ? "למשל: נוהל אלרגיה" : "למשל: סלט יווני"} dir="rtl" className={INPUT} />
         </Field>
 
         <Field label="קטגוריה" hint={menuOf?.(item.category) ? `יופיע ב${menuOf(item.category)}` : undefined}>
@@ -190,24 +192,29 @@ export default function DishEditor({
           )}
         </Field>
 
-        <Field label="מחיר" hint="בשקלים · 0 = מחיר נקבע במקום">
-          <input type="number" inputMode="numeric" value={item.price ?? ""}
-            onChange={(e) => onChange({ ...item, price: Number(e.target.value) || 0 })}
-            placeholder="0" dir="ltr" className={`${INPUT} text-right`} />
-        </Field>
+        {/* A guide has no price, no allergens and no ⭐ — those are properties of food.
+            Showing them empty is what made a service card read as a dish. */}
+        {!guide && (
+          <Field label="מחיר" hint="בשקלים · 0 = מחיר נקבע במקום">
+            <input type="number" inputMode="numeric" value={item.price ?? ""}
+              onChange={(e) => onChange({ ...item, price: Number(e.target.value) || 0 })}
+              placeholder="0" dir="ltr" className={`${INPUT} text-right`} />
+          </Field>
+        )}
 
-        <Field label="תיאור המנה" hint="מה שהמלצר אומר לשולחן">
-          <textarea value={item.description} rows={3}
+        <Field label={guide ? "תוכן ההדרכה" : "תיאור המנה"}
+          hint={guide ? "מה שהצוות צריך לדעת ולזכור" : "מה שהמלצר אומר לשולחן"}>
+          <textarea value={item.description} rows={guide ? 8 : 3}
             onChange={(e) => onChange({ ...item, description: e.target.value })}
-            placeholder="במשפט אחד — ממה היא עשויה ואיך היא מוגשת" dir="rtl"
-            className={`${INPUT} resize-none leading-relaxed`} />
+            placeholder={guide ? "הסבירו את הנוהל במילים שהצוות משתמש בהן" : "במשפט אחד — ממה היא עשויה ואיך היא מוגשת"}
+            dir="rtl" className={`${INPUT} resize-none leading-relaxed`} />
         </Field>
       </div>
 
       <div className="glass space-y-4">
-        <Field label="מרכיבים" hint="מהם נבנות שאלות התרגול">
+        <Field label={guide ? "נקודות מפתח" : "מרכיבים"} hint="מהם נבנות שאלות התרגול">
           <Tags values={item.ingredients || []} onChange={(v) => onChange({ ...item, ingredients: v })}
-            placeholder="מרכיב אחד, ואנטר" />
+            placeholder={guide ? "נקודה אחת, ואנטר" : "מרכיב אחד, ואנטר"} />
         </Field>
 
         {/* ⚠️ Salon folds pregnancy into pitfalls (features.warnings === "merged", user
@@ -215,7 +222,7 @@ export default function DishEditor({
             stay separate — each chip still writes to its own — but the manager sees ONE
             heading, because two headings is exactly the split they asked us to remove.
             Studio keeps all three groups apart. */}
-        {groups.map((g) => {
+        {!guide && groups.map((g) => {
           if (merged && g.key === "pregnancy") return null;   // folded into pitfalls below
           const folded = merged && g.key === "pitfalls"
             ? [{ key: "pregnancy" }, { key: "pitfalls" }] : [{ key: g.key }];
@@ -243,6 +250,7 @@ export default function DishEditor({
         })}
       </div>
 
+      {!guide && (
       <div className="glass">
         <label className="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" checked={!!item.starred}
@@ -253,6 +261,7 @@ export default function DishEditor({
           </span>
         </label>
       </div>
+      )}
 
       <button onClick={onSave} className="au-pill w-full justify-center py-3.5 text-[14px]">
         <Check size={16} /> שמירה
@@ -261,12 +270,12 @@ export default function DishEditor({
       {onDelete && (!confirmingDelete ? (
         <button onClick={() => setConfirmingDelete(true)}
           className="w-full text-[12px] font-bold text-[#8a919e] py-2.5 hover:text-[#ff8098] transition">
-          <Trash2 size={12} className="inline ml-1" /> מחיקת המנה מהתפריט
+          <Trash2 size={12} className="inline ml-1" /> {guide ? "מחיקת ההדרכה" : "מחיקת המנה מהתפריט"}
         </button>
       ) : (
         <div className="bg-[#3a1d22] border border-[#e0315a]/40 rounded-xl p-3 space-y-2">
           <p className="text-[12px] text-[#eef0f6] leading-relaxed">
-            למחוק את ״{item.name}״? המנה תוסר גם מאפליקציית הצוות, וההתקדמות עליה תימחק.
+            למחוק את ״{item.name}״? {guide ? "ההדרכה" : "המנה"} תוסר גם מאפליקציית הצוות, וההתקדמות עליה תימחק.
           </p>
           <div className="flex gap-2">
             <button onClick={onDelete} className="flex-1 bg-[#e0315a] text-white text-[12px] font-black py-2.5 rounded-lg">כן, למחוק</button>
