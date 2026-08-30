@@ -48,6 +48,16 @@
 .aurora-skin .aurora i:nth-child(3) {width:70%;height:18%;right:-22%;top:34%; opacity:.3;
   background:radial-gradient(ellipse at center,#123B30 0%,transparent 72%);
   animation:drift1 38s var(--ease) infinite alternate-reverse}
+/* ⚠️ A fourth bloom, anchored to the BOTTOM. The three above all sit in the top ~55% of
+   the screen, so on a short page (the manager's home is one card tall since the health
+   and struggling-dish cards came out) everything below them was flat #0B0C0F — and a
+   240px slab of pure black under the content reads as a broken layout rather than as a
+   dark background (user, 30.8: "there is a massive space gap in the bottom").
+   Very low opacity: this has to close the page, not compete with the header. */
+.aurora-skin .aurora i:nth-child(4) {width:120%;height:26%;left:-30%;bottom:-8%; opacity:.34;
+  background:radial-gradient(ellipse at center,#14503E 0%,transparent 72%);
+  animation:drift2 44s var(--ease) infinite alternate}
+
 @keyframes drift1{to{transform:translate(-14%,10%) rotate(8deg)}}
 @keyframes drift2{to{transform:translate(12%,-12%) rotate(-6deg)}}
 .aurora-skin .grain {position:absolute; inset:0; z-index:-1; pointer-events:none; opacity:.05;

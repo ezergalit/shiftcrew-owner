@@ -36,7 +36,11 @@ export default function OwnerHome({
   const who = restaurant?.owner_name || restaurant?.logged_in_as_name || "";
 
   return (
-    <div className="space-y-3.5">
+    // ⚠️ A flex column with `min-h-full` so the team card can take the leftover height.
+    // Since the health and struggling-dish cards came out, this screen is one card tall
+    // and left a ~240px slab of empty background above the tab bar (user, 30.8: "there
+    // is a massive space gap in the bottom"). Filling it beats decorating it.
+    <div className="flex flex-col gap-3.5 min-h-full">
       <div className="au-head">
         <div className="flex-1 min-w-0">
           <h1>{greetingFor()}{who ? `, ${who}` : ""}</h1>
@@ -76,7 +80,7 @@ export default function OwnerHome({
           it; it is just no longer something the home screen demands. The card markup is in
           git if this comes back — see this commit's parent. */}
 
-      <div className="glass">
+      <div className="glass flex-1">
         <LearningStatus
           variant="aurora"
           restaurant={restaurant}

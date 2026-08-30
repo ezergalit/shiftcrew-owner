@@ -1365,7 +1365,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
   return (
     <div className={`h-screen mx-auto text-[#eef0f6] flex flex-col ${aurora ? "aurora-skin" : "max-w-md bg-[#0c0d10]"}`} dir="rtl">
-      {aurora && (<><div className="aurora" aria-hidden><i /><i /><i /></div><div className="grain" aria-hidden /></>)}
+      {aurora && (<><div className="aurora" aria-hidden><i /><i /><i /><i /></div><div className="grain" aria-hidden /></>)}
       {/* Header */}
       {/* ⚠️ No header bar under the skin. Every screen states its own name — "הגדרות",
           "התפריט", the greeting — so a permanent strip carrying the restaurant name and
