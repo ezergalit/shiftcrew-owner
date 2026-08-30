@@ -44,7 +44,11 @@ export default function LearningStatus({ restaurant, onSelectMember, onRows, onM
         db.from("team_members")
           .select("id, name, first_name, last_name, total_seconds, baseline_pct, last_seen_at, created_at")
           .eq("restaurant_id", restaurant.id),
-        db.from("published_menu").select("source_item_id").eq("restaurant_id", restaurant.id),
+        // ⚠️ category + name too: service-training cards are read, never drilled or
+        // tested (user, 30.8), so they must not sit in the denominator — otherwise a
+        // waiter who has learned every dish is reported at 80% forever, and the manager's
+        // number stops matching the one the waiter sees.
+        db.from("published_menu").select("source_item_id, category, name").eq("restaurant_id", restaurant.id),
         db.from("progress_snapshots").select("team_member_id, taken_at, seconds_delta, points")
           .eq("restaurant_id", restaurant.id).gte("taken_at", since),
         db.from("leaderboard").select("team_member_id, points, streak").eq("restaurant_id", restaurant.id),
@@ -68,7 +72,17 @@ export default function LearningStatus({ restaurant, onSelectMember, onRows, onM
       const tasksBy = new Map();
       for (const t of taskMarks || []) tasksBy.set(t.team_member_id, (tasksBy.get(t.team_member_id) || 0) + 1);
 
-      const total = (menu.data || []).length;
+      // A category counts as a guide only when every item in it is a knowledge card, so
+      // the "מה חשוב לדעת" card inside סלטים keeps counting with its dishes.
+      const byCat = new Map();
+      for (const r of menu.data || []) {
+        const k = r.category || "";
+        if (!byCat.has(k)) byCat.set(k, []);
+        byCat.get(k).push(r);
+      }
+      const isK = (r) => (r.category || "").startsWith("הדרכת") || (r.name || "").startsWith("מה חשוב לדעת");
+      const guideCats = new Set([...byCat.entries()].filter(([, v]) => v.every(isK)).map(([k]) => k));
+      const total = (menu.data || []).filter((r) => !guideCats.has(r.category || "")).length;
       const today = startOfDay();
       const byMember = new Map();
       for (const p of progress || []) {
