@@ -1789,23 +1789,6 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             onSignOut={onSignOut}
             sections={[
               {
-                key: "health",
-                emoji: "🩺",
-                title: "בדיקת בריאות התפריט",
-                summary: "מנות עם מידע חסר — תיקון קבוצות שלמות במכה",
-                node: (
-                  <MenuHealthReview
-                    /* Same inputs the home health card uses, so "24 מנות בלי אלרגיות"
-                       there and the group here cannot disagree. Knowledge cards are not
-                       dishes and drinks are not expected to carry allergens. */
-                    items={items.filter((i) => !isKnowledge(i))}
-                    categories={existingCategories}
-                    onChanged={loadMenuItems}
-                    needsAllergens={needsAllergens}
-                  />
-                ),
-              },
-              {
                 key: "team",
                 emoji: "👥",
                 title: "ניהול הצוות",
@@ -1819,13 +1802,11 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                   />
                 ),
               },
-              {
-                key: "path",
-                emoji: "🎯",
-                title: "שינוי מתקדם במסלול הלמידה",
-                summary: "דירוג הנושאים שנבחנים עליהם וסדר הקטגוריות",
-                node: <div id="learning-path-settings"><LearningPathSettings restaurant={restaurant} items={items} bottomOffset={116} /></div>,
-              },
+              /* 🚫 REMOVED (user, 30.8): «בדיקת בריאות התפריט» ו«שינוי מתקדם
+                 במסלול הלמידה». שניהם עבודה שהמנהל היה צריך לעשות בעצמו,
+                 והכיוון הוא ההפוך — «המטרה שנעשה הכל עבורם». המסלול מוגדר
+                 להמלצה שלנו והתפריט מתוקן אצלנו; הרכיבים עצמם נשארו בקוד
+                 (וחיים בעור הישן) למי שירצה להחזיר אותם. */
               /* ⚠️ A restaurant with its own video never sees the step-by-step tour —
                  not on first run and not here (user, 29.8: "כנ״ל כשרוצים לראות אותו
                  מחדש בהגדרות תשים אותו ולא את ההסבר"). Two different explanations of
@@ -2085,9 +2066,12 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
       {/* Bottom Navigation */}
       <div className={aurora ? "au-nav" : "border-t border-[#22252b] bg-[#16181c]"}>
-        {/* pb keeps the tabs clear of the iPhone home indicator once packaged with
-            Capacitor. On the web the inset is 0 and this stays the plain p-2. */}
-        <div className={`grid grid-cols-3 gap-1 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] ${aurora ? "au-tabs" : ""}`}>
+        {/* 🔴 The inset belongs to exactly one element. `.au-nav` above already pads by
+            `4px + safe-area-inset-bottom`, so leaving it here too paid for the home
+            indicator TWICE — ~72px of black under the labels on a real iPhone, and
+            nothing at all in a desktop browser where the inset is 0. That is the gap
+            the user kept reporting. The legacy skin has no `.au-nav`, so it keeps it. */}
+        <div className={`grid grid-cols-3 gap-1 p-2 ${aurora ? "au-tabs" : "pb-[max(0.5rem,env(safe-area-inset-bottom))]"}`}>
           <NavButton aurora={aurora} emoji="🏠" icon={<Home size={18} />} label="בית" active={tab === "home"} onClick={() => setTab("home")} />
           <NavButton aurora={aurora} emoji="📖" icon={<BookOpen size={18} />} label="תפריט" active={tab === "menu"} onClick={() => setTab("menu")} />
           <NavButton aurora={aurora} emoji="⚙️" icon={<Settings size={18} />} label="הגדרות" active={tab === "settings"} onClick={() => setTab("settings")} />

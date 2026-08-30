@@ -1,9 +1,6 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabase";
-import { DEFAULT_PATH } from "../../lib/examFacets";
-import { Section, Choice, initials, pctColor, membersLabel, lastSeenNote } from "./bits";
+import { Section, initials, pctColor, membersLabel, lastSeenNote } from "./bits";
 
-const db = supabase.schema("menu_app");
 
 // The manager's settings tab under the «אורורה» skin.
 //
@@ -13,18 +10,6 @@ const db = supabase.schema("menu_app");
 
 const WAITER_URL = "https://shiftcrew-waiter.vercel.app";
 
-function Toggle({ on, onChange, label }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      aria-label={label}
-      className={`toggle ${on ? "on" : ""}`}
-      onClick={() => onChange(!on)}
-    />
-  );
-}
 
 
 // Signing out costs the owner their password to get back in, and the button sits at the
@@ -79,63 +64,7 @@ export default function OwnerSettings({
   onSignOut,
   sections,           // the heavier panels, rendered by the dashboard: { key, emoji, title, summary, node }
 }) {
-  const [path, setPath] = useState(null);
-  const [row, setRow] = useState(null);        // the whole exam_config row, so a partial
-                                               // save can never blank facets / category_order
-  const [saveState, setSaveState] = useState(""); // "" | "saving" | "saved" | "error"
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      const { data } = await db.from("exam_config").select("*")
-        .eq("restaurant_id", restaurant.id).maybeSingle();
-      if (!alive) return;
-      setRow(data || null);
-      setPath({
-        pass_threshold: data?.pass_threshold ?? DEFAULT_PATH.pass_threshold,
-        daily_goal_minutes: data?.daily_goal_minutes ?? DEFAULT_PATH.daily_goal_minutes,
-        general_exam_questions: data?.general_exam_questions ?? DEFAULT_PATH.general_exam_questions,
-        baseline_enabled: data?.baseline_enabled ?? DEFAULT_PATH.baseline_enabled,
-        baseline_minutes: data?.baseline_minutes ?? DEFAULT_PATH.baseline_minutes,
-        gate_games: data?.gate_games ?? DEFAULT_PATH.gate_games,
-      });
-    })();
-    return () => { alive = false; };
-  }, [restaurant.id]);
-
-  // Saved on the tap. There is no save button because there is nothing to compose here —
-  // every control is one value, and a button would only add a step where the owner can
-  // walk away thinking they changed something.
-  const patch = async (change) => {
-    const prev = path;
-    const next = { ...path, ...change };
-    setPath(next);
-    setSaveState("saving");
-    // ⚠️ Re-read the row, do not reuse the one loaded at mount. `facets` and
-    // `category_order` belong to the advanced panel — which sits in a section on THIS
-    // screen — so a snapshot from mount would quietly put the pre-edit arrays back the
-    // next time the owner taps a chip up here.
-    const { data: fresh } = await db.from("exam_config").select("*")
-      .eq("restaurant_id", restaurant.id).maybeSingle();
-    const merged = { ...(fresh || row || {}), restaurant_id: restaurant.id, ...next,
-                     updated_at: new Date().toISOString() };
-    const { error } = await db.from("exam_config").upsert(merged, { onConflict: "restaurant_id" });
-    if (error) {
-      // Leaving the new value selected would tell the owner it saved. It did not.
-      setPath(prev);
-      setSaveState("error");
-      return;
-    }
-    setRow(merged);
-    setSaveState("saved");
-  };
-
-  useEffect(() => {
-    if (saveState !== "saved" && saveState !== "error") return;
-    const t = setTimeout(() => setSaveState(""), saveState === "error" ? 4000 : 2200);
-    return () => clearTimeout(t);
-  }, [saveState]);
 
   const code = restaurant?.team_code || "";
   const shareText =
@@ -152,14 +81,6 @@ export default function OwnerSettings({
       setTimeout(() => setCopied(false), 1800);
     } catch { /* clipboard blocked — the code is on screen anyway */ }
   };
-
-  const isRecommended =
-    path &&
-    path.pass_threshold === DEFAULT_PATH.pass_threshold &&
-    path.general_exam_questions === DEFAULT_PATH.general_exam_questions &&
-    path.baseline_enabled === DEFAULT_PATH.baseline_enabled &&
-    path.baseline_minutes === DEFAULT_PATH.baseline_minutes &&
-    path.gate_games === DEFAULT_PATH.gate_games;
 
   return (
     <div className="space-y-3.5">
@@ -215,119 +136,6 @@ export default function OwnerSettings({
             );
           })
         )}
-      </div>
-
-      {/* ── the learning path ─────────────────────────────────────────────
-          ⚠️ Collapsed by default (user, 29.8: "תשים את מסלול הלמידה בתור אופציה
-          סגורה שלא תמיד פתוחה"). It is configured once and then almost never touched,
-          so open it was four screens of controls standing between the owner and the
-          things they actually come here for. */}
-      <div className="glass">
-        <Section
-          emoji="🎓"
-          title="מסלול הלמידה"
-          summary={isRecommended ? "מוגדר לפי ההמלצה שלנו" : "כווננתם את המסלול"}
-          open={openSetting === "path"}
-          onToggle={() => setOpenSetting(openSetting === "path" ? null : "path")}
-        >
-        <div className="au-cardhead">
-          <b>מסלול הלמידה</b>
-          <span>
-            {saveState === "saving" ? "שומר…" : saveState === "saved" ? "נשמר ✓"
-              : saveState === "error" ? "השמירה נכשלה" : ""}
-          </span>
-        </div>
-        <p className="text-[12px] text-[#8a919e] -mt-2 mb-1 leading-relaxed">
-          {isRecommended
-            ? "הכל מוגדר לפי ההמלצה שלנו · אפשר לכוונן"
-            : "כוונתם את המסלול · אפשר לחזור להמלצה בכל רגע"}
-        </p>
-
-        {path && (
-          <>
-            <p className="au-opt">סף שליטה לפתיחת בוחן קטגוריה</p>
-            <Choice
-              /* ⚠️ Must match LearningPathSettings — both write exam_config.pass_threshold,
-                 and both are reachable from this screen. Different option sets meant one
-                 control could show a value the other could not represent. */
-              options={[30, 50, 70].map((v) => ({ value: v, label: `${v}%` }))}
-              value={path.pass_threshold}
-              recommended={DEFAULT_PATH.pass_threshold}
-              onChange={(v) => patch({ pass_threshold: v })}
-            />
-
-            {/* 🚧 "יעד לימוד יומי" is deliberately NOT offered here. The waiter only ever
-                showed that goal as a ring on its home tab, and `features.tasks:false`
-                removes that tab entirely (MainApp redirects away from "home"), so
-                `exam_config.daily_goal_minutes` currently changes nothing for these
-                restaurants. A control that saves a value nobody reads is worse than no
-                control. The column is untouched, so restoring this is three lines once
-                the goal has somewhere to appear. */}
-
-            <p className="au-opt">אורך המבחן המסכם</p>
-            <Choice
-              options={[20, 30, 40, 60].map((v) => ({ value: v, label: `${v} שאלות` }))}
-              value={path.general_exam_questions}
-              recommended={DEFAULT_PATH.general_exam_questions}
-              onChange={(v) => patch({ general_exam_questions: v })}
-            />
-
-            <div className="srow mt-2">
-              <span>
-                בוחן היכרות לעובד חדש
-                <span className="block text-[11.5px] text-[#6b7280] mt-0.5">
-                  נותן לכם "ידע התחלתי X%" לכל מלצר חדש
-                </span>
-              </span>
-              <Toggle
-                on={!!path.baseline_enabled}
-                label="בוחן היכרות לעובד חדש"
-                onChange={(v) => patch({ baseline_enabled: v })}
-              />
-            </div>
-
-            {/* 🚫 The length picker is gone: the intake exam is a fixed 8 questions
-                (user, 29.8), so a minutes control would set a number nothing reads —
-                exactly the kind of dead switch we keep removing. `baseline_minutes`
-                still exists in exam_config and is left untouched, in case the length
-                ever becomes the owner's decision again. */}
-            {path.baseline_enabled && (
-              <p className="text-[12px] text-[#8a919e] leading-relaxed -mt-1 mb-2">
-                בוחן ההיכרות הוא 8 שאלות — מספיק כדי למקם עובד חדש, בלי להתיש אותו ביום הראשון.
-              </p>
-            )}
-            <div className="srow">
-              <span>
-                תרגול מוגבל למה שכבר נפתח
-                <span className="block text-[11.5px] text-[#6b7280] mt-0.5">
-                  כבוי = הצוות מתרגל את כל התפריט מהיום הראשון
-                </span>
-              </span>
-              <Toggle
-                on={!!path.gate_games}
-                label="תרגול מוגבל למה שכבר נפתח"
-                onChange={(v) => patch({ gate_games: v })}
-              />
-            </div>
-
-            {!isRecommended && (
-              <button
-                type="button"
-                className="au-wide mt-3"
-                onClick={() => patch({
-                  pass_threshold: DEFAULT_PATH.pass_threshold,
-                  general_exam_questions: DEFAULT_PATH.general_exam_questions,
-                  baseline_enabled: DEFAULT_PATH.baseline_enabled,
-                  baseline_minutes: DEFAULT_PATH.baseline_minutes,
-                  gate_games: DEFAULT_PATH.gate_games,
-                })}
-              >
-                חזרה להמלצה שלנו
-              </button>
-            )}
-          </>
-        )}
-        </Section>
       </div>
 
       {/* ── the restaurant ───────────────────────────────────────────────── */}

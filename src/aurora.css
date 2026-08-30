@@ -136,7 +136,10 @@
     so 24px on top of it left a band of pure black under the labels with nothing in it
     (user, 30.8: "יש רווח שחור שאין בו כלום"). The waiter's bar already used 4px — the
     two bars are the same component to the eye and should measure the same. */
-.aurora-skin .au-nav {padding:6px 14px calc(4px + env(safe-area-inset-bottom));
+/* ⚠️ ה-max() הוא רצפה, לא תיקון: נמדד בסימולטור שה-inset אכן מגיע (34pt, תחתית
+    ה-pill ב-814 מתוך 852), ולכן באייפון היחס הוא 4+34. אבל בדפדפן ובכל משטח בלי
+    inset הערך 0 ⇒ 4px לבדם מצמידים את התוויות לשפת המסך. 14 שומרת שזה לא יקרה. */
+.aurora-skin .au-nav {padding:6px 14px max(14px, calc(4px + env(safe-area-inset-bottom)));
   background:rgba(12,13,16,.85); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
   border-top:1px solid rgba(238,240,246,.08)}
 .aurora-skin .au-tabs > button {border:0; background:transparent; cursor:pointer; font:inherit;
