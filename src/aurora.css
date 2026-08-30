@@ -405,3 +405,12 @@
    אלרגיה וצהוב זו העדפה — אלא אם אומרים לו את זה פעם אחת. */
 .aurora-skin .au-key{display:flex; flex-wrap:wrap; gap:6px; padding:0 2px 2px}
 .aurora-skin .au-key .chip{font-size:11px; padding:3px 10px}
+
+/* --- back link at the top of a menu / category ------------------------------
+   The manager's menu is three levels deep now (menu → category → dish), so each
+   level needs a way up that is not the browser's. Quiet by design: it is a way
+   back, not an action. */
+.aurora-skin .au-back{display:inline-flex; align-items:center; gap:5px; cursor:pointer;
+  font:inherit; font-size:12.5px; font-weight:700; color:var(--dim);
+  background:transparent; border:0; padding:6px 2px; margin:-2px}
+.aurora-skin .au-back:hover{color:var(--em)}

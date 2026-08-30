@@ -43,6 +43,10 @@ const KEY_LABEL = {
 // ⚠️ Same rule as `pubToCard` on the waiter side and `examFixed`. It is duplicated across
 // two repos on purpose (no shared package); change it in all three or the two apps will
 // disagree about what a dish is.
+// Service training is a destination, not a menu_group — the sentinel keeps it in the
+// same `group` state so back behaves identically.
+const SERVICE = "\u0000service";
+
 export const isGuide = (i) =>
   (i.category || "").startsWith("הדרכת") || (i.name || "").startsWith("מה חשוב לדעת");
 const countLabel = (cat, n) => {
@@ -124,7 +128,7 @@ function Dish({ item, flagGroups, tone, merged, onOpen, onToggleStar }) {
 // פה, שיהיה קצר ולעניין"). No empty ingredient block, no "no warnings recorded" card, no
 // nine category chips — one line naming the category this dish is in. A preview that
 // lists what a dish does *not* have is as long as the edit form and reads like a form.
-function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleStar, onPrev, onNext, pos }) {
+function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleStar, onPrev, onNext, pos, lastInCat }) {
   const [zoom, setZoom] = useState(false);
   // A guide is not a dish, so it must not be read like one — no price, no warning
   // groups, no ⭐, and the button says what it edits (user, 29.8: "it cant say edit
@@ -234,7 +238,7 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
             type="button" onClick={onNext} disabled={!onNext}
             className="flex-1 py-3 rounded-xl bg-[#16181c] border border-[#22252b] text-[13px] font-black text-[#eef0f6] disabled:opacity-30 flex items-center justify-center gap-1.5"
           >
-            <ChevronLeft size={16} /> {guide ? "ההדרכה הבאה" : "המנה הבאה"}
+            {lastInCat ? "סיימתי את הקטגוריה" : <><ChevronLeft size={16} /> {guide ? "ההדרכה הבאה" : "המנה הבאה"}</>}
           </button>
           <span className="text-[11px] font-bold text-[#5a5a6e] tabular-nums flex-none px-1">
             {pos.i} / {pos.total}
@@ -277,9 +281,10 @@ export default function OwnerMenu({
   const [cat, setCat] = useState(null);       // null = every category
   const [q, setQ] = useState("");
   const [viewing, setViewing] = useState(null);   // the dish being READ, not edited
+  const [endOfCat, setEndOfCat] = useState(null); // the category just finished, if any
   // "menu" | "guides" — service training is not the menu (user, 29.8), so it is a
   // section of its own rather than a category chip sitting among the courses.
-  const [view, setView] = useState("menu");
+
   // ⚠️ Where the list was scrolled when a dish was opened. Coming back to the top of a
   // 152-dish menu after glancing at one dish is what makes "briefly go over the dishes"
   // impossible — you lose your place every single time.
@@ -309,7 +314,10 @@ export default function OwnerMenu({
     () => [...new Set(dishes.map((i) => i.menuGroup).filter(Boolean))],
     [dishes]
   );
-  const pool = view === "guides" ? guides : dishes;
+  const pool = dishes;
+  // The pool the prev/next walk moves through: whichever menu (or the guides) is open.
+  const inGroupPoolForWalk = group === SERVICE ? guides
+    : group ? dishes.filter((i) => i.menuGroup === group) : dishes;
   const inGroup = useMemo(
     () => (group ? pool.filter((i) => i.menuGroup === group) : pool),
     [pool, group]
@@ -363,11 +371,56 @@ export default function OwnerMenu({
   // only thing here — its own close button is the way out.
   if (dishForm) return <div className="space-y-3">{dishForm}</div>;
 
+  // ---- end of a category: read it again, or walk on to the next one ----
+  // The waiter gets this screen; the manager reviewing the menu should too. The one
+  // difference is the third choice — there is no practice mode on this side, so the
+  // screen offers only "again" and "next category" (user, 30.8).
+  if (endOfCat) {
+    const order = [...new Set(inGroupPoolForWalk.map((i) => i.category).filter(Boolean))];
+    const at = order.indexOf(endOfCat);
+    const nextCat = at >= 0 && at < order.length - 1 ? order[at + 1] : null;
+    const n = inGroupPoolForWalk.filter((i) => i.category === endOfCat).length;
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center gap-2.5">
+          <button type="button" onClick={() => setEndOfCat(null)} aria-label="חזרה"
+            className="w-10 h-10 rounded-xl bg-[#16181c] border border-[#22252b] flex items-center justify-center text-[#eef0f6] flex-none">
+            <ChevronRight size={19} />
+          </button>
+          <p className="flex-1 min-w-0 text-[11px] font-black text-[#8a919e] truncate">{endOfCat} · הושלם</p>
+        </div>
+        <div className="glass text-center space-y-3 py-7">
+          <span className="w-16 h-16 rounded-full bg-[#15302b] border border-[#22c08c]/40 flex items-center justify-center text-3xl mx-auto">✓</span>
+          <h2 className="text-[21px] font-black text-[#eef0f6] leading-tight">עברת על כל {endOfCat}</h2>
+          <p className="text-[13px] text-[#8a919e] leading-relaxed px-3">
+            {countLabel(endOfCat, n)}. לעבור עליהן שוב, או להמשיך הלאה?
+          </p>
+        </div>
+        <button type="button" className="au-pill w-full justify-center py-3"
+          onClick={() => { const c = endOfCat; setEndOfCat(null); setCat(c);
+                           setViewing(inGroupPoolForWalk.filter((i) => i.category === c)[0] || null); }}>
+          לעבור שוב על {endOfCat}
+        </button>
+        {nextCat ? (
+          <button type="button" className="au-wide"
+            onClick={() => { setEndOfCat(null); setCat(nextCat);
+                             setViewing(inGroupPoolForWalk.filter((i) => i.category === nextCat)[0] || null); }}>
+            להמשיך ל{nextCat}
+          </button>
+        ) : (
+          <button type="button" className="au-wide" onClick={() => { setEndOfCat(null); setCat(null); }}>
+            סיימת את {group === SERVICE ? "ההדרכות" : group} — לקטגוריות
+          </button>
+        )}
+      </div>
+    );
+  }
+
   if (viewing) {
     const fresh = items.find((i) => i.id === viewing.id) || viewing;
     // Siblings = the same category, in menu order. The category is the unit an owner
     // reviews; walking across categories would silently cross from starters into wine.
-    const sibs = (viewing.category ? pool.filter((i) => i.category === viewing.category) : pool)
+    const sibs = (viewing.category ? inGroupPoolForWalk.filter((i) => i.category === viewing.category) : inGroupPoolForWalk)
       .slice()
       .sort((a, b) => (a.menuPosition ?? 0) - (b.menuPosition ?? 0));
     const at = sibs.findIndex((i) => i.id === fresh.id);
@@ -380,124 +433,110 @@ export default function OwnerMenu({
         merged={merged}
         pos={{ i: at + 1, total: sibs.length }}
         onPrev={at > 0 ? () => go(at - 1) : undefined}
-        onNext={at >= 0 && at < sibs.length - 1 ? () => go(at + 1) : undefined}
+        onNext={at >= 0 && at < sibs.length - 1
+          ? () => go(at + 1)
+          : () => { setEndOfCat(fresh.category); setViewing(null); }}
+        lastInCat={at >= 0 && at === sibs.length - 1}
         onBack={() => setViewing(null)}
-        onEdit={(d) => { setViewing(null); onOpenDish(d); }}
+        /* ⚠️ `viewing` is NOT cleared: closing the editor must land back on the dish
+           you were reading, not on the list you came from three taps ago (user, 30.8). */
+        onEdit={(d) => onOpenDish(d)}
         onToggleStar={onToggleStar}
       />
     );
   }
+  // ---- level 1: the menus, as boxes ----
+  // ⚠️ Same shape as the waiter's menu, deliberately (user, 30.8: "תעשה את המערכת בול
+  // כמו המלצרים"). Two chip rows above one long list meant the manager read every
+  // category of every menu at once; now it is menu → category → dish, and service
+  // training is a box of its own rather than a switch at the top.
+  const menuTile = (m2) => {
+    const inG = dishes.filter((i) => i.menuGroup === m2);
+    const nCats = new Set(inG.map((i) => i.category)).size;
+    const photo = inG.find((i) => i.image_url)?.image_url;
+    const vis = categoryVisual(inG[0]?.category || m2);
+    return (
+      <button key={m2} type="button" className="glass cat" onClick={() => { setGroup(m2); setCat(null); }}>
+        <span className="icon" aria-hidden>{photo ? <img src={photo} alt="" loading="lazy" /> : vis.emoji}</span>
+        <span className="flex-1 min-w-0">
+          <h3 className="line-clamp-1">{m2}</h3>
+          <p>{nCats === 1 ? "קטגוריה אחת" : `${nCats} קטגוריות`} · {countLabel(inG[0]?.category, inG.length)}</p>
+        </span>
+        <ChevronLeft size={16} className="chev" />
+      </button>
+    );
+  };
+  const catTile = (c, list) => {
+    const photo = list.find((i) => i.image_url)?.image_url;
+    return (
+      <button key={c} type="button" className="glass cat" onClick={() => setCat(c)}>
+        <span className="icon" aria-hidden>{photo ? <img src={photo} alt="" loading="lazy" /> : categoryVisual(c).emoji}</span>
+        <span className="flex-1 min-w-0"><h3 className="line-clamp-1">{c}</h3><p>{countLabel(c, list.length)}</p></span>
+        <ChevronLeft size={16} className="chev" />
+      </button>
+    );
+  };
+
+  const inGroupPool = group === SERVICE ? guides : dishes.filter((i) => i.menuGroup === group);
+  const groupCats = [...new Set(inGroupPool.map((i) => i.category).filter(Boolean))];
+  const title = group === SERVICE ? "הדרכות שירות" : group || "התפריט";
+
   return (
     <div className="space-y-3">
       <div className="au-head">
-        <h1 className="flex-1 min-w-0">{view === "guides" ? "הדרכות שירות" : "התפריט"}</h1>
+        <h1 className="flex-1 min-w-0">{cat || title}</h1>
         <button type="button" className="au-pill flex-none" onClick={() => onAdd(cat)}>
-          + {view === "guides" ? "הדרכה חדשה" : "מנה חדשה"}
+          + {group === SERVICE ? "הדרכה חדשה" : "מנה חדשה"}
         </button>
       </div>
 
-      {/* ⚠️ Two sections, not one list with an extra category chip. Service training is
-          not food (user, 29.8: "הדרכת שירות צריך להיות בsection שונה מתפריט המסעדה
-          מכיוון שזה לא תפריט"), and while it sat among the courses every count, filter
-          and label treated it as something a guest could order. Shown only when the
-          restaurant actually has guides — one tab is not a choice. */}
-      {guides.length > 0 && (
-        <div className="au-filter">
-          <button type="button" className={`au-fchip ${view === "menu" ? "on" : ""}`}
-            onClick={() => { setView("menu"); setCat(null); setQ(""); }}>
-            התפריט · {dishes.length}
-          </button>
-          <button type="button" className={`au-fchip ${view === "guides" ? "on" : ""}`}
-            onClick={() => { setView("guides"); setCat(null); setGroup(null); setQ(""); }}>
-            הדרכות שירות · {guides.length}
-          </button>
+      {(group || cat) && (
+        <button type="button" className="au-back" onClick={() => (cat ? setCat(null) : setGroup(null))}>
+          <ChevronRight size={15} /> {cat ? title : "כל התפריטים"}
+        </button>
+      )}
+
+      {!group && !cat && (
+        <>
+          <p className="au-hint">בוחרים תפריט, ואז קטגוריה — לחיצה על מנה פותחת אותה לעיון</p>
+          {items.length === 0 && emptyNote}
+          <div className="flex flex-col gap-3">
+            {menuGroups.map(menuTile)}
+            {guides.length > 0 && (
+              <button type="button" className="glass cat" onClick={() => { setGroup(SERVICE); setCat(null); }}>
+                <span className="icon" aria-hidden>🎓</span>
+                <span className="flex-1 min-w-0">
+                  <h3 className="line-clamp-1">הדרכות שירות</h3>
+                  <p>{guides.length === 1 ? "נושא אחד" : `${guides.length} נושאים`} · הצוות קורא, לא נבחן</p>
+                </span>
+                <ChevronLeft size={16} className="chev" />
+              </button>
+            )}
+          </div>
+        </>
+      )}
+
+      {group && !cat && (
+        <div className="flex flex-col gap-3">
+          {groupCats.map((c) => catTile(c, inGroupPool.filter((i) => i.category === c)))}
         </div>
       )}
 
-      <p className="au-hint">
-        {view === "guides"
-          ? "כרטיסי ידע שהצוות לומד ונבחן עליהם — לא מנות בתפריט"
-          : "לחיצה על מנה פותחת אותה לעיון · משם אפשר לערוך"}
-      </p>
-
-      {pool.length > 6 && (
-        <div className="search">
-          <span aria-hidden>🔍</span>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={view === "guides" ? "חיפוש הדרכה" : "חיפוש מנה"}
-            aria-label={view === "guides" ? "חיפוש הדרכה" : "חיפוש מנה בתפריט"}
-          />
-          {q && (
-            <button type="button" onClick={() => setQ("")} aria-label="ניקוי החיפוש" className="au-x">✕</button>
-          )}
-        </div>
-      )}
-
-      {/* Menu group first, category second — a restaurant with one menu never sees the
-          first row at all. */}
-      {view === "menu" && menuGroups.length > 1 && (
-        <div className="au-filter">
-          <button type="button" className={`au-fchip ${!group ? "on" : ""}`}
-            onClick={() => { setGroup(null); setCat(null); }}>כל התפריטים</button>
-          {menuGroups.map((g) => (
-            <button key={g} type="button" className={`au-fchip ${group === g ? "on" : ""}`}
-              onClick={() => { setGroup(g); setCat(null); }}>{g}</button>
-          ))}
-        </div>
-      )}
-
-      {categories.length > 1 && (
-        <div className="au-filter">
-          <button type="button" className={`au-fchip ${!cat ? "on" : ""}`} onClick={() => setCat(null)}>
-            הכל
-          </button>
-          {categories.map((c) => (
-            <button key={c} type="button" className={`au-fchip ${cat === c ? "on" : ""}`}
-              onClick={() => setCat(c)}>{c}</button>
-          ))}
-        </div>
-      )}
-
-      {items.length === 0 && emptyNote}
-
-      {pool.length > 0 && shown.length === 0 && (
-        <p className="text-[13px] text-[#8a919e] text-center py-6 leading-relaxed">
-          אין מנה שמתאימה לחיפוש.
-          <br />
-          <button type="button" className="text-[var(--em)] font-bold mt-1 py-2 px-3"
-            onClick={() => { setQ(""); setCat(null); setGroup(null); }}>
-            ניקוי הסינון
-          </button>
-        </p>
-      )}
-
-      {sections.map((sec) => (
-        <div key={sec.cat || "_"} className="space-y-2">
-          {sec.cat && (
-            <div className="au-cathead">
-              <span className="ic" aria-hidden>{categoryVisual(sec.cat).emoji}</span>
-              <b>{sec.cat}</b>
-              <span>{countLabel(sec.cat, sec.list.length)}</span>
-            </div>
-          )}
-          {sec.list.map((item) => (
+      {cat && (
+        <div className="space-y-2">
+          {inGroupPool.filter((i) => i.category === cat).map((item) => (
             <Dish
               key={item.id}
               item={item}
               flagGroups={flagGroups}
               tone={tone}
               merged={merged}
-              onOpen={(d) => {
-                listScroll.current = scrollRef?.current?.scrollTop || 0;
-                setViewing(d);
-              }}
+              onOpen={(d) => { listScroll.current = scrollRef?.current?.scrollTop || 0; setViewing(d); }}
               onToggleStar={onToggleStar}
             />
           ))}
         </div>
-      ))}
+      )}
 
       {/* The owner fixes and asks; we build. Structural work — a whole new menu, moving a
           category — goes out as a request rather than as a button they would rarely use
