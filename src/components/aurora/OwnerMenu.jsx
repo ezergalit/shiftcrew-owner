@@ -1,5 +1,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Star, ChevronRight, ChevronLeft } from "lucide-react";
 import { categoryVisual } from "../../lib/categoryVisual";
 import { FLAG_GROUPS, effectiveTrackedFlags } from "../../lib/dishFlags";
@@ -124,6 +125,7 @@ function Dish({ item, flagGroups, tone, merged, onOpen, onToggleStar }) {
 // nine category chips — one line naming the category this dish is in. A preview that
 // lists what a dish does *not* have is as long as the edit form and reads like a form.
 function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleStar, onPrev, onNext, pos }) {
+  const [zoom, setZoom] = useState(false);
   // A guide is not a dish, so it must not be read like one — no price, no warning
   // groups, no ⭐, and the button says what it edits (user, 29.8: "it cant say edit
   // dish on a service").
@@ -161,8 +163,16 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
         )}
       </div>
 
+      {/* ⚠️ `object-contain`, not `object-cover`. A fixed 176px box cropped every wide
+          plate — the manager was checking a dish and seeing the middle of it (user, 29.8:
+          "התמונה של המנה חתוכה"). The whole photo, on its own surface, at whatever
+          shape it actually is. Same treatment the waiter's dish screen uses.
+          Tapping it opens it full-screen. */}
       {item.image_url && (
-        <img src={item.image_url} alt="" className="w-full h-44 object-cover rounded-2xl border border-[#22252b]" />
+        <button type="button" onClick={() => setZoom(true)} className="block w-full" aria-label="הגדלת התמונה">
+          <img src={item.image_url} alt={item.name}
+            className="w-full max-h-64 object-contain rounded-2xl bg-[#16181c] border border-[#22252b]" />
+        </button>
       )}
 
       <div className="glass">
@@ -240,6 +250,14 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
       {/* The tab bar floats over the scroller, so the last control needs room or it sits
           half-under it — which is exactly where the pager landed. */}
       <div className="h-4" />
+
+      {/* Portalled: every surface here carries backdrop-filter, which would otherwise
+          make this overlay the size of the card instead of the screen. */}
+      {zoom && createPortal(
+        <button onClick={() => setZoom(false)} aria-label="סגירת התמונה"
+          className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-5">
+          <img src={item.image_url} alt={item.name} className="max-w-full max-h-full rounded-2xl object-contain" />
+        </button>, document.body)}
     </div>
   );
 }
