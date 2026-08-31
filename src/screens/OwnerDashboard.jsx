@@ -126,7 +126,10 @@ function dishFromDb(row) {
     // ⚠️ /יין|יינ/, not includes("יין") — final vs regular nun; "יינות" fails the naive test.
     // Extended to every tasting drink (user, 31.8): sake and beer cards also carry
     // descriptors, not a recipe, so their labels read "תיאור" too.
-    wine: /יין|יינ|סאקה|ביר(ה|ות)/.test(row.category || ""),
+    // The Salon bar (31.8) widened this to every spirit — and רוזה/מבעבעים are
+    // wine even without the word, ואירוע הוא חבילה: הצ'יפים שלו הם המנות שבו.
+    wine: /יין|יינ|רוזה|מבעבע|שמפניה|סאקה|ביר(ה|ות)|וודקה|וויסקי|ויסקי|טקילה|ג['׳]ין|ערק|אוזו|אניס|קוניאק|ברנדי|ליקר|רום|אפריטיף|ורמוט|סיגר|קוקטייל/.test(row.category || ""),
+    event: /אירוע/.test(row.menu_group || ""),
     allergens: row.allergens || [],
     pregnancy: row.pregnancy || [],
     pitfalls: row.pitfalls || [],
