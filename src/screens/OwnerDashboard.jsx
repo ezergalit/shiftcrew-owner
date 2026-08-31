@@ -1440,7 +1440,10 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
         {tab === "home" && homeView === null && !aurora && (
           <div className="space-y-3">
-            <Greeting name={restaurant?.owner_name || restaurant?.logged_in_as_name || restaurant?.name} />
+            {/* logged_in_as_name FIRST: a secondary manager (owner_users) signs in with
+                their own password and must be greeted by THEIR name — owner_name is the
+                restaurant's display owner, not whoever is holding the phone. */}
+            <Greeting name={restaurant?.logged_in_as_name || restaurant?.owner_name || restaurant?.name} />
             {tasksOff ? (
               <>
                 {/* LearningStatus already carries the day's numbers; a second row of
@@ -1792,6 +1795,42 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             onSelectMember={setSheetFor}
             onSignOut={onSignOut}
             sections={[
+              {
+                key: "managers",
+                emoji: "🔑",
+                title: "משתמשי ניהול",
+                summary: ownerUsers.length ? `${ownerUsers.length} נוספים · כניסה עם סיסמה אישית` : "הוספת מנהל עם סיסמה משלו",
+                node: (
+                  <div className="space-y-3">
+                    <p className="text-[12.5px] text-[#8a919e] leading-relaxed">
+                      מנהל נוסף נכנס עם קוד הבעלים ({restaurant?.owner_code}) והסיסמה האישית
+                      שלו, רואה את שמו בברכה, ויכול לנהל הכל — חוץ מהחלפת סיסמת המסעדה
+                      ומחיקת החשבון, ששמורות לסיסמה הראשית.
+                    </p>
+                    {ownerUsers.length > 0 && (
+                      <div className="space-y-1.5">
+                        {ownerUsers.map((u) => (
+                          <div key={u.id} className="srow"><span>🔑 {u.name}</span><span className="v" /></div>
+                        ))}
+                      </div>
+                    )}
+                    <input
+                      type="text" value={newManagerName} onChange={(e) => setNewManagerName(e.target.value)}
+                      placeholder="השם שלו — כך יופיע בברכה" dir="rtl"
+                      className="w-full bg-[#0c0d10] border border-[#22252b] rounded-xl px-3 py-2.5 text-[16px] text-[#eef0f6] placeholder:text-[#5a5f6b] focus:outline-none focus:border-[#22c08c]"
+                    />
+                    <input
+                      type="password" value={newManagerPassword} onChange={(e) => setNewManagerPassword(e.target.value)}
+                      placeholder="סיסמה אישית (4 תווים לפחות)"
+                      className="w-full bg-[#0c0d10] border border-[#22252b] rounded-xl px-3 py-2.5 text-[16px] text-[#eef0f6] placeholder:text-[#5a5f6b] focus:outline-none focus:border-[#22c08c]"
+                    />
+                    {managerErr && <p className="au-warn">{managerErr}</p>}
+                    <button type="button" onClick={handleAddManager} disabled={addingManager} className="au-wide">
+                      {addingManager ? "מוסיף…" : "＋ הוספת מנהל"}
+                    </button>
+                  </div>
+                ),
+              },
               {
                 key: "team",
                 emoji: "👥",

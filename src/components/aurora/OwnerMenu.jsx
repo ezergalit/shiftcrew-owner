@@ -60,11 +60,15 @@ const countLabel = (cat, n) => {
 // cards — images included — on every keystroke in the search box.
 function Dish({ item, flagGroups, tone, merged, onOpen, onToggleStar }) {
   const vis = categoryVisual(item.category);
+  // 🔴 `tone[g.key]`, not the constant TONE — the prop is the per-restaurant map, and
+  // under merged warnings pregnancy is amber. Reading the constant here is why Salon's
+  // dish LIST still showed purple while the dish screen didn't (user, 30.8: "עדיין יש
+  // את הצבע הסגול ורק כשאתה נכנס לתוך המנה עצמה זה נעלם").
   const flags = flagGroups.flatMap((g) =>
     (item[g.key] || []).map((v) => ({
       key: `${g.key}:${v}`,
-      tone: TONE[g.key] || "amber",
-      v: (FLAG_PREFIX[g.key] || "") + v,
+      tone: tone[g.key] || "amber",
+      v: (g.key === "pregnancy" && merged ? "🤰 " : "") + (FLAG_PREFIX[g.key] || "") + v,
     }))
   );
   return (
@@ -413,39 +417,66 @@ export default function OwnerMenu({
     const at = order.indexOf(endOfCat);
     const nextCat = at >= 0 && at < order.length - 1 ? order[at + 1] : null;
     const n = inGroupPoolForWalk.filter((i) => i.category === endOfCat).length;
-    return (
-      <div className="space-y-3">
-        <div className="flex items-center gap-2.5">
-          <button type="button" onClick={() => setEndOfCat(null)} aria-label="חזרה"
-            className="w-10 h-10 rounded-xl bg-[#16181c] border border-[#22252b] flex items-center justify-center text-[#eef0f6] flex-none">
-            <ChevronRight size={19} />
+    // The last category of a box chains into the NEXT box — same door order the tiles
+    // use (service first, then the menus), so "המשך" always has somewhere to go until
+    // the very last category of the very last menu (user, 30.8: "צריך להוסיף כפתור
+    // מעבר לקטגוריה הבאה — (שם הקטגוריה)").
+    const boxes = [...(guides.length ? [SERVICE] : []), ...menuGroups];
+    const boxAt = boxes.indexOf(group ?? menuGroups[0]);
+    const nextBox = !nextCat && boxAt >= 0 && boxAt < boxes.length - 1 ? boxes[boxAt + 1] : null;
+    const nextBoxPool = nextBox === SERVICE ? guides
+      : nextBox ? pool.filter((i) => i.menuGroup === nextBox) : [];
+    const nextBoxCat = nextBoxPool.map((i) => i.category).filter(Boolean)[0] || null;
+    const goTo = (g, c, poolOf) => {
+      setEndOfCat(null); setGroup(g); setCat(c);
+      setViewing(poolOf.filter((i) => i.category === c)[0] || null);
+    };
+    // 🔴 Portalled, full screen — this is a stop on the dish walk, and the walk covers
+    // the tab bar. Rendered inline it sat above a visible בית/תפריט/הגדרות row (user's
+    // screenshot, 30.8), which broke the "you are inside the reading flow" frame.
+    return createPortal(
+      <div className="aurora-skin fixed inset-0 z-[70] bg-[#0c0d10] overflow-y-auto au-preview" dir="rtl">
+        <div className="space-y-3 max-w-md mx-auto">
+          <div className="flex items-center gap-2.5">
+            <button type="button" onClick={() => setEndOfCat(null)} aria-label="חזרה"
+              className="w-10 h-10 rounded-xl bg-[#16181c] border border-[#22252b] flex items-center justify-center text-[#eef0f6] flex-none">
+              <ChevronRight size={19} />
+            </button>
+            <p className="flex-1 min-w-0 text-[11px] font-black text-[#8a919e] truncate">{endOfCat} · הושלם</p>
+          </div>
+          <div className="glass text-center space-y-3 py-7">
+            <span className="w-16 h-16 rounded-full bg-[#15302b] border border-[#22c08c]/40 flex items-center justify-center text-3xl mx-auto">✓</span>
+            <h2 className="text-[21px] font-black text-[#eef0f6] leading-tight">עברת על כל {endOfCat}</h2>
+            <p className="text-[13px] text-[#8a919e] leading-relaxed px-3">
+              {countLabel(endOfCat, n)}. לעבור עליהן שוב, או להמשיך הלאה?
+            </p>
+          </div>
+          <button type="button" className="au-pill w-full justify-center py-3"
+            onClick={() => goTo(group, endOfCat, inGroupPoolForWalk)}>
+            לעבור שוב על {endOfCat}
           </button>
-          <p className="flex-1 min-w-0 text-[11px] font-black text-[#8a919e] truncate">{endOfCat} · הושלם</p>
+          {nextCat && (
+            <button type="button" className="au-wide"
+              onClick={() => goTo(group, nextCat, inGroupPoolForWalk)}>
+              להמשיך ל{nextCat}
+            </button>
+          )}
+          {!nextCat && nextBoxCat && (
+            <button type="button" className="au-wide"
+              onClick={() => goTo(nextBox, nextBoxCat, nextBoxPool)}>
+              להמשיך ל{nextBoxCat}
+            </button>
+          )}
+          {/* Back to the DOOR — group cleared too. Clearing only the category left the
+              service box's own single-category list on screen, which read as the button
+              doing nothing (user, 30.8: "זה לא שולח אותי לקטגוריות"). */}
+          <button type="button" className={nextCat || nextBoxCat ? "w-full py-2.5 text-[12px] font-bold text-[#8a8aa0]" : "au-wide"}
+            onClick={() => { setEndOfCat(null); setGroup(null); setCat(null); }}>
+            {group === SERVICE ? "סיימת את ההדרכות" : `סיימת את ${group || "התפריט"}`} — לכל התפריטים
+          </button>
         </div>
-        <div className="glass text-center space-y-3 py-7">
-          <span className="w-16 h-16 rounded-full bg-[#15302b] border border-[#22c08c]/40 flex items-center justify-center text-3xl mx-auto">✓</span>
-          <h2 className="text-[21px] font-black text-[#eef0f6] leading-tight">עברת על כל {endOfCat}</h2>
-          <p className="text-[13px] text-[#8a919e] leading-relaxed px-3">
-            {countLabel(endOfCat, n)}. לעבור עליהן שוב, או להמשיך הלאה?
-          </p>
-        </div>
-        <button type="button" className="au-pill w-full justify-center py-3"
-          onClick={() => { const c = endOfCat; setEndOfCat(null); setCat(c);
-                           setViewing(inGroupPoolForWalk.filter((i) => i.category === c)[0] || null); }}>
-          לעבור שוב על {endOfCat}
-        </button>
-        {nextCat ? (
-          <button type="button" className="au-wide"
-            onClick={() => { setEndOfCat(null); setCat(nextCat);
-                             setViewing(inGroupPoolForWalk.filter((i) => i.category === nextCat)[0] || null); }}>
-            להמשיך ל{nextCat}
-          </button>
-        ) : (
-          <button type="button" className="au-wide" onClick={() => { setEndOfCat(null); setCat(null); }}>
-            סיימת את {group === SERVICE ? "ההדרכות" : group} — לקטגוריות
-          </button>
-        )}
-      </div>
+      </div>,
+      document.body,
     );
   }
 
@@ -563,6 +594,15 @@ export default function OwnerMenu({
 
       {cat && (
         <div className="space-y-2">
+          {/* The colour key, where the colours actually appear. keyGroups already folds
+              merged restaurants down to two colours (red אלרגיות · amber מוקשים). */}
+          <div className="flex flex-wrap gap-1.5 px-0.5">
+            {keyGroups.filter((g) => g.key !== "kashrut").map((g) => (
+              <span key={g.key} className={`chip ${tone[g.key] || "amber"}`}>
+                <i className="dot" />{merged && g.key === "pitfalls" ? "מוקשים ורגישות" : KEY_LABEL[g.key] || g.label}
+              </span>
+            ))}
+          </div>
           {inGroupPool.filter((i) => i.category === cat).map((item) => (
             <Dish
               key={item.id}
