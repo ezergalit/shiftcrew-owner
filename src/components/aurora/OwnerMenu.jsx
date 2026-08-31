@@ -436,7 +436,10 @@ export default function OwnerMenu({
     // screenshot, 30.8), which broke the "you are inside the reading flow" frame.
     return createPortal(
       <div className="aurora-skin fixed inset-0 z-[70] bg-[#0c0d10] overflow-y-auto au-preview" dir="rtl">
-        <div className="space-y-3 max-w-md mx-auto">
+        {/* Vertically centred (user, 31.8, with screenshot): the card and its buttons sat
+            at the top with a dead half-screen below. min-h-full keeps the centring while
+            still scrolling on short phones. */}
+        <div className="space-y-3 max-w-md mx-auto min-h-full flex flex-col justify-center">
           <div className="flex items-center gap-2.5">
             <button type="button" onClick={() => setEndOfCat(null)} aria-label="חזרה"
               className="w-10 h-10 rounded-xl bg-[#16181c] border border-[#22252b] flex items-center justify-center text-[#eef0f6] flex-none">
