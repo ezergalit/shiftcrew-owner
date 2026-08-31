@@ -86,12 +86,17 @@ export default function ExamExplainer({ items }) {
       )}
 
       {exDrink && (
-        <Kind emoji="🍷" title="משקאות — תיאור והמלצה">
-          <Example q={`אורח מתלבט על ״${exDrink.name}״ ומבקש שתתאר לו את ה${drinkKind(exDrink.category)}. מה תגיד לו?`} />
-          {exTrait && <Example q={`אורח אוהב ${drinkKind(exDrink.category)} ${exTrait} ומבקש המלצה. על מה תמליץ לו?`} />}
+        <Kind emoji="🍷" title="משקאות — בעיקר המלצות">
+          {drinkKind(exDrink.category) === "יין" && (
+            <Example q={`אורח מבקש המלצה על 3 יינות לבנים. על אילו תמליץ?`} />
+          )}
+          {drinkKind(exDrink.category) === "יין"
+            ? <Example q={`אורח מבקש שתתאר לו את היין ״${exDrink.name}״. מה תגיד לו?`} />
+            : exTrait && <Example q={`אורח אוהב ${drinkKind(exDrink.category)} ${exTrait} ומבקש המלצה. על מה תמליץ לו?`} />}
           <p className="text-[11.5px] text-[#8a919e] mt-1 leading-relaxed">
-            יין, סאקה ובירה נלמדים לפי התיאור שלהם — צבע, יובש, גוף, אופי ומוצא —
-            וזה מה שנבחן, לא רשימת מרכיבים.
+            רוב שאלות המשקאות הן המלצות — לבן/אדום, יבש/מתוק, כשר, ישראלי, מהחבית —
+            והמלצת יין בצבע הלא-נכון מורידה נקודות גם אם תוארה יפה. שאלת «תתאר לי
+            את היין» מופיעה פעם-פעמיים בבוחן; בירה וסאקה נבחנות בהמלצות בלבד.
           </p>
         </Kind>
       )}
