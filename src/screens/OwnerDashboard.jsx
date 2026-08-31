@@ -120,6 +120,10 @@ function dishFromDb(row) {
     // builds questions from them, but the owner could neither see nor fix them, and the
     // exam-config screen concluded the menu had none.
     ingredients: row.ingredients || [],
+    // A wine's chips are its תיאור (colour/dryness/body/kosher/origin) rather than a
+    // recipe — the labels downstream read "תיאור" for these (user, 30.8).
+    // ⚠️ /יין|יינ/, not includes("יין") — final vs regular nun; "יינות" fails the naive test.
+    wine: /יין|יינ/.test(row.category || ""),
     allergens: row.allergens || [],
     pregnancy: row.pregnancy || [],
     pitfalls: row.pitfalls || [],

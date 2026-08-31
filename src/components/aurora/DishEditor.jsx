@@ -128,6 +128,9 @@ export default function DishEditor({
   const [uploading, setUploading] = useState(false);
   const [photoErr, setPhotoErr] = useState("");
   const isNew = !item.id;
+  // A wine's chips are its תיאור, not a recipe — the field says so, or the manager
+  // "corrects" the descriptors back into grape varieties.
+  const wine = !guide && /יין|יינ/.test(item?.category || "");
 
   const merged = restaurant?.features?.warnings === "merged";
   const tracked = effectiveTrackedFlags(restaurant?.tracked_flags);
@@ -212,9 +215,10 @@ export default function DishEditor({
       </div>
 
       <div className="glass space-y-4">
-        <Field label={guide ? "נקודות מפתח" : "מרכיבים"} hint="מהם נבנות שאלות התרגול">
+        <Field label={guide ? "נקודות מפתח" : wine ? "תיאור היין" : "מרכיבים"}
+               hint={wine ? "צבע, יובש, גוף, אופי, כשרות ומוצא — מהם נבנות השאלות" : "מהם נבנות שאלות התרגול"}>
           <Tags values={item.ingredients || []} onChange={(v) => onChange({ ...item, ingredients: v })}
-            placeholder={guide ? "נקודה אחת, ואנטר" : "מרכיב אחד, ואנטר"} />
+            placeholder={guide ? "נקודה אחת, ואנטר" : wine ? "פרט אחד (יבש, אדום, כשר…), ואנטר" : "מרכיב אחד, ואנטר"} />
         </Field>
 
         {/* ⚠️ Salon folds pregnancy into pitfalls (features.warnings === "merged", user

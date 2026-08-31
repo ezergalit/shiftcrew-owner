@@ -204,7 +204,7 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
 
       {item.ingredients?.length > 0 && (
         <div className="glass">
-          <p className="text-[11px] font-black text-[#8a919e] mb-2">{guide ? "נקודות מפתח" : "מרכיבים"}</p>
+          <p className="text-[11px] font-black text-[#8a919e] mb-2">{guide ? "נקודות מפתח" : item.wine ? "תיאור" : "מרכיבים"}</p>
           <div className="flex flex-wrap gap-1.5">
             {item.ingredients.map((v) => (
               <span key={v} className="text-[12.5px] font-bold px-2.5 py-1.5 rounded-lg bg-[#22252b] text-[#eef0f6]">{v}</span>
