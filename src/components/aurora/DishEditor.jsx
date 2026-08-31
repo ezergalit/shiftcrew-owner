@@ -130,7 +130,7 @@ export default function DishEditor({
   const isNew = !item.id;
   // A wine's chips are its תיאור, not a recipe — the field says so, or the manager
   // "corrects" the descriptors back into grape varieties.
-  const wine = !guide && /יין|יינ/.test(item?.category || "");
+  const wine = !guide && /יין|יינ|סאקה|ביר(ה|ות)/.test(item?.category || "");
 
   const merged = restaurant?.features?.warnings === "merged";
   const tracked = effectiveTrackedFlags(restaurant?.tracked_flags);

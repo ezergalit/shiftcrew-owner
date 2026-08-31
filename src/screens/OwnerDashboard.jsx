@@ -123,7 +123,9 @@ function dishFromDb(row) {
     // A wine's chips are its תיאור (colour/dryness/body/kosher/origin) rather than a
     // recipe — the labels downstream read "תיאור" for these (user, 30.8).
     // ⚠️ /יין|יינ/, not includes("יין") — final vs regular nun; "יינות" fails the naive test.
-    wine: /יין|יינ/.test(row.category || ""),
+    // Extended to every tasting drink (user, 31.8): sake and beer cards also carry
+    // descriptors, not a recipe, so their labels read "תיאור" too.
+    wine: /יין|יינ|סאקה|ביר(ה|ות)/.test(row.category || ""),
     allergens: row.allergens || [],
     pregnancy: row.pregnancy || [],
     pitfalls: row.pitfalls || [],
