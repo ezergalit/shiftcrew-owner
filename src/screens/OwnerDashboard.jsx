@@ -35,6 +35,7 @@ import { isGuide } from "../components/aurora/OwnerMenu";
 import OwnerHome from "../components/aurora/OwnerHome";
 import OwnerMenu from "../components/aurora/OwnerMenu";
 import OwnerSettings from "../components/aurora/OwnerSettings";
+import ExamExplainer from "../components/aurora/ExamExplainer";
 import "../aurora.css";
 
 const db = supabase.schema("menu_app");
@@ -1832,6 +1833,13 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                     </button>
                   </div>
                 ),
+              },
+              {
+                key: "examtypes",
+                emoji: "❓",
+                title: "על מה הצוות נבחן",
+                summary: "סוגי השאלות, עם דוגמאות מהתפריט שלכם",
+                node: <ExamExplainer items={items} />,
               },
               {
                 key: "team",

@@ -562,7 +562,7 @@ export default function OwnerMenu({
 
       {(group || cat) && (
         <button type="button" className="au-back" onClick={() => (cat ? setCat(null) : setGroup(null))}>
-          <ChevronRight size={15} /> {cat ? title : "כל התפריטים"}
+          <ChevronRight size={19} /> {cat ? title : "כל התפריטים"}
         </button>
       )}
 

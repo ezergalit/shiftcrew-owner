@@ -417,9 +417,13 @@
    The manager's menu is three levels deep now (menu → category → dish), so each
    level needs a way up that is not the browser's. Quiet by design: it is a way
    back, not an action. */
-.aurora-skin .au-back{display:inline-flex; align-items:center; gap:5px; cursor:pointer;
-  font:inherit; font-size:12.5px; font-weight:700; color:var(--dim);
-  background:transparent; border:0; padding:6px 2px; margin:-2px}
+/* ⚠️ Sized like a button, not a caption (user, 31.8: «כפתור היציאה חזרה קטן
+   מדי») — 15px text on a 44px-minimum tap target, with a visible surface so it
+   reads as tappable. Still quieter than the content: a way back, not an action. */
+.aurora-skin .au-back{display:inline-flex; align-items:center; gap:7px; cursor:pointer;
+  font:inherit; font-size:15px; font-weight:800; color:var(--text);
+  background:rgba(238,240,246,.05); border:1px solid var(--hair); border-radius:14px;
+  padding:10px 16px 10px 18px; min-height:44px}
 .aurora-skin .au-back:hover{color:var(--em)}
 
 /* מסך עיון במנה (ניהול) — שכבה מלאה מעל הסרגל התחתון.
