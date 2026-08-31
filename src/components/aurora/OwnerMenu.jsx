@@ -454,10 +454,8 @@ export default function OwnerMenu({
               {countLabel(endOfCat, n)}. לעבור עליהן שוב, או להמשיך הלאה?
             </p>
           </div>
-          <button type="button" className="au-pill w-full justify-center py-3"
-            onClick={() => goTo(group, endOfCat, inGroupPoolForWalk)}>
-            לעבור שוב על {endOfCat}
-          </button>
+          {/* «להמשיך» ראשון ותמיד ירוק (יותם, 31.8) — ההמשך הוא ברירת המחדל,
+              והחזרה על הקטגוריה היא האופציה המשנית. */}
           {nextCat && (
             <button type="button" className="au-wide"
               onClick={() => goTo(group, nextCat, inGroupPoolForWalk)}>
@@ -470,6 +468,10 @@ export default function OwnerMenu({
               להמשיך ל{nextBoxCat}
             </button>
           )}
+          <button type="button" className="au-pill w-full justify-center py-3"
+            onClick={() => goTo(group, endOfCat, inGroupPoolForWalk)}>
+            לעבור שוב על {endOfCat}
+          </button>
           {/* Back to the DOOR — group cleared too. Clearing only the category left the
               service box's own single-category list on screen, which read as the button
               doing nothing (user, 30.8: "זה לא שולח אותי לקטגוריות"). */}
