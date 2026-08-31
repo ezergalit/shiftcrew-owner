@@ -51,6 +51,20 @@ export default function AccountSecurity({ ownerCode, secondaryName, onDeleted })
     setDelStep("closed"); setDelPassword(""); setDelConfirmText(""); setDelErr("");
   };
 
+  // The secondary's own password. Identity comes from the session server-side —
+  // the RPC matches restaurant + logged_in_as_name + the current password, so no id
+  // travels from the client. Other sessions of the same manager are revoked with it.
+  const changeMyPassword = async () => {
+    setPwMsg(null);
+    if (pwNew.length < 4) { setPwMsg({ ok: false, text: "הסיסמה החדשה חייבת להיות לפחות 4 תווים." }); return; }
+    setPwBusy(true);
+    const { error } = await db.rpc("change_manager_password", { p_current: pwCurrent, p_new: pwNew });
+    setPwBusy(false);
+    if (error) { setPwMsg({ ok: false, text: error.message.includes("שגויה") ? "הסיסמה הנוכחית שגויה." : "ההחלפה נכשלה. נסו שוב." }); return; }
+    setPwCurrent(""); setPwNew("");
+    setPwMsg({ ok: true, text: "הסיסמה שלך הוחלפה." });
+  };
+
   const changePassword = async () => {
     const problem = passwordProblem(pwNew);
     if (problem) { setPwMsg({ ok: false, text: problem }); return; }
@@ -91,18 +105,41 @@ export default function AccountSecurity({ ownerCode, secondaryName, onDeleted })
     } finally { setDelBusy(false); }
   };
 
-  // A secondary manager (added via add_owner_user) gets an explanation instead of
-  // the account controls: deletion is refused server-side anyway (not_primary in
-  // delete_restaurant_account), and the password form only changes the primary
-  // password, which they don't hold. Showing dead controls would just confuse.
+  // A secondary manager (added via add_owner_user) manages exactly one credential:
+  // their own password (user, 31.8: "שיהיה לו אופציה לשנות את הסיסמא של עצמו").
+  // The restaurant password and account deletion stay primary-only — deletion is
+  // refused server-side anyway (not_primary in delete_restaurant_account).
   if (secondaryName) {
     return (
-      <div className="bg-[#16181c] rounded-lg p-4 border border-[#22252b]">
-        <p className="font-bold text-[#eef0f6] flex items-center gap-2"><KeyRound size={15} /> אבטחת חשבון</p>
-        <p className="text-xs text-[#8a8aa0] leading-relaxed mt-2">
-          מחובר/ת כמנהל/ת ({secondaryName}). החלפת סיסמת המסעדה ומחיקת החשבון שמורות
-          לבעל/ת החשבון הראשי/ת בלבד.
-        </p>
+      <div className="space-y-3">
+        <div className="bg-[#16181c] rounded-lg p-4 border border-[#22252b] space-y-2">
+          <p className="font-bold text-[#eef0f6] flex items-center gap-2"><KeyRound size={15} /> הסיסמה שלי</p>
+          <p className="text-xs text-[#8a8aa0] leading-relaxed">
+            מחובר/ת כמנהל/ת ({secondaryName}). כאן מחליפים את הסיסמה האישית שלך —
+            סיסמת המסעדה ומחיקת החשבון שמורות לבעל/ת החשבון הראשי/ת.
+          </p>
+          <input
+            type="password" value={pwCurrent} onChange={(e) => setPwCurrent(e.target.value)}
+            placeholder="הסיסמה הנוכחית שלך" autoComplete="current-password"
+            className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-3 py-2 text-[16px] text-[#eef0f6] placeholder:text-[#8a8aa0] focus:outline-none focus:border-[#22c08c]"
+          />
+          <input
+            type="password" value={pwNew} onChange={(e) => setPwNew(e.target.value)}
+            placeholder="סיסמה חדשה (4 תווים לפחות)" autoComplete="new-password"
+            className="w-full bg-[#0c0d10] border border-[#22252b] rounded-lg px-3 py-2 text-[16px] text-[#eef0f6] placeholder:text-[#8a8aa0] focus:outline-none focus:border-[#22c08c]"
+          />
+          {pwMsg && (
+            <p className={`text-xs font-bold flex items-center gap-1.5 ${pwMsg.ok ? "text-[#22c08c]" : "text-[#e0315a]"}`}>
+              {pwMsg.ok ? <Check size={14} /> : <AlertTriangle size={14} />} {pwMsg.text}
+            </p>
+          )}
+          <button
+            onClick={changeMyPassword} disabled={pwBusy || !pwCurrent || !pwNew}
+            className="w-full bg-[#22252b] text-[#eef0f6] font-bold py-2 rounded-lg text-sm hover:bg-[#2c2e35] transition disabled:opacity-60"
+          >
+            {pwBusy ? <Loader2 size={14} className="animate-spin inline" /> : "החלפת הסיסמה שלי"}
+          </button>
+        </div>
       </div>
     );
   }
