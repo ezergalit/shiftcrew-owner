@@ -1016,7 +1016,12 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     if (editingItem.id) {
       const { error } = await db.from("menu_items").update(payload).eq("id", editingItem.id);
       if (error) { alert("שמירה נכשלה: " + error.message); return; }
-      setItems(items.map((i) => (i.id === editingItem.id ? { ...i, ...dishFromDb({ ...payload, id: editingItem.id }) } : i)));
+      // The update payload carries no menu_position/created_at (the DB keeps them), so map
+      // them back from the row in state — otherwise the edited dish lost its place in the
+      // list until the next reload (5.9).
+      setItems(items.map((i) => (i.id === editingItem.id
+        ? { ...i, ...dishFromDb({ ...payload, id: editingItem.id, menu_position: i.menuPosition ?? null, created_at: i.createdAt ?? null }) }
+        : i)));
     } else {
       // The insert genuinely needs the generated id back, but take the first row rather
       // than `.single()` so an unexpected empty response degrades into a refetch instead
