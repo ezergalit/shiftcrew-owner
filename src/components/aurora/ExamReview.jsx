@@ -24,7 +24,7 @@ export default function ExamReview({ restaurantId, teamMembers = [] }) {
 
   const load = async () => {
     if (!restaurantId) return;
-    const { data } = await db.from("exam_results").select("id, team_member_id, score, passed, dish_count, taken_at")
+    const { data } = await db.from("exam_results").select("id, team_member_id, score, passed, dish_count, taken_at, sitting_id")
       .eq("restaurant_id", restaurantId).eq("category", "general").eq("review_status", "pending").order("taken_at", { ascending: false });
     setPending(data || []);
   };
@@ -34,15 +34,21 @@ export default function ExamReview({ restaurantId, teamMembers = [] }) {
     if (open === r.id) { setOpen(null); return; }
     setOpen(r.id);
     if (answers[r.id]) return;
-    const from = new Date(new Date(r.taken_at).getTime() - 3 * 3600e3).toISOString();
-    const { data } = await db.from("exam_answers").select("dish, question, answer, lvl, created_at")
-      .eq("team_member_id", r.team_member_id).gte("created_at", from).lte("created_at", r.taken_at).order("created_at");
+    // לפי מזהה הישיבה כשיש (מדויק); חלון הזמן נשאר רק לשורות ישנות מלפני sitting_id.
+    let q = db.from("exam_answers").select("dish, question, answer, lvl, created_at").order("created_at");
+    if (r.sitting_id) q = q.eq("sitting_id", r.sitting_id);
+    else {
+      const from = new Date(new Date(r.taken_at).getTime() - 3 * 3600e3).toISOString();
+      q = q.eq("team_member_id", r.team_member_id).gte("created_at", from).lte("created_at", r.taken_at);
+    }
+    const { data } = await q;
     setAnswers((a) => ({ ...a, [r.id]: data || [] }));
   };
 
   const decide = async (r, status) => {
     setBusy(true);
-    const { error } = await db.from("exam_results").update({ review_status: status, reviewed_at: new Date().toISOString() }).eq("id", r.id);
+    // «לא להעביר» חייב לשנות משהו: `passed` נכתב false בהגשה, והאישור כאן הוא שקובע.
+    const { error } = await db.from("exam_results").update({ review_status: status, reviewed_at: new Date().toISOString(), passed: status === "passed" }).eq("id", r.id);
     setBusy(false);
     if (error) { console.error("exam review:", error.message); return; }
     setPending((p) => p.filter((x) => x.id !== r.id));

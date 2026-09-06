@@ -354,7 +354,8 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const REMINDER = "תזכורת ללמוד תפריט באפליקציה 📖";
   const quickSend = async (who) => {
     const list = (Array.isArray(who) ? who : [who]).filter(Boolean);
-    if (!list.length || !restaurant?.id) return;
+    if (!restaurant?.id) return;
+    if (!list.length) { window.alert("כולם כבר קיבלו תזכורת היום"); return; }   // אחרת ההקשה לא עושה כלום בשקט
     const { error } = await db.from("team_messages").insert(list.map((t) => ({ restaurant_id: restaurant.id, team_member_id: t.id, body: REMINDER })));
     if (error) { console.error("team_messages:", error.message); window.alert("השליחה נכשלה. נסו שוב."); return; }
     setMessagedToday((prev) => Object.fromEntries([...Object.entries(prev), ...list.map((t) => [t.id, { body: REMINDER, readAt: null }])]));
