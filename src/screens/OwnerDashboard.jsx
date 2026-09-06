@@ -349,6 +349,16 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const [profileSkipped, setProfileSkipped] = useState(() => !!localStorage.getItem(profileSkipKey));
   const [messageFor, setMessageFor] = useState(null);          // waiter being nudged
   const [messagedToday, setMessagedToday] = useState({});      // id -> { body, readAt }
+  // «יותר נוח לשלוח הודעות — הודעה אחת: תזכורת ללמוד תפריט באפליקציה» (יותם, 6.9).
+  // הקשה אחת שולחת; בלי דיאלוג, בלי אופציות. הדיאלוג הישן נשאר בקוד (טפט) ולא מחווט.
+  const REMINDER = "תזכורת ללמוד תפריט באפליקציה 📖";
+  const quickSend = async (who) => {
+    const list = (Array.isArray(who) ? who : [who]).filter(Boolean);
+    if (!list.length || !restaurant?.id) return;
+    const { error } = await db.from("team_messages").insert(list.map((t) => ({ restaurant_id: restaurant.id, team_member_id: t.id, body: REMINDER })));
+    if (error) { console.error("team_messages:", error.message); window.alert("השליחה נכשלה. נסו שוב."); return; }
+    setMessagedToday((prev) => Object.fromEntries([...Object.entries(prev), ...list.map((t) => [t.id, { body: REMINDER, readAt: null }])]));
+  };
   const [broadcastOpen, setBroadcastOpen] = useState(false);   // one message to the whole team
   const [menuGroupView, setMenuGroupView] = useState(null); // open menu (menu_group) or null
   const [editingBrief, setEditingBrief] = useState(false);
@@ -1440,11 +1450,11 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             restaurant={restaurant}
             items={items}
             teamMembers={teamMembers}
-            onBroadcast={() => setBroadcastOpen(true)}
+            onBroadcast={() => quickSend(teamMembers.filter((m) => !messagedToday[m.id]))}
             onGoSettings={() => { setTab("settings"); setOpenSetting(null); }}
             onSelectMember={setSheetFor}
             onRows={(rows) => setLiveByMember(Object.fromEntries(rows.map((r) => [r.id, r])))}
-            onMessage={setMessageFor}
+            onMessage={quickSend}
             messagedToday={messagedToday}
           />
         )}
@@ -1472,7 +1482,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                   restaurant={restaurant}
                   onSelectMember={setSheetFor}
                   onRows={(rows) => setLiveByMember(Object.fromEntries(rows.map((r) => [r.id, r])))}
-                  onMessage={setMessageFor}
+                  onMessage={quickSend}
                   messagedToday={messagedToday}
                 />
                 {teamMembers.length === 0 && (
@@ -2164,8 +2174,8 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           onToggle={setOpenHome}
           onSelectMember={setSheetFor}
           onRows={(rows) => setLiveByMember(Object.fromEntries(rows.map((r) => [r.id, r])))}
-          onMessage={setMessageFor}
-          onBroadcast={() => setBroadcastOpen(true)}
+          onMessage={quickSend}
+          onBroadcast={() => quickSend(teamMembers.filter((m) => !messagedToday[m.id]))}
           messagedToday={messagedToday}
           onClose={() => setShowTeam(false)}
         >
@@ -2200,7 +2210,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
         <MemberSheet
           detail={buildMemberDetail(sheetFor)}
           onClose={() => setSheetFor(null)}
-          onMessage={() => setMessageFor(sheetFor)}
+          onMessage={() => quickSend(sheetFor)}
           tasksOff={tasksOff}
         />
       )}

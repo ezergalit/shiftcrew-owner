@@ -3,6 +3,7 @@ import LearningStatus from "../LearningStatus";
 import WaiterPreview from "../WaiterPreview";
 import { greetingFor } from "../Greeting";
 import { Tile } from "./bits";
+import ExamReview from "./ExamReview";
 
 // The manager's home screen under the «אורורה» skin.
 //
@@ -81,6 +82,7 @@ export default function OwnerHome({
           git if this comes back — see this commit's parent. */}
 
       <div className="glass flex-1">
+        <ExamReview restaurantId={restaurant?.id} teamMembers={teamMembers} />
         <LearningStatus
           variant="aurora"
           restaurant={restaurant}
