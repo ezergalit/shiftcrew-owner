@@ -69,10 +69,10 @@ export default function ExamReview({ restaurantId, teamMembers = [] }) {
         <p className="text-[15px] font-black text-[#eef0f6]">🎓 מבחני תפריט לבדיקה</p>
         <span className="text-[12px] font-bold text-[#22c08c]">{pending.length}</span>
       </div>
-      {pending.map((r) => (
+      {pending.map((r) => { const left = (answers[r.id] || []).filter((a) => a.question === "__left__").length; return (
         <div key={r.id} className="rounded-xl border border-[#22252b] bg-[#101216]/70">
           <button type="button" onClick={() => openExam(r)} className="w-full text-right p-3 flex items-center justify-between">
-            <span className="text-[13.5px] font-black text-[#eef0f6]">{nameOf(r.team_member_id)}</span>
+            <span className="text-[13.5px] font-black text-[#eef0f6]">{nameOf(r.team_member_id)}{left >= 3 ? " ⚠️" : ""}</span>
             <span className="text-[12px] font-bold text-[#8a8aa0]">{r.started_at ? `${fmtWhen(r.started_at)}–${new Date(r.taken_at).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}` : fmtWhen(r.taken_at)} · <b style={{ color: r.score >= 70 ? "#22c08c" : "#f3c14b" }}>{r.score}%</b>{reports[r.id]?.length ? <span className="text-[#f3a712]"> · 🚩{reports[r.id].length}</span> : null}</span>
           </button>
           {open === r.id && (
@@ -85,6 +85,9 @@ export default function ExamReview({ restaurantId, teamMembers = [] }) {
                     {answerText(a.answer) ? <span className="text-[#8a8aa0]"> — {answerText(a.answer)}</span> : null}
                   </p>
                 ))}
+              {left >= 3 && (
+                <p className="text-[11.5px] font-black text-[#ff8098] bg-[#3a1d22]/60 rounded-lg p-2">⚠️ יצא מהאפליקציה {left} פעמים במהלך המבחן</p>
+              )}
               {reports[r.id]?.length > 0 && (
                 <div className="rounded-lg bg-[#33290f]/60 p-2 space-y-1">
                   <p className="text-[11.5px] font-black text-[#f3c14b]">🚩 {reports[r.id].length} שאלות שהמלצר דיווח עליהן — הוצאו מהציון</p>
@@ -98,7 +101,7 @@ export default function ExamReview({ restaurantId, teamMembers = [] }) {
             </div>
           )}
         </div>
-      ))}
+      ); })}
     </section>
   );
 }
