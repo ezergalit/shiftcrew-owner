@@ -25,7 +25,7 @@ export default function ExamReview({ restaurantId, teamMembers = [] }) {
 
   const load = async () => {
     if (!restaurantId) return;
-    const { data } = await db.from("exam_results").select("id, team_member_id, score, passed, dish_count, taken_at, sitting_id")
+    const { data } = await db.from("exam_results").select("id, team_member_id, score, passed, dish_count, taken_at, sitting_id, started_at")
       .eq("restaurant_id", restaurantId).eq("category", "general").eq("review_status", "pending").order("taken_at", { ascending: false });
     setPending(data || []);
   };
@@ -73,13 +73,13 @@ export default function ExamReview({ restaurantId, teamMembers = [] }) {
         <div key={r.id} className="rounded-xl border border-[#22252b] bg-[#101216]/70">
           <button type="button" onClick={() => openExam(r)} className="w-full text-right p-3 flex items-center justify-between">
             <span className="text-[13.5px] font-black text-[#eef0f6]">{nameOf(r.team_member_id)}</span>
-            <span className="text-[12px] font-bold text-[#8a8aa0]">{fmtWhen(r.taken_at)} · <b style={{ color: r.score >= 70 ? "#22c08c" : "#f3c14b" }}>{r.score}%</b>{reports[r.id]?.length ? <span className="text-[#f3a712]"> · 🚩{reports[r.id].length}</span> : null}</span>
+            <span className="text-[12px] font-bold text-[#8a8aa0]">{r.started_at ? `${fmtWhen(r.started_at)}–${new Date(r.taken_at).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}` : fmtWhen(r.taken_at)} · <b style={{ color: r.score >= 70 ? "#22c08c" : "#f3c14b" }}>{r.score}%</b>{reports[r.id]?.length ? <span className="text-[#f3a712]"> · 🚩{reports[r.id].length}</span> : null}</span>
           </button>
           {open === r.id && (
             <div className="px-3 pb-3 space-y-2">
               {!answers[r.id] ? <p className="text-[12px] text-[#8a8aa0]">טוען תשובות…</p>
                 : !answers[r.id].length ? <p className="text-[12px] text-[#8a8aa0]">אין פירוט תשובות למבחן הזה</p>
-                : answers[r.id].map((a, k) => (
+                : answers[r.id].filter((a) => a.question !== "__start__").map((a, k) => (
                   <p key={k} className="text-[12px] leading-snug text-[#c4c4d4]">
                     <span style={{ color: (LVL[a.lvl] || LVL[0])[1] }}>{(LVL[a.lvl] || LVL[0])[0]}</span> <b className="text-[#eef0f6]">{a.dish || a.question}</b>
                     {answerText(a.answer) ? <span className="text-[#8a8aa0]"> — {answerText(a.answer)}</span> : null}
