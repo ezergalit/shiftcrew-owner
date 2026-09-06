@@ -41,6 +41,12 @@ export default function ExamExplainer({ items }) {
   const exTrait = exDrink?.ingredients?.[1] || exDrink?.ingredients?.[0];
   const exRecAllergen = exAllergy?.allergens?.[0];
   const exPitfall = foods.find((i) => (i.pitfalls || []).length)?.pitfalls?.[0];
+  // הרכב הבוחן (יותם, 6.9): 60-70% מהמנות בקטגוריה, כל אחת «תמליץ ותאר», ועוד 1-2
+  // שאלות-סט בלי תיאור. הדוגמה נבנית מהקטגוריה הגדולה ביותר של המסעדה עצמה.
+  const byCat = foods.reduce((m, i) => { (m[i.category] ||= []).push(i); return m; }, {});
+  const bigCat = Object.entries(byCat).sort((a, b) => b[1].length - a[1].length)[0];
+  const quizSize = (n) => (n <= 4 ? n : n <= 8 ? Math.ceil(n * 0.7) : Math.round(n * 0.6));
+  const catForm = (c) => (/[A-Za-z]/.test(c || "") || (c || "").split(/\s+/).length >= 3 ? `המנות ב״${c}״` : `ה${c}`);
 
   return (
     <div className="space-y-3">
@@ -49,6 +55,23 @@ export default function ExamExplainer({ items }) {
         עונה <b>בכתיבה חופשית</b>, והבדיקה סולחת על טעויות כתיב והטיות (מתקתק =
         מתוק, ישראלי = ישראלית) — אבל לא על עובדה שגויה. אלו סוגי השאלות:
       </p>
+
+      {bigCat && (
+        <Kind emoji="🎲" title="הרכב הבוחן — 60-70% מהמנות, בכל פעם אחרות">
+          <p className="text-[11.5px] text-[#8a919e] mt-1 leading-relaxed">
+            בכל בוחן נבחרות באקראי כ-60-70% מהמנות בקטגוריה (ב{catForm(bigCat[0])}:{" "}
+            {quizSize(bigCat[1].length)} מתוך {bigCat[1].length}; קטגוריה של 4 מנות ומטה נבחנת כולה).
+            כל מנה = «תמליץ ותאר» — מה יש בה ואילו אלרגיות. ועוד 1-2 שאלות בלי תיאור בכלל:
+          </p>
+          <Example q={`אילו מנות מ${catForm(bigCat[0]).replace(/^ה/, "")} אורח טבעוני יכול להזמין? ציין את כולן.`} />
+          <Example q={`אורח מבקש המלצה מ${catForm(bigCat[0]).replace(/^ה/, "")} — משהו עם ${bigCat[1].find((i) => (i.ingredients || []).length)?.ingredients?.[0] || "אבוקדו"}. על מה תמליץ?`} />
+          <p className="text-[11.5px] text-[#8a919e] mt-1 leading-relaxed">
+            מה שנשאל נרשם, ומלצר שנכשל מקבל בפעם הבאה בוחן אחר — עד שכל המאגר מוצה.
+            <b> המבחן המלא</b> הוא כל הבחנים יחד: כל קטגוריה מקבלת מקום לפי מספר המנות
+            שבה (12 ראשונות ו-6 עיקריות ⇒ פי 2 שאלות על ראשונות), הכל ב-40 שאלות.
+          </p>
+        </Kind>
+      )}
 
       {exDish && (
         <Kind emoji="🍽️" title="תיאור ומרכיבים — הבסיס">
