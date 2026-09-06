@@ -20,6 +20,7 @@ export default function ExamReview({ restaurantId, teamMembers = [] }) {
   const [pending, setPending] = useState([]);
   const [open, setOpen] = useState(null);      // exam_results.id
   const [answers, setAnswers] = useState({});  // id -> rows
+  const [reports, setReports] = useState({});  // id -> דיווחי טעות של אותה ישיבה
   const [busy, setBusy] = useState(false);
 
   const load = async () => {
@@ -43,6 +44,11 @@ export default function ExamReview({ restaurantId, teamMembers = [] }) {
     }
     const { data } = await q;
     setAnswers((a) => ({ ...a, [r.id]: data || [] }));
+    // 🚩 שאלות שהמלצר דיווח עליהן כטעות באפליקציה — הן הוצאו מהציון, אז המנהל חייב לראות אותן
+    if (r.sitting_id) {
+      const { data: rep } = await db.from("exam_reports").select("dish, explanation, status").eq("sitting_id", r.sitting_id);
+      setReports((x) => ({ ...x, [r.id]: rep || [] }));
+    }
   };
 
   const decide = async (r, status) => {
@@ -67,7 +73,7 @@ export default function ExamReview({ restaurantId, teamMembers = [] }) {
         <div key={r.id} className="rounded-xl border border-[#22252b] bg-[#101216]/70">
           <button type="button" onClick={() => openExam(r)} className="w-full text-right p-3 flex items-center justify-between">
             <span className="text-[13.5px] font-black text-[#eef0f6]">{nameOf(r.team_member_id)}</span>
-            <span className="text-[12px] font-bold text-[#8a8aa0]">{fmtWhen(r.taken_at)} · <b style={{ color: r.score >= 70 ? "#22c08c" : "#f3c14b" }}>{r.score}%</b></span>
+            <span className="text-[12px] font-bold text-[#8a8aa0]">{fmtWhen(r.taken_at)} · <b style={{ color: r.score >= 70 ? "#22c08c" : "#f3c14b" }}>{r.score}%</b>{reports[r.id]?.length ? <span className="text-[#f3a712]"> · 🚩{reports[r.id].length}</span> : null}</span>
           </button>
           {open === r.id && (
             <div className="px-3 pb-3 space-y-2">
@@ -79,6 +85,12 @@ export default function ExamReview({ restaurantId, teamMembers = [] }) {
                     {answerText(a.answer) ? <span className="text-[#8a8aa0]"> — {answerText(a.answer)}</span> : null}
                   </p>
                 ))}
+              {reports[r.id]?.length > 0 && (
+                <div className="rounded-lg bg-[#33290f]/60 p-2 space-y-1">
+                  <p className="text-[11.5px] font-black text-[#f3c14b]">🚩 {reports[r.id].length} שאלות שהמלצר דיווח עליהן — הוצאו מהציון</p>
+                  {reports[r.id].map((x, k) => <p key={k} className="text-[11.5px] text-[#c4c4d4] leading-snug"><b>{x.dish || "—"}</b> — {x.explanation}</p>)}
+                </div>
+              )}
               <div className="flex gap-2 pt-1">
                 <button disabled={busy} onClick={() => decide(r, "passed")} className="flex-1 py-2.5 min-h-[44px] rounded-xl bg-[#22c08c] text-[#06231a] font-black text-[13px]">להעביר ✓</button>
                 <button disabled={busy} onClick={() => decide(r, "failed")} className="flex-1 py-2.5 min-h-[44px] rounded-xl bg-[#3a1d22] text-[#ff8098] font-black text-[13px]">לא להעביר</button>
