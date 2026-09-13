@@ -34,7 +34,10 @@ export default function OwnerHome({
     day: "numeric",
     month: "numeric",
   });
-  const who = restaurant?.owner_name || restaurant?.logged_in_as_name || "";
+  // ⚠️ `logged_in_as_name` ראשון — מנהל משני שנכנס עם הסיסמה שלו חייב להיות מבורך בשמו,
+  // לא בשם בעל המסעדה. זה הסדר בכל שאר האתר (OwnerDashboard); כאן הוא היה הפוך, והתסמין
+  // מוסתר רק כי למנהל המשני היחיד היום יש אותו שם כמו `owner_name`.
+  const who = restaurant?.logged_in_as_name || restaurant?.owner_name || "";
 
   return (
     // ⚠️ A flex column with `min-h-full` so the team card can take the leftover height.

@@ -365,29 +365,18 @@ export default function OwnerMenu({
     [inGroup]
   );
 
-  const shown = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return inGroup.filter((i) => {
-      if (cat && i.category !== cat) return false;
-      if (!needle) return true;
-      return (
-        i.name?.toLowerCase().includes(needle) ||
-        i.description?.toLowerCase().includes(needle) ||
-        i.category?.toLowerCase().includes(needle)
-      );
-    });
-  }, [inGroup, cat, q]);
-
-  // Under "הכל" the list keeps its category headings: at 152 dishes an unbroken list is
-  // unusable, and the heading is how the owner knows where they are while scrolling.
-  const sections = useMemo(() => {
-    if (cat || q.trim()) return [{ cat: null, list: shown }];
-    const order = [...new Set(shown.map((i) => i.category).filter(Boolean))];
-    const out = order.map((c) => ({ cat: c, list: shown.filter((i) => i.category === c) }));
-    const loose = shown.filter((i) => !i.category);
-    if (loose.length) out.push({ cat: "ללא קטגוריה", list: loose });
-    return out;
-  }, [shown, cat, q]);
+  // 🔴 13.9: תיבת החיפוש נעלמה מהמסך בעריכה קודמת, וה-state שלה (`q`), המסנן ו-`sections`
+  // נשארו מחושבים ולא מרונדרים. מנהל של 202 פריטים נשאר בלי שום דרך למצוא מנה חוץ
+  // מטאב ⇒ תפריט ⇒ קטגוריה ⇒ גלילה. התיבה חזרה, והמסנן מקפל אותיות סופיות — «יין» חייב
+  // למצוא «יינות» (אותה מלכודת של ן/נ שתועדה בצד המלצר).
+  const fold = (t) => String(t || "").toLowerCase()
+    .replace(/ך/g, "כ").replace(/ם/g, "מ").replace(/ן/g, "נ").replace(/ף/g, "פ").replace(/ץ/g, "צ");
+  const results = useMemo(() => {
+    const needle = fold(q.trim());
+    if (!needle) return [];
+    return pool.filter((i) =>
+      fold(i.name).includes(needle) || fold(i.description).includes(needle) || fold(i.category).includes(needle));
+  }, [pool, q]);
 
   // Put the manager back exactly where they were reading.
   useEffect(() => {
@@ -562,13 +551,38 @@ export default function OwnerMenu({
         </button>
       </div>
 
-      {(group || cat) && (
+      {(group || cat) && !q.trim() && (
         <button type="button" className="au-back" onClick={() => (cat ? setCat(null) : setGroup(null))}>
           <ChevronRight size={19} /> {cat ? title : "כל התפריטים"}
         </button>
       )}
 
-      {!group && !cat && (
+      <input
+        className="w-full rounded-xl bg-[#101216] border border-[#22252b] px-3 py-2.5 text-[14px] text-[#eef0f6] placeholder:text-[#5a5a6e]"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="חיפוש מנה בכל התפריט…"
+        aria-label="חיפוש מנה"
+      />
+
+      {q.trim() && (
+        <div className="space-y-2">
+          <p className="au-hint">{results.length === 0 ? "לא נמצאו מנות" : countLabel("", results.length)}</p>
+          {results.map((item) => (
+            <Dish
+              key={item.id}
+              item={item}
+              flagGroups={flagGroups}
+              tone={tone}
+              merged={merged}
+              onOpen={(d) => { listScroll.current = scrollRef?.current?.scrollTop || 0; setViewing(d); }}
+              onToggleStar={onToggleStar}
+            />
+          ))}
+        </div>
+      )}
+
+      {!group && !cat && !q.trim() && (
         <>
           <p className="au-hint">בוחרים תפריט, ואז קטגוריה — לחיצה על מנה פותחת אותה לעיון</p>
           {items.length === 0 && emptyNote}
@@ -591,13 +605,13 @@ export default function OwnerMenu({
         </>
       )}
 
-      {group && !cat && (
+      {group && !cat && !q.trim() && (
         <div className="flex flex-col gap-3">
           {groupCats.map((c) => catTile(c, inGroupPool.filter((i) => i.category === c)))}
         </div>
       )}
 
-      {cat && (
+      {cat && !q.trim() && (
         <div className="space-y-2">
           {/* The colour key, where the colours actually appear. keyGroups already folds
               merged restaurants down to two colours (red אלרגיות · amber מוקשים). */}

@@ -22,12 +22,28 @@ export default function ExamReview({ restaurantId, teamMembers = [] }) {
   const [answers, setAnswers] = useState({});  // id -> rows
   const [reports, setReports] = useState({});  // id -> דיווחי טעות של אותה ישיבה
   const [busy, setBusy] = useState(false);
+  // 🔴 13.9: הצ'יפים בשורה המכווצת (⚠️ יציאות · 🚩 דיווחים) נקראו מ-`answers`/`reports`,
+  // שמתמלאים **רק בהקשה** על השורה. כלומר מנהל שסורק את הרשימה ראה שורה נקייה גם למבחן
+  // שבו המלצר יצא מהאפליקציה שמונה פעמים — וזה בדיוק האות שהצ'יפ קיים בשבילו. שתי
+  // שאילתות ספירה נטענות עם הרשימה עצמה.
+  const [tally, setTally] = useState({});     // exam_results.id -> { left, reports }
 
   const load = async () => {
     if (!restaurantId) return;
     const { data } = await db.from("exam_results").select("id, team_member_id, score, passed, dish_count, taken_at, sitting_id, started_at")
       .eq("restaurant_id", restaurantId).eq("category", "general").eq("review_status", "pending").order("taken_at", { ascending: false });
-    setPending(data || []);
+    const rows = data || [];
+    setPending(rows);
+    const sids = rows.map((r) => r.sitting_id).filter(Boolean);
+    if (!sids.length) { setTally({}); return; }
+    const [{ data: exits }, { data: reps }] = await Promise.all([
+      db.from("exam_answers").select("sitting_id").eq("question", "__left__").in("sitting_id", sids),
+      db.from("exam_reports").select("sitting_id").in("sitting_id", sids),
+    ]);
+    const count = (list) => (list || []).reduce((m, x) => ({ ...m, [x.sitting_id]: (m[x.sitting_id] || 0) + 1 }), {});
+    const byExit = count(exits), byRep = count(reps);
+    setTally(Object.fromEntries(rows.filter((r) => r.sitting_id)
+      .map((r) => [r.id, { left: byExit[r.sitting_id] || 0, reports: byRep[r.sitting_id] || 0 }])));
   };
   useEffect(() => { load(); }, [restaurantId]);   // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -69,11 +85,12 @@ export default function ExamReview({ restaurantId, teamMembers = [] }) {
         <p className="text-[15px] font-black text-[#eef0f6]">🎓 מבחני תפריט לבדיקה</p>
         <span className="text-[12px] font-bold text-[#22c08c]">{pending.length}</span>
       </div>
-      {pending.map((r) => { const left = (answers[r.id] || []).filter((a) => a.question === "__left__").length; return (
+      {pending.map((r) => { const left = tally[r.id]?.left ?? (answers[r.id] || []).filter((a) => a.question === "__left__").length;
+                            const nRep = tally[r.id]?.reports ?? (reports[r.id]?.length || 0); return (
         <div key={r.id} className="rounded-xl border border-[#22252b] bg-[#101216]/70">
           <button type="button" onClick={() => openExam(r)} className="w-full text-right p-3 flex items-center justify-between">
             <span className="text-[13.5px] font-black text-[#eef0f6]">{nameOf(r.team_member_id)}{left >= 3 ? " ⚠️" : ""}</span>
-            <span className="text-[12px] font-bold text-[#8a8aa0]">{r.started_at ? `${fmtWhen(r.started_at)}–${new Date(r.taken_at).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}` : fmtWhen(r.taken_at)} · <b style={{ color: r.score >= 70 ? "#22c08c" : "#f3c14b" }}>{r.score}%</b>{reports[r.id]?.length ? <span className="text-[#f3a712]"> · 🚩{reports[r.id].length}</span> : null}</span>
+            <span className="text-[12px] font-bold text-[#8a8aa0]">{r.started_at ? `${fmtWhen(r.started_at)}–${new Date(r.taken_at).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}` : fmtWhen(r.taken_at)} · <b style={{ color: r.score >= 70 ? "#22c08c" : "#f3c14b" }}>{r.score}%</b>{nRep ? <span className="text-[#f3a712]"> · 🚩{nRep}</span> : null}</span>
           </button>
           {open === r.id && (
             <div className="px-3 pb-3 space-y-2">

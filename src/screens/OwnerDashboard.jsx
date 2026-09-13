@@ -3475,8 +3475,12 @@ function DishForm({ item, onChange, onSave, onCancel, onDelete, existingCategori
 // Also catches an attached Hebrew prefix ("התמלול", "בתמלול") and the proofreader's
 // sign-off — a review run came back with "התמלול נבדק מול התמונה. כל המילים תקינים."
 // as a line of its own, which would read as a menu category.
+// ⚠️ `\b` של JS הוא ASCII ולכן לעולם אינו קיים אחרי אות עברית: הסיומת הזו הפילה את
+// «## תמלול», «## הגהה» ו«## התמלול» ותפסה רק את הענף שנגמר בספרה. כותרת תועה כזו הופכת
+// בשקט לקטגוריה שהצוות לומד — בדיוק מה שהסינון הזה נועד למנוע. הגבול העברי הוא סוף
+// מחרוזת או תו שאינו אות עברית.
 const PROCESS_ARTIFACT_RE =
-  /^\s*#{0,3}\s*[הבו]?(מעבר\s*\d|תמלול|הגהה|pass\s*\d|transcription|proofread)\b.*$|נבדק מול הת|כל המילים והמספרים/i;
+  /^\s*#{0,3}\s*[הבו]?(מעבר\s*\d|תמלול|הגהה|pass\s*\d|transcription|proofread)(?![א-ת]).*$|נבדק מול הת|כל המילים והמספרים/i;
 function stripProcessArtifacts(text) {
   return String(text)
     .split("\n")
