@@ -25,3 +25,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; o
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
 }
+
+/* ── אנימציות הסיור (פורט מאפליקציית המלצר, 13.9) ──────────────────────────
+   הטבעת פועמת בזוהר ולא ב-opacity (פעימה על opacity מעלימה את הסימון לחצי שנייה),
+   והכרטיס נכנס ב-140ms — מהיר מספיק כדי לא להרגיש כמו המתנה. */
+@keyframes tour-ring {
+  0%, 100% { box-shadow: 0 0 0 3px #22c08c, 0 0 16px rgba(34,192,140,0.45); }
+  50%      { box-shadow: 0 0 0 3px #22c08c, 0 0 30px rgba(34,192,140,0.9); }
+}
+.animate-tour-ring { animation: tour-ring 1.6s ease-in-out infinite; }
+@keyframes tour-step {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-tour-step { animation: tour-step 0.14s cubic-bezier(0.2, 0.8, 0.2, 1); }

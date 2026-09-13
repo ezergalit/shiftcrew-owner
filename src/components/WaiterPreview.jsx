@@ -41,7 +41,7 @@ export default function WaiterPreview({ teamCode, variant }) {
     // the approved design puts it; everywhere else it stays the header chip it has been.
     if (variant === "aurora")
       return (
-        <button onClick={() => setOpen(true)} title="איך זה נראה אצל הצוות" className="au-pill ghost flex-none">
+        <button onClick={() => setOpen(true)} title="איך זה נראה אצל הצוות" data-tour="waiter-view" className="au-pill ghost flex-none">
           <span aria-hidden>📱</span> תצוגת מלצר
         </button>
       );
@@ -49,6 +49,7 @@ export default function WaiterPreview({ teamCode, variant }) {
       <button
         onClick={() => setOpen(true)}
         title="איך זה נראה אצל הצוות"
+        data-tour="waiter-view"
         className="flex items-center gap-1.5 bg-[#16181c] border border-[#22252b] rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-[#8a8aa0] hover:text-[#eef0f6] transition"
       >
         <Smartphone size={13} />

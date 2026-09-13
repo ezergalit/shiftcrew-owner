@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { X, ChevronLeft, Compass } from "lucide-react";
+import { useState, useLayoutEffect, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import { X, ChevronLeft, Compass, Hand } from "lucide-react";
 
 // A guided walk through the whole app — the user's ask was explicit: "tutorial שממש שולח
 // אותו לכל חלק באפליקציה", and later sharpened (2026-08-17): it must open as an up-front
@@ -27,33 +28,38 @@ import { X, ChevronLeft, Compass } from "lucide-react";
 const buildAuroraSteps = (teamCode) => [
   {
     tab: "home",
-    title: "הבית — מי לומד ומי צריך דחיפה",
-    body: "אין כאן שום דבר למלא. שלושה מספרים פותחים את היום — כמה מהתפריט הצוות שולט בו, כמה אנשים בצוות, וכמה למדו היום — ומתחתיהם רשימת הצוות: מי למד, מי נכנס ולא למד, ומי לא נכנס. הקשה על עובד פותחת את הפירוט שלו, ואפשר לשלוח הודעה למי שצריך תזכורת.",
+    title: "המסך הראשי — מי לומד",
+    body: "כאן רואים את הצוות: מי למד היום, מי נכנס ולא למד, ומי עוד לא נכנס. הקשה על שם פותחת את הפרטים שלו — כמה מהתפריט הוא כבר יודע וציוני המבחנים. וליד מי שלא למד יש כפתור ✉ ששולח לו תזכורת ללמוד.",
   },
   {
     tab: "home",
-    title: "תצוגת מלצר — לראות מה הצוות רואה",
-    body: "הכפתור ליד הברכה פותח את האפליקציה של הצוות בדיוק כמו שמלצר רואה אותה — התפריט, התרגול והבחנים. שווה הצצה אחרי כל שינוי שעשיתם.",
+    title: "תצוגת מלצר — האפליקציה של הצוות",
+    body: "הכפתור «📱 תצוגת מלצר» ליד הברכה פותח את האפליקציה של הצוות, חיה, בדיוק כמו שמלצר רואה אותה. בוא/י נפתח אותה.",
+    target: '[data-tour="waiter-view"]', cue: "הקש/י על «תצוגת מלצר»",
+  },
+  {
+    title: "זה מה שהמלצר רואה",
+    body: "אפשר לגלול בתפריט, להיכנס למנה, ולנסות את התרגול והבוחן — בדיוק כמו מלצר. כדאי להציץ כאן אחרי כל שינוי שעשית בתפריט, כדי לראות איך זה נראה אצלו. סוגרים ב-X למעלה.",
   },
   {
     tab: "menu",
-    title: "התפריט — עיון בהקשה, עריכה בהקשה נוספת",
-    body: "את התפריט אנחנו מזינים בשבילכם, עם התמונות. הקשה על מנה פותחת אותה לעיון — תיאור, מרכיבים ואזהרות — ומשם «עריכת המנה» משנה כל שדה, והשינוי מגיע לצוות מיד. ⭐ על מנה מסמן לצוות שהיא חשובה ונמכרת — היא תקפוץ ראשונה בתרגול ובשאלות התיאור במבחן. שינוי גדול? כתבו לנו בתיבה שבתחתית ואנחנו נטפל.",
+    title: "התפריט — הקשה לעיון, הקשה נוספת לעריכה",
+    body: "את התפריט אנחנו מזינים בשבילך, עם התמונות. הקשה על מנה פותחת אותה לקריאה, ומשם «עריכת המנה» משנה כל שדה — והשינוי מגיע לצוות מיד. הכוכב ⭐ מסמן מנה חשובה: היא תופיע ראשונה בתרגול ובמבחן. צריך שינוי גדול? כתוב/כתבי לנו בתיבה למטה.",
   },
   {
     tab: "settings",
-    title: "ההגדרות — קוד ההצטרפות והצוות",
-    body: `בראש המסך קוד ההצטרפות${teamCode ? ` (${teamCode})` : ""} — שיתוף בוואטסאפ בלחיצה, וכל מלצר נכנס עם הקוד והשם שלו, בלי סיסמאות. מתחתיו רשימת הצוות עם אחוז הידע של כל אחד, ואפשר גם להוסיף משתמש ניהול נוסף למסעדה.`,
+    title: "ההגדרות — קוד ההצטרפות",
+    body: `הקוד${teamCode ? ` ${teamCode}` : ""} הוא מה ששולחים לצוות — כפתור אחד משתף אותו בוואטסאפ, וכל מלצר נכנס עם הקוד והשם שלו, בלי סיסמה. מתחת נמצאת רשימת הצוות, ואפשר להוסיף עוד משתמש ניהול.`,
   },
   {
     tab: "settings",
-    title: "«על מה הצוות נבחן» — שקיפות מלאה",
-    body: "הסקשן עם סימן השאלה מראה בדיוק אילו שאלות האפליקציה בונה מהתפריט שלכם — המלצות, תיאורים ובטיחות — עם דוגמאות חיות מהמנות שלכם. ומכאן בהגדרות אפשר גם להריץ את הסיור הזה שוב, מתי שרוצים.",
+    title: "על מה הצוות נבחן",
+    body: "הסקשן עם ❓ מראה בדיוק אילו שאלות האפליקציה בונה מהתפריט שלך, עם דוגמאות מהמנות שלך. מכאן אפשר גם להריץ את הסיור הזה שוב בכל רגע.",
   },
   {
     tab: "home",
-    title: "זהו! המטרה: שהצוות יעבור את המבחנים",
-    body: "אתם מדגישים מה שחשוב ומתקנים מה שחסר; הצוות קורא, מתרגל ונבחן — והכול נמדד מעצמו. כאן בבית רואים בכל רגע מי מתקדם ומי צריך דחיפה.",
+    title: "זהו — זה כל מה שצריך",
+    body: "את/ה מסמן/ת מה חשוב ומתקן/ת מה שחסר; הצוות קורא, מתרגל ונבחן. כאן במסך הראשי רואים בכל רגע מי מתקדם ולמי כדאי לשלוח תזכורת.",
   },
 ];
 
@@ -95,6 +101,69 @@ const buildSteps = (teamCode) => [
   },
 ];
 
+// ── הזרקור ───────────────────────────────────────────────────────────────────
+// 13.9 (יותם: «הסיור נראה זול»). עד היום הסיור של הניהול היה כרטיס תחתון עם «הבא» —
+// המנהל קרא שבע פסקאות והגיע למסכים שמעולם לא נגע בהם. עכשיו אותו מנוע של אפליקציית
+// המלצר: המסך מוחשך חוץ מהאלמנט האמיתי, והדרך היחידה להתקדם בצעד כזה היא להקיש עליו.
+// ⚠️ Dim ברמת מודול (לא בתוך הרנדור) — קומפוננטה שנוצרת מחדש בכל רנדור מתמוטטת ונבנית
+// מחדש, וה-transition לעולם לא רץ. זה היה השורש של «הדיליי» בסיור של המלצר.
+const GLIDE_MS = 170;
+const EASE = "cubic-bezier(0.2, 0.8, 0.2, 1)";
+const GLIDE = ["top", "left", "width", "height"].map((k) => `${k} ${GLIDE_MS}ms ${EASE}`).join(", ");
+
+function Dim({ style }) {
+  return (
+    <div
+      className="absolute pointer-events-auto"
+      style={{ background: "rgba(0,0,0,0.72)", transition: `${GLIDE}, opacity 160ms`, touchAction: "none", overscrollBehavior: "contain", ...style }}
+      onWheel={(e) => e.preventDefault()}
+    />
+  );
+}
+
+const near = (a, b) => Math.abs(a - b) < 0.5;
+const sameRect = (a, b) => a === b || (!!a && !!b && near(a.top, b.top) && near(a.left, b.left) && near(a.width, b.width) && near(a.height, b.height));
+let LAST_HOLE = null;
+
+function useTargetRect(selector, step) {
+  const [rect, setRect] = useState(null);
+  useLayoutEffect(() => {
+    if (!selector) { setRect(null); return; }
+    let alive = true, raf = 0, ro = null, watched = null, scrolled = false;
+    const schedule = () => { if (alive && !raf) raf = requestAnimationFrame(measure); };
+    const measure = () => {
+      raf = 0;
+      if (!alive) return;
+      const el = document.querySelector(selector);
+      if (el && !scrolled) { scrolled = true; el.scrollIntoView({ block: "center", behavior: "auto" }); }
+      if (el !== watched) {
+        ro?.disconnect(); ro = null; watched = el;
+        if (el && typeof ResizeObserver !== "undefined") { ro = new ResizeObserver(schedule); ro.observe(el); }
+      }
+      const r = el ? el.getBoundingClientRect() : null;
+      const next = r ? { top: r.top, left: r.left, width: r.width, height: r.height } : null;
+      setRect((prev) => (sameRect(prev, next) ? prev : next));
+    };
+    measure();
+    const mo = new MutationObserver(schedule);
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style", "data-tour", "hidden"] });
+    window.addEventListener("resize", schedule);
+    window.addEventListener("scroll", schedule, true);
+    document.addEventListener("animationend", schedule, true);
+    document.addEventListener("transitionend", schedule, true);
+    const t = setInterval(schedule, 400);
+    return () => {
+      alive = false; mo.disconnect(); ro?.disconnect(); clearInterval(t);
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("scroll", schedule, true);
+      document.removeEventListener("animationend", schedule, true);
+      document.removeEventListener("transitionend", schedule, true);
+    };
+  }, [selector, step]);
+  return rect;
+}
+
 export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, withWelcome = false, aurora = false, tasksOff = aurora }) {
   // ⚠️ Two different flags. The CONTENT is chosen by `tasksOff`, because that is what
   // removes the daily update, the checklists and the owner's task list that the original
@@ -114,8 +183,36 @@ export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, 
 
   const go = (i) => {
     setStep(i);
-    onNavigate(STEPS[i].tab);
+    if (STEPS[i]?.tab) onNavigate(STEPS[i].tab);
   };
+  const rect = useTargetRect(s.target, step);
+  // צעד עם יעד: מקדם רק כשמקישים על האלמנט האמיתי (capture — גם ההנדלר של האפליקציה רץ).
+  const firedRef = useRef(-1);
+  useEffect(() => {
+    if (!s.target) return;
+    const onClick = (e) => {
+      if (firedRef.current >= step) return;
+      const el = document.querySelector(s.target);
+      if (el && (el === e.target || el.contains(e.target))) { firedRef.current = step; go(step + 1); }
+    };
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, [s.target, step]);
+  // «לא רואים את זה?» רק אחרי חסד — לא בפריים הראשון של הצעד
+  const [missing, setMissing] = useState(false);
+  useEffect(() => {
+    setMissing(false);
+    if (!s.target || rect) return;
+    const t = setTimeout(() => setMissing(true), 700);
+    return () => clearTimeout(t);
+  }, [s.target, rect, step]);
+  const pad = 6;
+  const live = rect && { top: Math.max(0, rect.top - pad), left: Math.max(0, rect.left - pad), width: rect.width + pad * 2, height: rect.height + pad * 2 };
+  if (live) LAST_HOLE = live;
+  const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+  const vw = typeof window !== "undefined" ? window.innerWidth : 375;
+  const hole = live;
+  const geo = hole || LAST_HOLE || { top: vh / 2, left: vw / 2, width: 0, height: 0 };
 
   // Up-front welcome: a centered, unmissable modal with an explicit skip — the tour must
   // introduce itself, not wait to be discovered in settings.
@@ -151,9 +248,20 @@ export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, 
     );
   }
 
-  return (
-    <div className="fixed inset-x-0 bottom-0 z-50 max-w-md mx-auto px-3 pb-20 pointer-events-none">
-      <div className={`pointer-events-auto bg-[#15202b] border ${accent.card} rounded-2xl p-4 shadow-2xl shadow-black/60 space-y-3`}>
+  // הכרטיס יושב מעל היעד או מתחתיו, כדי לא לכסות בדיוק את מה שהוא מצביע עליו.
+  const cardAtTop = hole ? hole.top + hole.height > vh * 0.55 : false;
+  return createPortal(
+    <div className="fixed inset-0 z-[80] pointer-events-none" dir="rtl">
+      {s.target && (<>
+        <Dim style={{ top: 0, left: 0, right: 0, height: geo.top }} />
+        <Dim style={{ top: geo.top + geo.height, left: 0, right: 0, bottom: 0 }} />
+        <Dim style={{ top: geo.top, left: 0, width: geo.left, height: geo.height }} />
+        <Dim style={{ top: geo.top, left: geo.left + geo.width, right: 0, height: geo.height }} />
+        <div className="absolute rounded-2xl pointer-events-none animate-tour-ring"
+          style={{ ...geo, opacity: hole ? 1 : 0, transition: `${GLIDE}, opacity 160ms` }} />
+      </>)}
+      <div className={`absolute inset-x-0 mx-auto w-full max-w-md px-3 ${s.target ? (cardAtTop ? "top-0 pt-[max(0.75rem,env(safe-area-inset-top))]" : "bottom-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]") : "bottom-0 pb-20"}`}>
+      <div key={step} className={`animate-tour-step pointer-events-auto bg-[#15202b] border ${accent.card} rounded-2xl p-4 shadow-2xl shadow-black/60 space-y-3`}>
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className={`text-[10px] font-bold ${accent.pill} px-2 py-0.5 rounded-full`}>
@@ -194,6 +302,22 @@ export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, 
               </button>
             </div>
           </div>
+        ) : s.target ? (
+          <div className="space-y-2">
+            {/* אין «הבא» — הצעד נגמר כשמקישים על הדבר עצמו. לקרוא על מסך ולהשתמש בו אינם אותו שיעור. */}
+            <div className="flex items-center gap-2 bg-[#22c08c]/10 border border-[#22c08c]/40 rounded-xl px-3 py-2.5">
+              <Hand size={15} className="text-[#22c08c] flex-shrink-0" />
+              <p className="text-[12px] font-black text-[#22c08c]">{s.cue}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {step > 0 && (
+                <button onClick={() => go(step - 1)} className="bg-[#22252b] text-[#8a8aa0] font-bold py-2 px-4 rounded-lg text-xs">הקודם</button>
+              )}
+              {missing && (
+                <button onClick={() => go(step + 1)} className="flex-1 bg-[#22252b] text-[#c4c4d4] font-bold py-2 rounded-lg text-xs">לא רואים את זה? אפשר להמשיך ←</button>
+              )}
+            </div>
+          </div>
         ) : (
           <div className="flex items-center gap-2">
             {step > 0 && (
@@ -218,6 +342,7 @@ export default function GuidedTour({ onNavigate, onClose, onSetupNow, teamCode, 
           ))}
         </div>
       </div>
+      </div>
     </div>
-  );
+  , document.body);
 }
