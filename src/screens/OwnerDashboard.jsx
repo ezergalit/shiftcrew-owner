@@ -16,6 +16,7 @@ import OperatorLine from "../components/OperatorLine";
 import SmartSuggestions from "../components/SmartSuggestions";
 import { categoryVisual } from "../lib/categoryVisual";
 import GuidedTour from "../components/GuidedTour";
+import OwnerTutorial from "../components/aurora/OwnerTutorial";
 import OwnerWelcomeVideo from "./OwnerWelcomeVideo";
 import BriefAssistant, { TagField, BriefCarryOver } from "../components/BriefAssistant";
 import BriefReadBoard from "../components/BriefReadBoard";
@@ -2234,7 +2235,18 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           onSent={(id, body) => setMessagedToday((prev) => ({ ...prev, [id]: { body, readAt: null } }))}
         />
       )}
-      {tourActive && (
+      {/* מדריך אינטראקטיבי — עותק של המסעדה, לצורך הלימוד בלבד (יותם, 13.9). הסיור הישן
+          (שכבה עם זרקור מעל הדשבורד החי) נשאר לעור הקלאסי, שבו המסכים אחרים לגמרי —
+          CREWDEMO, חשבון הבודקים, מקבל בדיוק את מה שהיה. */}
+      {tourActive && aurora && (
+        <OwnerTutorial
+          restaurant={restaurant}
+          items={items}
+          teamMembers={teamMembers}
+          onDone={handleTourClose}
+        />
+      )}
+      {tourActive && !aurora && (
         <GuidedTour
           onNavigate={setTab}
           onClose={handleTourClose}
