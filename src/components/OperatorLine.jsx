@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { MessageCircle, Check, Loader2, AlertTriangle, Clock } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { reportLoadError } from "../lib/loadError";
 
 const db = supabase.schema("menu_app");
 
@@ -19,11 +20,12 @@ export default function OperatorLine({ restaurant, title, placeholder, prefix = 
   const [requests, setRequests] = useState([]);
 
   const loadRequests = async () => {
-    const { data } = await db.from("operator_requests")
+    const { data, error: operator_requestsErr } = await db.from("operator_requests")
       .select("id, request, status, created_at")
       .eq("restaurant_id", restaurant.id)
       .order("created_at", { ascending: false })
       .limit(5);
+    if (operator_requestsErr) reportLoadError("operator_requests", operator_requestsErr);
     setRequests(data || []);
   };
 

@@ -4,6 +4,7 @@ import BrandMark from "../components/BrandMark";
 import { supabase } from "../lib/supabase";
 import { setSessionToken } from "../lib/appSession";
 import { RESTAURANT_COLUMNS } from "../screens/OwnerDashboard";
+import { reportLoadError } from "../lib/loadError";
 
 const SESSION_KEY = "menu-app-owner-session";
 const db = supabase.schema("menu_app");
@@ -104,8 +105,9 @@ export default function OwnerLogin({ onGranted }) {
         // trainee_code, tracked_flags…). Session restore always uses RESTAURANT_COLUMNS,
         // so a fresh login must too — otherwise the first day after every login runs on
         // a partial restaurant object. Token is set, so RLS lets this row through.
-        const { data: full } = await db.from("restaurants")
+        const { data: full, error: fullErr } = await db.from("restaurants")
           .select(RESTAURANT_COLUMNS).eq("id", restaurant.id).maybeSingle();
+        if (fullErr) reportLoadError("restaurants", fullErr);
         // Merge, don't replace: logged_in_as_name exists only on the RPC result.
         const profile = full ? { ...restaurant, ...full } : restaurant;
         localStorage.setItem(SESSION_KEY, JSON.stringify(toSession(profile)));
@@ -148,10 +150,11 @@ export default function OwnerLogin({ onGranted }) {
         }
         // The account exists but has no session yet — log in with the fresh
         // credentials to mint the token every subsequent request depends on.
-        const { data: login } = await db.rpc("owner_login_v2", {
+        const { data: login, error: loginErr } = await db.rpc("owner_login_v2", {
           p_owner_code: restaurant.owner_code,
           p_password: password
         });
+        if (loginErr) reportLoadError("owner_login_v2", loginErr);
         if (login?.token) setSessionToken(login.token);
         localStorage.setItem(SESSION_KEY, JSON.stringify(toSession(restaurant)));
         onGranted(restaurant);

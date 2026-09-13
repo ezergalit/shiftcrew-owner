@@ -7,19 +7,10 @@ import {
 import { supabase } from "../lib/supabase";
 
 const db = supabase.schema("menu_app");
-const dateStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const todayStr = () => dateStr(new Date());
-// Sunday, matching the weekly score reset on the waiter side — one week boundary for the
-// whole product, or the two halves would disagree about what "this week" means.
-const startOfWeekStr = () => {
-  const d = new Date();
-  d.setDate(d.getDate() - d.getDay());
-  return dateStr(d);
-};
-const startOfMonthStr = () => {
-  const d = new Date();
-  return dateStr(new Date(d.getFullYear(), d.getMonth(), 1));
-};
+// Dates come from lib/appDate — one definition of "today" for both apps. Sunday week
+// start, matching the weekly score reset on the waiter side.
+import { dateStr, todayStr, weekStartStr as startOfWeekStr, monthStartStr as startOfMonthStr } from "../lib/appDate";
+import { reportLoadError } from "../lib/loadError";
 
 // The shift, as the manager hands it over — opening, service, closing, learning.
 //
@@ -86,7 +77,11 @@ const LIBRARY = {
     ["לפרוס סטים: סכו״ם, מפיות וכוסות", ""],
     ["למלא מלח, פלפל ושמן זית", ""],
     ["לסדר ולמלא את עמדת המלצרים", "מפיות, קשים, תחתיות, פנקסים"],
-    ["לקבל מהמטבח את החוסרים והמנות המיוחדות", "זה מה שנכנס לעדכון היומי"],
+    // ⚠️ "לקבל מהמטבח את החוסרים והמנות המיוחדות · זה מה שנכנס לעדכון היומי" used to sit
+    // here. Collecting the shortages and writing them into the daily update is the
+    // MANAGER's job — its own subtitle said so — and it was being handed to every waiter.
+    // The waiter's side of it is reading the update, which the daily brief already covers.
+    ["לקרוא את העדכון היומי לפני שמתחילים", "מה חסר היום, על מה להמליץ, ומה מיוחד"],
     ["לבדוק שהמסופון והקופה עובדים", "כולל נייר לקבלות ועודף בקופה"],
     ["להדליק אורות, מוזיקה ומיזוג", "לוודא שהאזור נעים לסועדים לפני הפתיחה"],
     ["לבדוק את התפריטים", "נקיים, שלמים, בלי דפים חסרים או קרועים"],
@@ -227,8 +222,9 @@ export default function TasksManager({ restaurant, teamCount = 0, initialGroup =
         // ticked on Monday is still "done this week" on Thursday, which is the whole point
         // of a weekly checklist — counting only today would show it as undone for six days.
         const since = [startOfMonthStr(), startOfWeekStr()].sort()[0];
-        const { data: done } = await db.from("shift_task_done")
+        const { data: done, error: doneErr } = await db.from("shift_task_done")
           .select("task_id, team_member_id, done_date").in("task_id", ids).gte("done_date", since);
+        if (doneErr) reportLoadError("shift_task_done", doneErr);
         if (!alive) return;
         const today = todayStr(), week = startOfWeekStr(), month = startOfMonthStr();
         // Distinct members per task per period — one waiter ticking a task twice in a week

@@ -26,6 +26,9 @@ import SettingsSection from "../components/SettingsSection";
 import WaiterPreview from "../components/WaiterPreview";
 import { FLAG_GROUPS, FLAG_GROUP_BY_KEY, effectiveTrackedFlags } from "../lib/dishFlags";
 import { supabase } from "../lib/supabase";
+import { todayStr, daysFromTodayStr } from "../lib/appDate";
+import { reportLoadError } from "../lib/loadError";
+import ConnectionBanner from "../components/ConnectionBanner";
 
 const db = supabase.schema("menu_app");
 
@@ -368,7 +371,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const [savingStep, setSavingStep] = useState(false);
   const [onboardingErr, setOnboardingErr] = useState("");
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
 
   // "Turn a mission grey again" (user, 2026-08-21): a done home task can be reopened for
   // the SAME day. done is a derived fact (brief exists, checklist configured), so the
@@ -404,7 +407,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const dismissedTasks = restaurant?.dismissed_menu_tasks || {};
   const isDismissed = (id) => dismissedTasks[id] && dismissedTasks[id] >= today;
   const dismissMenuTask = async (id) => {
-    const until = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+    const until = daysFromTodayStr(14);
     const next = { ...dismissedTasks, [id]: until };
     onRestaurantUpdated?.({ ...restaurant, dismissed_menu_tasks: next });
     const { error } = await db.from("restaurants").update({ dismissed_menu_tasks: next }).eq("id", restaurant.id);
@@ -466,8 +469,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // "להגדרה" over a checklist that now exists.
   const reloadTaskCounts = async () => {
     if (!restaurant?.id) return;
-    const { data } = await db.from("shift_tasks")
+    const { data, error: shift_tasksErr } = await db.from("shift_tasks")
       .select("id, kind, expires_on").eq("restaurant_id", restaurant.id).eq("active", true);
+    if (shift_tasksErr) reportLoadError("shift_tasks", shift_tasksErr);
     const live = (data || []).filter((t) => !t.expires_on || t.expires_on >= today);
     setActiveTaskCount(live.length);
     const byKind = {};
@@ -525,9 +529,10 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       if (teamErr) console.error("could not load team members:", teamErr.message, teamErr.code);
       if (alive && !teamErr) setTeamMembers(teamData || []);
 
-      const { data: lbData } = await db.from("leaderboard")
+      const { data: lbData, error: lbDataErr } = await db.from("leaderboard")
         .select("team_member_id, points, mastered_count, today_count, last_study_date")
         .eq("restaurant_id", restaurant.id);
+      if (lbDataErr) reportLoadError("leaderboard", lbDataErr);
       if (alive && lbData) {
         const map = {};
         lbData.forEach((r) => { map[r.team_member_id] = r; });
@@ -540,9 +545,10 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       // *which* dishes they're getting wrong. Both of those are what the owner needs.
       const memberIds = (teamData || []).map((m) => m.id);
       if (memberIds.length) {
-        const { data: progData } = await db.from("menu_progress")
+        const { data: progData, error: progDataErr } = await db.from("menu_progress")
           .select("team_member_id, source_item_id, mastery")
           .in("team_member_id", memberIds);
+        if (progDataErr) reportLoadError("menu_progress", progDataErr);
         if (alive && progData) {
           const map = {};
           progData.forEach((r) => {
@@ -553,10 +559,11 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
         // Measurement points over time, for the improvement chart. Ordered oldest-first so
         // the chart can plot them without sorting again.
-        const { data: snapData } = await db.from("progress_snapshots")
+        const { data: snapData, error: snapDataErr } = await db.from("progress_snapshots")
           .select("team_member_id, taken_at, pct")
           .in("team_member_id", memberIds)
           .order("taken_at", { ascending: true });
+        if (snapDataErr) reportLoadError("progress_snapshots", snapDataErr);
         if (alive && snapData) {
           const map = {};
           snapData.forEach((r) => { (map[r.team_member_id] ||= []).push(r); });
@@ -567,10 +574,11 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       // Exam history — one row per completed attempt. Separate from menu_progress because
       // that only holds the current per-dish score; this is what shows whether someone
       // passed, when, and whether they keep failing the same category.
-      const { data: examData } = await db.from("exam_results")
+      const { data: examData, error: examDataErr } = await db.from("exam_results")
         .select("team_member_id, category, score, passed, taken_at")
         .eq("restaurant_id", restaurant.id)
         .order("taken_at", { ascending: false });
+      if (examDataErr) reportLoadError("exam_results", examDataErr);
       if (alive && examData) {
         const map = {};
         examData.forEach((r) => { (map[r.team_member_id] ||= []).push(r); });
@@ -582,23 +590,26 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       //
       // `read_at` is filled by the waiter app when they tap "קראתי" on the message, so the
       // manager sees whether the nudge actually landed rather than only that it was sent.
-      const { data: msgData } = await db.from("team_messages")
+      const { data: msgData, error: msgDataErr } = await db.from("team_messages")
         .select("team_member_id, body, created_at, read_at")
         .eq("restaurant_id", restaurant.id)
         .gte("created_at", `${today}T00:00:00`)
         .order("created_at", { ascending: true });
+      if (msgDataErr) reportLoadError("team_messages", msgDataErr);
       if (alive && msgData) {
         const map = {};
         msgData.forEach((m) => { map[m.team_member_id] = { body: m.body, readAt: m.read_at }; }); // last one wins
         setMessagedToday(map);
       }
 
-      const { data: readsData } = await db.from("daily_brief_reads")
+      const { data: readsData, error: readsDataErr } = await db.from("daily_brief_reads")
         .select("team_member_id").eq("restaurant_id", restaurant.id).eq("date", today);
+      if (readsDataErr) reportLoadError("daily_brief_reads", readsDataErr);
       if (alive && readsData) setBriefReadsToday(new Set(readsData.map((r) => r.team_member_id)));
 
-      const { data: briefData } = await db.from("daily_brief")
+      const { data: briefData, error: briefDataErr } = await db.from("daily_brief")
         .select("*").eq("restaurant_id", restaurant.id).eq("date", today).maybeSingle();
+      if (briefDataErr) reportLoadError("daily_brief", briefDataErr);
       if (alive && briefData) {
         setDailyBrief(briefData);
         setBriefDraft({
@@ -609,21 +620,24 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
         });
       }
 
-      const { data: prevData } = await db.from("daily_brief")
+      const { data: prevData, error: prevDataErr } = await db.from("daily_brief")
         .select("date, missing_items, new_items, oven_items, notes")
         .eq("restaurant_id", restaurant.id).lt("date", today)
         .order("date", { ascending: false }).limit(1).maybeSingle();
+      if (prevDataErr) reportLoadError("daily_brief", prevDataErr);
       if (alive && prevData) setPrevBrief(prevData);
 
-      const { data: usersData } = await db.from("owner_users")
+      const { data: usersData, error: usersDataErr } = await db.from("owner_users")
         .select("id, name, created_at").eq("restaurant_id", restaurant.id).order("created_at");
+      if (usersDataErr) reportLoadError("owner_users", usersDataErr);
       if (alive && usersData) setOwnerUsers(usersData);
 
       // Shift tasks feed two places on the home screen: the count tile, and each waiter's
       // "משימות משמרת 3/7" line in their detail sheet. TasksManager still loads the full
       // rows itself when its panel opens — this is only what the summaries need.
-      const { data: taskRows } = await db.from("shift_tasks")
+      const { data: taskRows, error: taskRowsErr } = await db.from("shift_tasks")
         .select("id, kind, expires_on").eq("restaurant_id", restaurant.id).eq("active", true);
+      if (taskRowsErr) reportLoadError("shift_tasks", taskRowsErr);
       // A one-day task that expired yesterday is history, not workload.
       const liveTasks = (taskRows || []).filter((t) => !t.expires_on || t.expires_on >= today);
       if (alive) {
@@ -633,8 +647,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
         setTaskCountByKind(byKind);
       }
       if (alive && taskRows?.length) {
-        const { data: doneRows } = await db.from("shift_task_done")
+        const { data: doneRows, error: doneRowsErr } = await db.from("shift_task_done")
           .select("team_member_id").in("task_id", taskRows.map((t) => t.id)).eq("done_date", today);
+        if (doneRowsErr) reportLoadError("shift_task_done", doneRowsErr);
         if (alive && doneRows) {
           const map = {};
           doneRows.forEach((r) => { map[r.team_member_id] = (map[r.team_member_id] || 0) + 1; });
@@ -994,8 +1009,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     // re-run of onboarding.
     const profile = DIFFICULTY_PROFILES[onboardingDifficulty];
     if (profile) {
-      const { data: existingCfg } = await db.from("exam_config")
+      const { data: existingCfg, error: existingCfgErr } = await db.from("exam_config")
         .select("restaurant_id").eq("restaurant_id", restaurant.id).maybeSingle();
+      if (existingCfgErr) reportLoadError("exam_config", existingCfgErr);
       if (!existingCfg) {
         const { error: cfgErr } = await db.from("exam_config").insert({
           restaurant_id: restaurant.id,
@@ -1263,6 +1279,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // Main App
   return (
     <div className="h-screen max-w-md mx-auto bg-[#0c0d10] text-[#eef0f6] flex flex-col" dir="rtl">
+      {/* Offline / failed read / expired session — the three failures that used to
+          render as an ordinary empty dashboard. */}
+      <ConnectionBanner restaurant={restaurant} onSignOut={onSignOut} />
       {/* Header */}
       <div className="px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-4 border-b border-[#22252b] flex items-center justify-between gap-2">
         {/* Sign-out sits in the top-right corner (first in RTL flow) instead of the bottom
@@ -1273,12 +1292,14 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             first-time visitor should never have to guess what 📊 opens. */}
         <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
           <SignOutButton onSignOut={onSignOut} />
-          <span className="text-[8.5px] font-bold text-[#5a5a6e]">יציאה</span>
+          <span className="text-[10px] font-bold text-[#9aa0ab]">יציאה</span>
         </div>
         <div className="flex-1 min-w-0 text-center">
-          <h1 className="text-lg font-black truncate">{restaurant?.name || "המסעדה שלי"}</h1>
+          <h1 dir="auto" className="text-lg font-black leading-tight line-clamp-2 break-words">
+            {restaurant?.name || "המסעדה שלי"}
+          </h1>
           {restaurant?.logged_in_as_name ? (
-            <p className="text-[11px] text-[#8a8aa0] truncate">מחובר/ת כ{restaurant.logged_in_as_name}</p>
+            <p dir="auto" className="text-[11px] text-[#8a8aa0] truncate">מחובר/ת כ{restaurant.logged_in_as_name}</p>
           ) : restaurant?.owner_name ? (
             <p className="text-[11px] text-[#8a8aa0] truncate">
               {genderWord(restaurant.owner_gender, "מחובר", "מחוברת")} כ{restaurant.owner_name}
@@ -1297,7 +1318,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             >
               <BarChart3 size={16} />
             </button>
-            <span className="text-[8.5px] font-bold text-[#5a5a6e]">הצוות</span>
+            <span className="text-[10px] font-bold text-[#9aa0ab]">הצוות</span>
           </div>
           {/* Always within reach, on every tab — the owner should never wonder what the
               team is actually seeing. */}
@@ -2362,8 +2383,9 @@ function MenuSetupTutorial({ restaurant, onDone }) {
       // Seed the learning order from the menu's own order. Only written when the owner
       // hasn't arranged it themselves — their arrangement always outranks the import.
       const catOrder = categories.map((c) => (c.name || "כללי").trim()).filter(Boolean);
-      const { data: cfg } = await db.from("exam_config")
+      const { data: cfg, error: cfg2Err } = await db.from("exam_config")
         .select("category_order").eq("restaurant_id", restaurant.id).maybeSingle();
+      if (cfg2Err) reportLoadError("exam_config", cfg2Err);
       if (!cfg?.category_order?.length) {
         const { error: cfgErr } = await db.from("exam_config").upsert(
           { restaurant_id: restaurant.id, category_order: catOrder, updated_at: new Date().toISOString() },

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, X, Clock, HelpCircle } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { todayStr } from "../lib/appDate";
 
 const db = supabase.schema("menu_app");
 
@@ -18,7 +19,7 @@ export default function BriefReadBoard({ restaurant, brief }) {
   const [members, setMembers] = useState(null);
   const [reads, setReads] = useState([]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
   const hasBrief =
     (brief?.missing_items || []).length ||
     (brief?.new_items || []).length ||

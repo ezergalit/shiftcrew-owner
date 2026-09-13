@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronUp, ChevronDown, Check, Info, Loader2, Sparkles } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { FACET_META, RECOMMENDED_FACETS, facetsForMenu, DEFAULT_PATH } from "../lib/examFacets";
+import { reportLoadError } from "../lib/loadError";
 
 const db = supabase.schema("menu_app");
 
@@ -48,7 +49,8 @@ export default function LearningPathSettings({ restaurant, items, onSaved }) {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const { data } = await db.from("exam_config").select("*").eq("restaurant_id", restaurant.id).maybeSingle();
+      const { data, error: exam_configErr } = await db.from("exam_config").select("*").eq("restaurant_id", restaurant.id).maybeSingle();
+      if (exam_configErr) reportLoadError("exam_config", exam_configErr);
       if (!alive) return;
       const savedFacets = (data?.facets || []).filter((f) => supported.includes(f));
       setRanked(savedFacets.length ? savedFacets : supported);
