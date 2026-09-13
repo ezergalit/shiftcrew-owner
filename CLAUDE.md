@@ -1351,3 +1351,28 @@ lucide מיובאים כ"לא מוגדרים", כי `[{,]…` בולע את הפ
    על status) — קודם רק המפעיל ב-SQL.
 3. **מבחן מלא חייב להיכנס לתור**: policy דורשת `review_status='pending'` ל-general (ו-null לבחנים) —
    קודם אפשר היה להגיש passed=true בלי בדיקה. אומת ב-REST: general בלי pending ⇒ נדחה · עם pending ⇒ 201.
+
+## 🧭 13.9 — הסיור של המנהל נכתב מחדש, והוא נכנס לתצוגת המלצר
+
+הערות יותם על הנוסח: «theres nothing here to fill out — this line is meaningless…
+this is the main menu, you can see here who studies and you can send them messages
+to study» · «3 numbers opening the day? what does that even mean, it dosent
+translate to hebrew so well». ואז: «it needs to show how to use the waiter
+perspective».
+
+- **כל תחנה מתארת מה המנהל עושה במסך הזה**, ושום תחנה לא מזכירה דבר שהוסר.
+  תחנת הבית אומרת מי ברשימה ושה-✉ ליד מי שלא למד שולח תזכורת.
+- **שתי תחנות חדשות פותחות את «תצוגת מלצר» ונשארות בתוכה** — המנהל רואה את
+  האפליקציה של הצוות במקום לשמוע שהיא קיימת. `data-tour="waiter-view"` על שני
+  הווריאנטים של הכפתור ב-`WaiterPreview.jsx`.
+- **תחנה עם `target` לא מציגה «הבא»** אלא סרגל עם אייקון יד, ומתקדמת רק כשהמנהל
+  מקיש על הפקד האמיתי (מאזין בשלב ה-capture + `firedRef` נגד ירי כפול).
+- **מנוע הזרקור של המלצר הועתק לכאן**: `Dim` ברמת מודול (לא בתוך הרנדר), מדידה
+  ב-`useLayoutEffect` עם Mutation/Resize observers במקום פולינג, `LAST_HOLE`
+  ששורד remount, וכל השכבה ב-`createPortal` ל-`body` ב-`z-[80]`.
+  ⚠️ הפורטל הוא מה שמוציא את הסיור מ«הכלא של `backdrop-filter`» — בלעדיו כל שכבת
+  `fixed inset-0` בתוך כרטיס זכוכית נמדדת מול הכרטיס.
+- `@keyframes tour-ring` / `tour-step` נוספו ל-`src/index.css`.
+
+⚠️ **זו הפעם החמישית שהסיור התיישן** אחרי שינוי ניווט או תוכן. הכלל עומד: כל
+שינוי במסכים ⇒ לעבור על `buildAuroraSteps` **ועל** `buildSteps`.
