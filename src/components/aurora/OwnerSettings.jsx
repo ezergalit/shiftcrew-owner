@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Section, initials, pctColor, membersLabel, lastSeenNote } from "./bits";
+import CodeChanger from "./CodeChanger";
 
 
 // The manager's settings tab under the «אורורה» skin.
@@ -62,6 +63,8 @@ export default function OwnerSettings({
   setOpenSetting,
   onSelectMember,
   onSignOut,
+  onCodeChanged,      // קוד שהוחלף ⇒ ה-state של הדשבורד מתעדכן מיד (שיתוף, תצוגת מלצר)
+  managerCount = 0,   // כמה מנהלים נוספים נכנסים עם קוד הבעלים
   sections,           // the heavier panels, rendered by the dashboard: { key, emoji, title, summary, node }
 }) {
   const [copied, setCopied] = useState(false);
@@ -105,6 +108,7 @@ export default function OwnerSettings({
           <button type="button" className="au-pill ghost" onClick={copy}>
             {copied ? "הקוד הועתק ✓" : "העתקת הקוד"}
           </button>
+          <CodeChanger kind="team" current={code} onChanged={(c) => onCodeChanged?.({ team_code: c })} />
         </div>
         {/* 🚫 The trainee code is hidden for now (user, 29.8: "cancel the code for waiters
             that are starting out"). The column and the server path are untouched — a code
@@ -156,6 +160,20 @@ export default function OwnerSettings({
           )}
           <div className="srow"><span>מנות בתפריט</span><span className="v">{itemCount}</span></div>
           <div className="srow"><span>קוד בעלים (לכניסה)</span><span className="v tracking-wider" dir="ltr">{restaurant?.owner_code}</span></div>
+          {/* קוד הבעלים נבדק בשרת מול סיסמת החשבון הראשית, ולכן מנהל משני לא יכול להשלים
+              את הפעולה — אותו שער שיש ל-AccountSecurity, ובאותה לשון. */}
+          <div className="pt-2">
+            {restaurant?.logged_in_as_name ? (
+              <p className="text-[12px] text-[#8a919e] leading-relaxed">שינוי קוד הבעלים שמור לבעל/ת החשבון הראשי/ת.</p>
+            ) : (
+              <CodeChanger
+                kind="owner"
+                current={restaurant?.owner_code}
+                others={managerCount}
+                onChanged={(c) => onCodeChanged?.({ owner_code: c })}
+              />
+            )}
+          </div>
         </Section>
         {sections.map((s) => (
           <Section

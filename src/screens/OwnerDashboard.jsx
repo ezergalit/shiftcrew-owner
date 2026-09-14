@@ -1869,6 +1869,8 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             setOpenSetting={setOpenSetting}
             onSelectMember={setSheetFor}
             onSignOut={onSignOut}
+            onCodeChanged={(patch) => onRestaurantUpdated?.({ ...restaurant, ...patch })}
+            managerCount={ownerUsers.length}
             sections={[
               {
                 key: "managers",
@@ -1879,8 +1881,8 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                   <div className="space-y-3">
                     <p className="text-[12.5px] text-[#8a919e] leading-relaxed">
                       מנהל נוסף נכנס עם קוד הבעלים ({restaurant?.owner_code}) והסיסמה האישית
-                      שלו, רואה את שמו בברכה, ויכול לנהל הכל — חוץ מהחלפת סיסמת המסעדה
-                      ומחיקת החשבון, ששמורות לסיסמה הראשית.
+                      שלו, רואה את שמו בברכה, ויכול לנהל הכל — חוץ מהחלפת סיסמת המסעדה,
+                      שינוי קוד הבעלים ומחיקת החשבון, ששמורים לסיסמה הראשית.
                     </p>
                     {ownerUsers.length > 0 && (
                       <div className="space-y-1.5">
