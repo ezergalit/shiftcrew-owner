@@ -16,10 +16,14 @@ export default function WaiterPreview({ teamCode, variant }) {
   const [open, setOpen] = useState(false);
   // Bumping the key remounts the iframe — the only reliable cross-origin "refresh".
   const [nonce, setNonce] = useState(0);
+  // המסגרת הייתה שחורה לגמרי עד שאפליקציית הצוות נצבעת — כשנייה וחצי שבהן
+  // נראה שההקשה לא עשתה כלום. `onLoad` של ה-iframe מכבה את המחוון.
+  const [loaded, setLoaded] = useState(false);
   // A new stamp on every open and every refresh tap. The iframe URL must change or a
   // WebView shell happily serves yesterday's cached index.html — which is exactly how
   // the preview drifted behind the real waiter app (user, 30.8: "כרגע זה לא מעודכן").
   const stamp = useMemo(() => Date.now(), [nonce, open]);
+  useEffect(() => { setLoaded(false); }, [nonce, open]);
 
   // The waiter app's own exit button, inside the frame, asks to be let out. It cannot
   // close this overlay itself — different origin — so it posts and we close.
@@ -97,13 +101,20 @@ export default function WaiterPreview({ teamCode, variant }) {
             ⚠️ בלי מסגרת אין «מחוץ לטלפון» להקיש עליו — ולכן ה-X חייב להיות 44px. */}
         <div
           onClick={(e) => e.stopPropagation()}
-          className="w-full h-full bg-[#0c0d10] overflow-hidden sm:w-auto sm:max-h-[760px] sm:aspect-[9/19] sm:max-w-full sm:rounded-[28px] sm:border-[6px] sm:border-[#22252b] sm:shadow-2xl"
+          className="relative w-full h-full bg-[#0c0d10] overflow-hidden sm:w-auto sm:max-h-[760px] sm:aspect-[9/19] sm:max-w-full sm:rounded-[28px] sm:border-[6px] sm:border-[#22252b] sm:shadow-2xl"
         >
           {/* ?preview=<team_code> opens the waiter app in read-only view mode (live since
               2026-08-23): a `role='preview'` session with no team member, so every write
               is refused by RLS. It overrides any waiter session stored in the iframe's
               localStorage and skips the profile/shift/brief gates. */}
+          {!loaded && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-[#8a8aa0] pointer-events-none">
+              <RotateCw size={22} className="animate-spin" />
+              <p className="text-[12px] font-bold">טוען את תצוגת המלצר…</p>
+            </div>
+          )}
           <iframe
+            onLoad={() => setLoaded(true)}
             key={nonce}
             src={teamCode ? `${WAITER_URL}/?preview=${encodeURIComponent(teamCode)}&t=${stamp}` : `${WAITER_URL}/?t=${stamp}`}
             title="תצוגת אפליקציית הצוות"
