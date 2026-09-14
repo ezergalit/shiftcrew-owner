@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { Star, ChevronRight, ChevronLeft } from "lucide-react";
 import { categoryVisual } from "../../lib/categoryVisual";
 import { FLAG_GROUPS, effectiveTrackedFlags } from "../../lib/dishFlags";
+import { hasWarning } from "../../lib/coachStops";
 
 // The manager's menu tab under the «אורורה» skin.
 //
@@ -310,7 +311,7 @@ export default function OwnerMenu({
   // `deep` = מסך מלא פתוח (מנה או סוף קטגוריה). שניהם portal ל-body, ולכן הפס
   // שיושב מעל הסרגל נשאר מאחוריהם — הוא מוחלף בעותק שמתארח בתוך המסך עצמו.
   useEffect(() => {
-    onStage?.({ group, cat, viewing: !!viewing, deep: !!viewing || !!endOfCat });
+    onStage?.({ group, cat, viewing: !!viewing, warn: hasWarning(viewing), deep: !!viewing || !!endOfCat });
   }, [group, cat, viewing, endOfCat, onStage]);
   // "menu" | "guides" — service training is not the menu (user, 29.8), so it is a
   // section of its own rather than a category chip sitting among the courses.

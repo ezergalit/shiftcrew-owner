@@ -314,7 +314,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const prevScreenRef = useRef(undefined);
   const [stage, setStage] = useState({ group: null, cat: null, viewing: false, deep: false });
   const onStage = useCallback((n) => setStage((p) => (
-    p.group === n.group && p.cat === n.cat && p.viewing === n.viewing && p.deep === n.deep ? p : n
+    p.group === n.group && p.cat === n.cat && p.viewing === n.viewing && p.warn === n.warn && p.deep === n.deep ? p : n
   )), []);
   // ⚠️ The «אורורה» skin is opt-in per restaurant (restaurants.features.design),
   // exactly like the waiter app. A restaurant without the flag — CREWDEMO, which
@@ -1433,7 +1433,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // הסיור הישן בדיוק כפי שהיה.
   // «הבנתי» הוא אחת משתי הדרכים היחידות שנועלות שורה (השנייה: צעדים קדימה).
   const coachNode = aurora && stop
-    ? <CoachBar text={textFor(stop, { group: stage?.group, cat: stage?.cat })} onOk={() => {
+    ? <CoachBar text={textFor(stop, { group: stage?.group, cat: stage?.cat, items: items.filter((i) => i.category === stage?.cat) })} onOk={() => {
         pendingRef.current.delete(stop);
         setSeen((p) => markSeen(restaurant?.id, stop, p));
         setStop(null);
