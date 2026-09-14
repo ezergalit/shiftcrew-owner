@@ -3973,30 +3973,6 @@ function DetailsForm({ form, onChange, onSave, onCancel }) {
         </button>
       </div>
 
-      {onDelete && (
-        !confirmingDelete ? (
-          <button
-            onClick={() => setConfirmingDelete(true)}
-            className="w-full text-[11px] font-bold text-[#8a8aa0] py-1.5 hover:text-[#e0315a] transition"
-          >
-            <Trash2 size={11} className="inline ml-1" /> מחיקת המנה מהתפריט
-          </button>
-        ) : (
-          <div className="bg-[#3a1d22] border border-[#e0315a]/40 rounded-lg p-3 space-y-2">
-            <p className="text-[11px] text-[#eef0f6] leading-relaxed">
-              למחוק את ״{item.name}״? המנה תוסר גם מאפליקציית הצוות, וההתקדמות עליה תימחק.
-            </p>
-            <div className="flex gap-2">
-              <button onClick={onDelete} className="flex-1 bg-[#e0315a] text-white text-[11px] font-black py-2 rounded-lg">
-                כן, למחוק
-              </button>
-              <button onClick={() => setConfirmingDelete(false)} className="px-4 bg-[#22252b] text-[#8a8aa0] text-[11px] font-black py-2 rounded-lg">
-                ביטול
-              </button>
-            </div>
-          </div>
-        )
-      )}
     </div>
   );
 }

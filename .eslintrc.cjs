@@ -13,6 +13,10 @@ module.exports = {
   plugins: ["react-hooks"],
   rules: {
     "react-hooks/rules-of-hooks": "error",
+    // 🔴 14.9: מזהה שנמחק מרשימת ה-import ונשאר בשימוש (`STOPS[screen]` נשאר כאן
+    // אחרי המעבר ל-`textFor`). `check-jsx-refs` קורא **JSX בלבד** ולכן עיוור לקריאה
+    // רגילה, וה-build ירוק. זה השער שתופס את זה.
+    "no-undef": "error",
     "react-hooks/exhaustive-deps": "off", // noisy here, and not the failure mode we hit
   },
   ignorePatterns: ["dist", "node_modules", "android", "ios", "supabase"],

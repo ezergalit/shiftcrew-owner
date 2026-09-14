@@ -65,38 +65,43 @@ export default function WaiterPreview({ teamCode, variant }) {
   // full-screen layer in this app; the portal is the fix, not a higher z-index.
   return createPortal(
     <div className="fixed inset-0 z-[70] bg-black/90 flex flex-col" dir="rtl">
-      <div className="flex items-center justify-between px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 bg-[#16181c] border-b border-[#22252b]">
-        <div>
-          <p className="text-sm font-black text-[#eef0f6]">כך נראית האפליקציה אצל הצוות</p>
-          <p className="text-[11px] text-[#8a8aa0]">
-            זו האפליקציה האמיתית, חיה. לחיצה מחוץ לטלפון חוזרת לניהול
-          </p>
+      {/* ⚠️ `min-w-0` + truncate על הטקסט: בלעדיו הכותרת דוחפת את שלושת הכפתורים
+          ונשברת לשתי שורות בטלפון (נמדד: כותרת 78px, כותרת משנה בשתי שורות).
+          ⚠️ 44px ולא 32 — רצפת מטרות ההקשה של הפרויקט, שהמסך הזה הפר. */}
+      <div className="flex items-center gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2.5 bg-[#16181c] border-b border-[#22252b]">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-black text-[#eef0f6] truncate">תצוגת מלצר</p>
+          <p className="text-[11px] text-[#8a8aa0] truncate">כך הצוות רואה את האפליקציה, חי</p>
         </div>
-        <div className="flex items-center gap-1.5">
-          <button onClick={() => setNonce((n) => n + 1)} title="רענון"
-            className="w-8 h-8 rounded-lg bg-[#191b1f] flex items-center justify-center text-[#8a8aa0]">
-            <RotateCw size={14} />
+        <div className="flex items-center gap-1 flex-none">
+          <button onClick={() => setNonce((n) => n + 1)} title="רענון" aria-label="רענון"
+            className="w-11 h-11 rounded-xl bg-[#191b1f] flex items-center justify-center text-[#8a8aa0] active:scale-95 transition-transform">
+            <RotateCw size={16} />
           </button>
-          <a href={WAITER_URL} target="_blank" rel="noreferrer" title="פתיחה בחלון מלא"
-            className="w-8 h-8 rounded-lg bg-[#191b1f] flex items-center justify-center text-[#8a8aa0]">
-            <ExternalLink size={14} />
+          <a href={WAITER_URL} target="_blank" rel="noreferrer" title="פתיחה בחלון מלא" aria-label="פתיחה בחלון מלא"
+            className="w-11 h-11 rounded-xl bg-[#191b1f] flex items-center justify-center text-[#8a8aa0] active:scale-95 transition-transform">
+            <ExternalLink size={16} />
           </a>
-          <button onClick={() => setOpen(false)} title="סגירה"
-            className="w-8 h-8 rounded-lg bg-[#e0315a] flex items-center justify-center text-white">
-            <X size={15} />
+          <button onClick={() => setOpen(false)} title="סגירה" aria-label="סגירה"
+            className="w-11 h-11 rounded-xl bg-[#e0315a] flex items-center justify-center text-white active:scale-95 transition-transform">
+            <X size={18} />
           </button>
         </div>
       </div>
       {/* Tapping anywhere OUTSIDE the phone bounces back to the owner app (user,
           2026-08-22) — the backdrop is the exit, the frame swallows its own clicks. */}
       <div
-        className="flex-1 flex items-center justify-center p-4 overflow-hidden"
+        className="flex-1 flex items-center justify-center p-0 sm:p-4 overflow-hidden"
         onClick={() => setOpen(false)}
       >
-        {/* A phone-shaped frame so it reads as "the waiter's phone", not a broken page. */}
+        {/* 🔴 טלפון בתוך טלפון. המנהל פותח את זה **מהטלפון שלו**, ואז מסגרת עם גבול
+            של 6px וריפוד 16 גזלה 54px מהרוחב — האפליקציה קיבלה 321px מתוך 375 והכל
+            נראה דחוס (נמדד). מהרוחב שבו יש באמת מקום למסגרת (sm) ומעלה היא חוזרת;
+            בטלפון התצוגה היא מלוא המסך, וזה גם מה שהמלצר באמת רואה.
+            ⚠️ בלי מסגרת אין «מחוץ לטלפון» להקיש עליו — ולכן ה-X חייב להיות 44px. */}
         <div
           onClick={(e) => e.stopPropagation()}
-          className="h-full max-h-[760px] aspect-[9/19] max-w-full rounded-[28px] border-[6px] border-[#22252b] bg-[#0c0d10] overflow-hidden shadow-2xl"
+          className="w-full h-full bg-[#0c0d10] overflow-hidden sm:w-auto sm:max-h-[760px] sm:aspect-[9/19] sm:max-w-full sm:rounded-[28px] sm:border-[6px] sm:border-[#22252b] sm:shadow-2xl"
         >
           {/* ?preview=<team_code> opens the waiter app in read-only view mode (live since
               2026-08-23): a `role='preview'` session with no team member, so every write
