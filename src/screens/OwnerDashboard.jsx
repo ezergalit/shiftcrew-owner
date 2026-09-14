@@ -17,7 +17,7 @@ import SmartSuggestions from "../components/SmartSuggestions";
 import { categoryVisual } from "../lib/categoryVisual";
 import GuidedTour from "../components/GuidedTour";
 import CoachBar from "../components/aurora/CoachBar";
-import { STOPS, screenOf, loadSeen, markSeen, resetSeen } from "../lib/coachStops";
+import { STOPS, screenOf, loadSeen, markSeen, resetSeen, isForward, FORWARD_DISMISS } from "../lib/coachStops";
 import OwnerWelcomeVideo from "./OwnerWelcomeVideo";
 import BriefAssistant, { TagField, BriefCarryOver } from "../components/BriefAssistant";
 import BriefReadBoard from "../components/BriefReadBoard";
@@ -305,10 +305,13 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   const [tab, setTab] = useState("home"); // home | menu | settings
 
   // ══ המדריך: כל מסך מסביר את עצמו בפעם הראשונה ══
-  // הטקסטים והמיפוי ב-`lib/coachStops.js`. `stop` נשאר עד «הבנתי» או עד עזיבת המסך,
-  // כדי שהשורה לא תיעלם מתחת לאצבע תוך כדי קריאה.
+  // הטקסטים והמיפוי ב-`lib/coachStops.js`. «אחורה» לא מוחק שורה (יותם, 14.9):
+  // שורה שהוצגה נשארת «ממתינה» ב-pendingRef עם מונה צעדי «קדימה», וננעלת כנראתה
+  // רק ב«הבנתי» או אחרי FORWARD_DISMISS צעדים קדימה. חזרה אחורה ⇒ תופיע שוב.
   const [seen, setSeen] = useState(() => loadSeen(restaurant?.id));
   const [stop, setStop] = useState(null);
+  const pendingRef = useRef(new Map());      // screen ⇒ צעדי קדימה מאז שהוצגה
+  const prevScreenRef = useRef(undefined);
   const [stage, setStage] = useState({ group: null, cat: null, viewing: false, deep: false });
   const onStage = useCallback((n) => setStage((p) => (
     p.group === n.group && p.cat === n.cat && p.viewing === n.viewing && p.deep === n.deep ? p : n
@@ -548,14 +551,27 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   }, [menuLoaded, restaurant?.id]);
 
   // ── המדריך ──
-  // הגעה למסך חדש ⇒ השורה שלו, פעם אחת. ⚠️ מצב האפליקציה הוא הטריגר, לא הקשה על
+  // הגעה למסך ⇒ השורה שלו, כל עוד לא ננעלה. ⚠️ מצב האפליקציה הוא הטריגר, לא הקשה על
   // אלמנט: מנהל שהגיע דרך מסלול אחר מקבל בדיוק את אותו הסבר.
+  // ⚠️ אין כאן markSeen על הצגה — זה מה שגרם ל«אחורה מוחק את ההסבר».
   useEffect(() => {
     if (!aurora) return;
     const screen = screenOf({ tab, stage, showAddForm });
+    const prev = prevScreenRef.current;
+    if (prev !== undefined && screen !== prev && isForward(prev, screen)) {
+      // צעד קדימה מקדם כל שורה ממתינה — חוץ מזו של המסך שנכנסנו אליו עכשיו.
+      for (const [s, n] of [...pendingRef.current]) {
+        if (s === screen) continue;
+        if (n + 1 >= FORWARD_DISMISS) {
+          pendingRef.current.delete(s);
+          setSeen((p) => markSeen(restaurant?.id, s, p));
+        } else pendingRef.current.set(s, n + 1);
+      }
+    }
+    prevScreenRef.current = screen;
     if (!screen || !STOPS[screen]) { setStop(null); return; }
     if (seen.has(screen)) { setStop((cur) => (cur === screen ? cur : null)); return; }
-    setSeen((prev) => markSeen(restaurant?.id, screen, prev));
+    if (!pendingRef.current.has(screen)) pendingRef.current.set(screen, 0);
     setStop(screen);
   }, [aurora, tab, stage, showAddForm, seen, restaurant?.id]);
 
@@ -1415,8 +1431,13 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
   // המדריך רץ רק על העור החדש; העור הקלאסי (CREWDEMO — חשבון הבודקים) ממשיך עם
   // הסיור הישן בדיוק כפי שהיה.
+  // «הבנתי» הוא אחת משתי הדרכים היחידות שנועלות שורה (השנייה: צעדים קדימה).
   const coachNode = aurora && stop
-    ? <CoachBar text={STOPS[stop]} onOk={() => setStop(null)} />
+    ? <CoachBar text={STOPS[stop]} onOk={() => {
+        pendingRef.current.delete(stop);
+        setSeen((p) => markSeen(restaurant?.id, stop, p));
+        setStop(null);
+      }} />
     : null;
 
   return (
@@ -1935,7 +1956,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                     summary: "להחזיר את שורת ההסבר בכל מסך",
                     node: (
                       <button
-                        onClick={() => { setSeen(resetSeen(restaurant?.id)); setTab("home"); }}
+                        onClick={() => { pendingRef.current = new Map(); setSeen(resetSeen(restaurant?.id)); setTab("home"); }}
                         className="au-wide"
                       >
                         🧭 להציג שוב את ההסברים
