@@ -107,7 +107,7 @@ export default function OwnerSettings({
           <button type="button" className="au-pill ghost" onClick={copy}>
             {copied ? "הקוד הועתק ✓" : "העתקת הקוד"}
           </button>
-          <CodeChanger kind="team" current={code} onChanged={(c) => onCodeChanged?.({ team_code: c })} />
+          <CodeChanger kind="team" current={code} restaurantName={restaurant?.name} onChanged={(c) => onCodeChanged?.({ team_code: c })} />
         </div>
         {/* 🚫 The trainee code is hidden for now (user, 29.8: "cancel the code for waiters
             that are starting out"). The column and the server path are untouched — a code

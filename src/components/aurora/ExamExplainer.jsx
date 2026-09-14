@@ -7,9 +7,30 @@
 // if a question type has no data here (no drinks, no cocktails), its card simply
 // doesn't render.
 
-const drinkKind = (cat) =>
-  /יין|יינ/.test(cat || "") ? "יין" : /סאקה/.test(cat || "") ? "סאקה" : /ביר(ה|ות)/.test(cat || "") ? "בירה" : null;
+// 🔴 הרשימה כיסתה יין/סאקה/בירה בלבד, ולכן וויסקי, טקילה, וודקה, ליקרים, ערק
+// ושתייה קלה נפלו ל«אוכל» — והקטגוריה הגדולה ביותר של סלון יצאה **וויסקי**:
+// «אילו מנות מוויסקי אורח טבעוני יכול להזמין?». בדיוק התלונה שהמסך הזה תוקן בגללה.
+// ⚠️ ההתאמה על **המילה הראשונה** (כמו `isDrinkCategory` ב-OwnerDashboard): «בקטנה
+// ליד האוזו» היא קטגוריית אוכל, ו«סלטים ועניינים» נתפסה פעם ע"י `יינ` שבתוכה.
+const head = (cat) => String(cat || "").trim().split(/[\s,·|/-]+/)[0] || "";
+const drinkKind = (cat) => {
+  const h = head(cat);
+  if (/^(יין|יינ|רוזה|מבעבע|שמפניה)/.test(h)) return "יין";
+  if (/^סאקה/.test(h)) return "סאקה";
+  if (/^ביר(ה|ות)/.test(h)) return "בירה";
+  if (/^(וודקה|וויסקי|ויסקי|טקילה|ג['\u05f3]ין|ערק|אוזו|אניס|קוניאק|ברנדי|ליקר|רום|אפריטיף|ורמוט)/.test(h)) return "משקה";
+  if (/^(שתייה|משקא|מיץ|לימונדה|סודה|קפה|שייק|קולה)/.test(h)) return "שתייה קלה";
+  return null;
+};
+const isCocktail = (cat) => /^קוקטייל/.test(head(cat));
 const isGuide = (i) => (i.category || "").startsWith("הדרכת") || (i.name || "").startsWith("מה חשוב לדעת");
+// 🔴 «בהגדרות הם אומרים שאנחנו בוחנים על בייגל קולורי יווני למרות שהורדתי אותו
+// מהבחינה» (יותם, 14.9). המסך שאב דוגמאות מכל התפריט, בזמן שאצל המלצר סיגרים,
+// פריטי אירוע וקטגוריות `features.learn_only_cats` מוחרגים מהבוחן ומהמבחן —
+// כלומר ההסבר הבטיח למנהל שאלות שלעולם לא נשאלות. אותם שלושה כללים, מילה במילה
+// כמו ב-`learnOnly` של MainApp.
+const isCigar = (i) => /סיגר/.test(i.category || "");
+const isEvent = (i) => /אירוע/.test(i.menuGroup || "");
 
 function Example({ q }) {
   return (
@@ -30,14 +51,20 @@ function Kind({ emoji, title, children }) {
   );
 }
 
-export default function ExamExplainer({ items }) {
-  const all = (items || []).filter((i) => !isGuide(i));
-  const foods = all.filter((i) => !drinkKind(i.category) && !/קוקטייל/.test(i.category || ""));
+export default function ExamExplainer({ items, features }) {
+  const learnOnlyCats = features?.learn_only_cats || [];
+  const learnOnly = (i) => isCigar(i) || isEvent(i) || learnOnlyCats.includes(i.category);
+  const all = (items || []).filter((i) => !isGuide(i) && !learnOnly(i));
+  // סלון יווני על `relaxed` (יותם, 14.9: «תעשה את הבחנים קלים יותר») — הבוחן שם קצר
+  // יותר, ולכן המספרים כאן חייבים לרוץ דרך אותו חישוב שרץ אצל המלצר.
+  const relaxed = features?.exam_level === "relaxed";
+  const foods = all.filter((i) => !drinkKind(i.category) && !isCocktail(i.category));
 
   const exDish = foods.find((i) => (i.ingredients || []).length >= 3);
   const exAllergy = foods.find((i) => (i.allergens || []).length >= 2) || foods.find((i) => (i.allergens || []).length >= 1);
-  const exDrink = all.find((i) => drinkKind(i.category));
-  const exCocktail = all.find((i) => /קוקטייל/.test(i.category || ""));
+  // הדוגמה של «תתאר לי את היין» נשארת יין/סאקה/בירה בלבד — רק אלה נשאלים לתיאור.
+  const exDrink = all.find((i) => ["יין", "סאקה", "בירה"].includes(drinkKind(i.category)));
+  const exCocktail = all.find((i) => isCocktail(i.category));
   const exTrait = exDrink?.ingredients?.[1] || exDrink?.ingredients?.[0];
   const exRecAllergen = exAllergy?.allergens?.[0];
   const exPitfall = foods.find((i) => (i.pitfalls || []).length)?.pitfalls?.[0];
@@ -45,8 +72,15 @@ export default function ExamExplainer({ items }) {
   // שאלות-סט בלי תיאור. הדוגמה נבנית מהקטגוריה הגדולה ביותר של המסעדה עצמה.
   const byCat = foods.reduce((m, i) => { (m[i.category] ||= []).push(i); return m; }, {});
   const bigCat = Object.entries(byCat).sort((a, b) => b[1].length - a[1].length)[0];
-  const quizSize = (n) => (n <= 4 ? n : n <= 8 ? Math.ceil(n * 0.7) : Math.round(n * 0.6));
-  const catForm = (c) => (/[A-Za-z]/.test(c || "") || (c || "").split(/\s+/).length >= 3 ? `המנות ב״${c}״` : `ה${c}`);
+  // מראה של `quizSize` ב-`shiftcrew-waiter/src/lib/quizBank.js` — לשנות בשניהם.
+  const quizSize = (n) =>
+    n <= 4 ? n : relaxed ? Math.min(6, Math.ceil(n * 0.5)) : n <= 8 ? Math.ceil(n * 0.7) : Math.round(n * 0.6);
+  // ⚠️ `catForm` כבר נושא ה' הידיעה, ולכן «ב{catForm}» הפיק «בהראשונות». `inCat`
+  // הוא אותו שם עם מילת היחס נכונה.
+  const long = (c) => /[A-Za-z]/.test(c || "") || (c || "").split(/\s+/).length >= 3;
+  const catForm = (c) => (long(c) ? `המנות ב״${c}״` : `ה${c}`);
+  const inCat = (c) => (long(c) ? `במנות ב״${c}״` : `ב${c}`);
+  const fromCat = (c) => (long(c) ? `מהמנות ב״${c}״` : `מ${c}`);
 
   return (
     <div className="space-y-3">
@@ -57,14 +91,17 @@ export default function ExamExplainer({ items }) {
       </p>
 
       {bigCat && (
-        <Kind emoji="🎲" title="הרכב הבוחן — 60-70% מהמנות, בכל פעם אחרות">
+        <Kind emoji="🎲" title={`הרכב הבוחן — ${relaxed ? "כמחצית" : "60-70%"} מהמנות, בכל פעם אחרות`}>
           <p className="text-[11.5px] text-[#8a919e] mt-1 leading-relaxed">
-            בכל בוחן נבחרות באקראי כ-60-70% מהמנות בקטגוריה (ב{catForm(bigCat[0])}:{" "}
-            {quizSize(bigCat[1].length)} מתוך {bigCat[1].length}; קטגוריה של 4 מנות ומטה נבחנת כולה).
-            כל מנה = «תמליץ ותאר» — מה יש בה ואילו אלרגיות. ועוד 1-2 שאלות בלי תיאור בכלל:
+            בכל בוחן נבחרות באקראי {relaxed ? "כמחצית מהמנות בקטגוריה, עד 6" : "כ-60-70% מהמנות בקטגוריה"}{" "}
+            ({inCat(bigCat[0])}: {quizSize(bigCat[1].length)} מתוך {bigCat[1].length}; קטגוריה של
+            4 מנות ומטה נבחנת כולה). כל מנה = «תמליץ ותאר» — מה יש בה ואילו אלרגיות.
+            ועוד {relaxed ? "שאלה אחת" : "1-2 שאלות"} בלי תיאור בכלל:
           </p>
-          <Example q={`אילו מנות מ${catForm(bigCat[0]).replace(/^ה/, "")} אורח טבעוני יכול להזמין? ציין את כולן.`} />
-          <Example q={`אורח מבקש המלצה מ${catForm(bigCat[0]).replace(/^ה/, "")} — משהו עם ${bigCat[1].find((i) => (i.ingredients || []).length)?.ingredients?.[0] || "אבוקדו"}. על מה תמליץ?`} />
+          {/* ⚠️ «אילו מנות מהמנות ב״X״» — `fromCat` נושא כבר את המילה «מנות» לשם ארוך,
+              והמשפט חזר על עצמו. כאן אומרים את השם פעם אחת. */}
+          <Example q={`אילו ${long(bigCat[0]) ? `מנות ב״${bigCat[0]}״` : `מנות מ${bigCat[0]}`} אורח טבעוני יכול להזמין? ציין את כולן.`} />
+          <Example q={`אורח מבקש המלצה ${fromCat(bigCat[0])} — משהו עם ${bigCat[1].find((i) => (i.ingredients || []).length)?.ingredients?.[0] || "אבוקדו"}. על מה תמליץ?`} />
           <p className="text-[11.5px] text-[#8a919e] mt-1 leading-relaxed">
             מה שנשאל נרשם, ומלצר שנכשל מקבל בפעם הבאה בוחן אחר — עד שכל המאגר מוצה.
             <b> המבחן המלא</b> הוא כל הבחנים יחד: כל קטגוריה מקבלת מקום לפי מספר המנות

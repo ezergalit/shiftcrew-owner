@@ -39,7 +39,51 @@ const COPY = {
   },
 };
 
-export default function CodeChanger({ kind = "team", current = "", others = 0, onChanged }) {
+// ── קוד שקל לנחש (יותם, 14.9: «עדיף לכתוב לו מומלץ לא לכתוב קוד שיהיה קל לנחש») ──
+// הקוד הוא כל מה שעומד בין האינטרנט הפתוח לבין ההצטרפות לצוות, ו-`1234` הוא בדיוק
+// מה שמנהל ממהר בוחר. זו **אזהרה ולא חסימה** — הבחירה שלו, אבל מודעת.
+const WEAK_WORDS = ["ADMIN", "TEST", "DEMO", "CODE", "PASS", "LOGIN", "MENU", "CREW", "OWNER", "TEAM"];
+const isSequential = (c) =>
+  c.length >= 4 && [...c].every((ch, i, a) => i === 0 || ch.charCodeAt(0) === a[i - 1].charCodeAt(0) + 1);
+export function weakCode(code) {
+  const c = String(code || "").toUpperCase();
+  if (c.length < 5) return "קוד קצר קל לנחש — עדיף 5 תווים ומעלה";
+  if (/^\d+$/.test(c)) return "קוד שכולו ספרות קל לנחש — כדאי לשלב אותיות";
+  if (new Set(c).size <= 2) return "קוד שחוזר על אותו תו קל לנחש";
+  if (isSequential(c)) return "רצף כמו 1234 או ABCD קל לנחש";
+  if (WEAK_WORDS.includes(c) || WEAK_WORDS.some((w) => c === w + "1" || c === w + "123")) return "זו אחת המילים הראשונות שמנחשים";
+  return "";
+}
+
+// ── הצעות מהשם של המסעדה (יותם: «כמו salon26») ─────────────────────────────────
+// תעתיק פשוט ומלא-תנועות — לא שלד העיצורים של `lib/translit.js`, שמפיל בדיוק את
+// התנועות שהופכות קוד לקריא (סלון ⇒ "sln"). המנהל ממילא עורך; המטרה היא התחלה
+// שאפשר להקריא בטלפון.
+const HEB_LAT = {
+  א: "A", ב: "B", ג: "G", ד: "D", ה: "H", ו: "O", ז: "Z", ח: "H", ט: "T", י: "I",
+  כ: "K", ך: "K", ל: "L", מ: "M", ם: "M", נ: "N", ן: "N", ס: "S", ע: "A", פ: "P",
+  ף: "P", צ: "Z", ץ: "Z", ק: "K", ר: "R", ש: "S", ת: "T",
+};
+const romanize = (word) => [...String(word || "")].map((ch) => HEB_LAT[ch] || (/[A-Za-z0-9]/.test(ch) ? ch.toUpperCase() : "")).join("");
+
+export function codeIdeas(name, current = "") {
+  const words = String(name || "").split(/[\s־-]+/).map(romanize).filter((w) => w.length >= 2);
+  if (!words.length) return [];
+  const yy = String(new Date().getFullYear()).slice(-2);
+  const rnd = () => String(Math.floor(Math.random() * 900) + 100);
+  const initials = words.slice(0, 3).map((w) => w[0]).join("");
+  const out = [
+    words[0].slice(0, 4) + yy,
+    words[0].slice(0, 3) + rnd(),
+    (initials.length >= 2 ? initials : words[0].slice(0, 2)) + rnd(),
+  ];
+  // ייחודי, 5-6 תווים, ולא הקוד שכבר בשימוש
+  return [...new Set(out)]
+    .filter((c) => c.length >= 5 && c.length <= 6 && c !== String(current || "").toUpperCase() && !weakCode(c))
+    .slice(0, 3);
+}
+
+export default function CodeChanger({ kind = "team", current = "", others = 0, restaurantName = "", onChanged }) {
   const t = COPY[kind] || COPY.team;
   const [open, setOpen] = useState(false);
   const [code, setCode] = useState("");
@@ -47,6 +91,9 @@ export default function CodeChanger({ kind = "team", current = "", others = 0, o
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState(false);
+  // ההצעות נגזרות פעם אחת לפתיחת הטופס — אחרת כל הקשה בשדה מגרילה ספרות חדשות
+  // והמנהל רודף אחרי הצעה שראה לפני רגע.
+  const [ideas, setIdeas] = useState([]);
   // ⚠️ «ביטול» באמצע הקריאה השאיר שגיאה שצפה בפתיחה הבאה, על טופס ריק. כל ניסיון נושא
   //    מספר, ותשובה של ניסיון שכבר נסגר נזרקת.
   const attempt = useRef(0);
@@ -82,20 +129,22 @@ export default function CodeChanger({ kind = "team", current = "", others = 0, o
 
   if (!open) {
     return (
-      <button type="button" className="au-pill ghost" onClick={() => setOpen(true)}>
+      <button type="button" className="au-pill ghost"
+        onClick={() => { setIdeas(codeIdeas(restaurantName, current)); setOpen(true); }}>
         {done ? t.done : t.open}
       </button>
     );
   }
 
   const blocked = busy || !code.trim() || (kind === "owner" && !password);
+  const weak = code.trim() ? weakCode(code) : "";
 
   return (
     <div className="w-full text-right space-y-2.5 mt-1">
       <p className="text-[13px] font-black text-[#eef0f6]">{t.title}</p>
       <input
         value={code}
-        onChange={(e) => { setCode(e.target.value.toUpperCase()); setErr(""); }}
+        onChange={(e) => { setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "")); setErr(""); }}
         // 16px — מתחת לזה ספארי מזגזג ל-zoom בכל פוקוס
         className="w-full rounded-xl bg-[rgba(238,240,246,.06)] border border-[rgba(238,240,246,.14)] px-3 py-2.5 text-[16px] font-black tracking-[.12em] text-[#eef0f6] outline-none focus:border-[#22c08c]"
         dir="ltr"
@@ -116,7 +165,23 @@ export default function CodeChanger({ kind = "team", current = "", others = 0, o
           aria-label="הסיסמה שלכם"
         />
       )}
-      <p className="text-[12px] text-[#8a919e] leading-relaxed">{t.note}</p>
+      {ideas.length > 0 && !code && (
+        <div className="space-y-1.5">
+          <p className="text-[12px] text-[#8a919e]">רעיונות מהשם של המסעדה:</p>
+          <div className="flex flex-wrap gap-1.5">
+            {ideas.map((c) => (
+              <button key={c} type="button" className="au-pill ghost" dir="ltr"
+                onClick={() => { setCode(c); setErr(""); }}>
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {weak && <p className="text-[12px] text-[#f3c14b] leading-relaxed">{weak}</p>}
+      <p className="text-[12px] text-[#8a919e] leading-relaxed">
+        מומלץ לא לבחור קוד שקל לנחש — 5-6 תווים שמשלבים אותיות וספרות. {t.note}
+      </p>
       {/* מנהל נוסף נכנס עם אותו קוד בעלים — שינוי שלו נוגע גם בו, וזה חייב להיאמר לפני השמירה */}
       {kind === "owner" && others > 0 && (
         <p className="text-[12px] text-[#f3c14b] leading-relaxed">

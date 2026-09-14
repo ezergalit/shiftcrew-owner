@@ -27,7 +27,7 @@ const COOLDOWN_S = 60;
 //   3. a 60-second wait, then an explicit "are you sure".
 // The wait is the one that catches the accident: 1 and 2 are things a determined
 // finger does anyway.
-export default function AccountSecurity({ ownerCode, secondaryName, onDeleted, managerCount = 0, onCodeChanged }) {
+export default function AccountSecurity({ ownerCode, secondaryName, onDeleted, managerCount = 0, restaurantName = "", onCodeChanged }) {
   const [pwCurrent, setPwCurrent] = useState("");
   const [pwNew, setPwNew] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
@@ -157,7 +157,7 @@ export default function AccountSecurity({ ownerCode, secondaryName, onDeleted, m
           <p className="text-xs text-[#8a8aa0] leading-relaxed">
             הקוד שמקלידים במסך הכניסה, יחד עם הסיסמה. כרגע: <b className="text-[#eef0f6] tracking-wider" dir="ltr">{ownerCode}</b>
           </p>
-          <CodeChanger kind="owner" current={ownerCode} others={managerCount} onChanged={onCodeChanged} />
+          <CodeChanger kind="owner" current={ownerCode} others={managerCount} restaurantName={restaurantName} onChanged={onCodeChanged} />
         </div>
       )}
 

@@ -25,6 +25,26 @@ export const pctColor = (p) => (p >= 75 ? "#22c08c" : p >= 45 ? "#f3c14b" : "#e0
 export const isKnowledge = (d) =>
   (d?.category || "").startsWith("הדרכת") || (d?.name || "").startsWith("מה חשוב לדעת");
 
+// 🔴 ההגדרה היחידה של «מה נספר כפריט נלמד», ולכן היא חייבת לשמש את **כל** המסכים.
+// קטגוריה נחשבת הדרכה רק אם כל פריטיה הם כרטיסי ידע — כך «מה חשוב לדעת» שיושב בתוך
+// הסלטים ממשיך להיספר עם המנות שלו. קודם היו כאן שלוש הגדרות שונות, ומלצר אחד הוצג
+// 103% בבית ו-100% בגיליון שלו.
+export const guideCategories = (list) => {
+  const byCat = new Map();
+  for (const r of list || []) {
+    const k = r?.category || "";
+    if (!byCat.has(k)) byCat.set(k, []);
+    byCat.get(k).push(r);
+  }
+  return new Set([...byCat.entries()].filter(([, v]) => v.every(isKnowledge)).map(([k]) => k));
+};
+
+/** הפריטים שנספרים ללמידה — מנות בלבד, בלי קטגוריות הדרכה שלמות. */
+export const countedItems = (list) => {
+  const guides = guideCategories(list);
+  return (list || []).filter((r) => !guides.has(r?.category || ""));
+};
+
 // Hebrew disagrees with "1 חברי צוות" the way English disagrees with "1 members".
 export const membersLabel = (n) =>
   n === 0 ? "אין עדיין חברי צוות" : n === 1 ? "חבר צוות אחד" : `${n} חברי צוות`;

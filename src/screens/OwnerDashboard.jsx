@@ -6,6 +6,7 @@ import SignOutButton from "../components/SignOutButton";
 import TasksManager from "../components/TasksManager";
 import TeamRoster from "../components/TeamRoster";
 import MemberSheet, { MemberRow } from "../components/MemberSheet";
+import { countedItems } from "../components/aurora/bits";
 import TeamMessageDialog from "../components/TeamMessageDialog";
 import OwnerTasksList from "../components/OwnerTasksList";
 import TeamScreen from "../components/TeamScreen";
@@ -111,6 +112,16 @@ function toDbOnboardingPatch(form) {
   };
 }
 
+// 🔴 סוג הקטגוריה נקבע לפי **המילה הראשונה** שלה, לא לפי substring כלשהו בתוכה.
+// «סלטים ועניינים» (האחים) נתפסה ע"י `יינ` שבתוך וענ**יינ**ים, ו«בקטנה ליד האוזו»
+// (אוזריה) ע"י `אוזו` — שתיהן קטגוריות אוכל חיות שהוצגו למנהל כמשקאות, על הכרטיס,
+// בכפתור ההוספה ובתווית המרכיבים. קטגוריה שנקראת על שם משקה **מתחילה בו**.
+// ⚠️ בלי קילוף אותיות שימוש: «וודקה» מתחילה ב-ו', וקילוף היה הורס אותה.
+// ⚠️ משוכפל בצד המלצר (`drinkKindOf` ב-MainApp) — לשנות בשניהם.
+const DRINK_HEAD = /^(יין|יינ|רוזה|מבעבע|שמפניה|סאקה|ביר(ה|ות)|וודקה|וויסקי|ויסקי|טקילה|ג['\u05f3]ין|ערק|אוזו|אניס|קוניאק|ברנדי|ליקר|רום|אפריטיף|ורמוט|סיגר|קוקטייל)/;
+export const categoryHead = (cat) => String(cat || "").trim().split(/[\s,·|/-]+/)[0] || "";
+export const isDrinkCategory = (cat) => DRINK_HEAD.test(categoryHead(cat));
+
 function dishFromDb(row) {
   return {
     id: row.id,
@@ -130,7 +141,7 @@ function dishFromDb(row) {
     // descriptors, not a recipe, so their labels read "תיאור" too.
     // The Salon bar (31.8) widened this to every spirit — and רוזה/מבעבעים are
     // wine even without the word, ואירוע הוא חבילה: הצ'יפים שלו הם המנות שבו.
-    wine: /יין|יינ|רוזה|מבעבע|שמפניה|סאקה|ביר(ה|ות)|וודקה|וויסקי|ויסקי|טקילה|ג['׳]ין|ערק|אוזו|אניס|קוניאק|ברנדי|ליקר|רום|אפריטיף|ורמוט|סיגר|קוקטייל/.test(row.category || ""),
+    wine: isDrinkCategory(row.category),
     event: /אירוע/.test(row.menu_group || ""),
     allergens: row.allergens || [],
     pregnancy: row.pregnancy || [],
@@ -309,7 +320,11 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // שורה שהוצגה נשארת «ממתינה» ב-pendingRef עם מונה צעדי «קדימה», וננעלת כנראתה
   // רק ב«הבנתי» או אחרי FORWARD_DISMISS צעדים קדימה. חזרה אחורה ⇒ תופיע שוב.
   const [seen, setSeen] = useState(() => loadSeen(restaurant?.id));
-  const [stop, setStop] = useState(null);
+  // 🔴 `stop` מחזיק את **המסך והטקסט יחד**. קודם הוא החזיק שם מסך בלבד, והטקסט
+  // חושב פעמיים: פעם בשער (`textFor(screen)` — בלי הקשר) ופעם ברינדור (עם הקשר).
+  // שתי הקריאות יכולות לחלוק על עצמן, וזה בדיוק מה שקרה: שורת הקטגוריה מחזירה
+  // `null` כשאין פריטים, ולכן השער הרג אותה **בכל** קטגוריה, גם עם אזהרות.
+  const [stop, setStop] = useState(null);   // { screen, text } | null
   const pendingRef = useRef(new Map());      // screen ⇒ צעדי קדימה מאז שהוצגה
   const prevScreenRef = useRef(undefined);
   const [stage, setStage] = useState({ group: null, cat: null, viewing: false, deep: false });
@@ -551,12 +566,44 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   }, [menuLoaded, restaurant?.id]);
 
   // ── המדריך ──
+  // 🔴 טופס המנה נשאר פתוח במעבר טאב. הוא מרונדר **בתוך** גוף הטאב בזמן שהסרגל
+  // התחתון הוא אח שלו, ולכן אפשר לעבור טאב בלי לסגור אותו — ואז `screenOf` מחזיר
+  // `null` (הוא מדלג על מסך העריכה בכוונה) וכל שורות ההסבר, בכל הטאבים, נעלמות
+  // עד שחוזרים לתפריט וסוגרים. מעבר טאב סוגר את הטופס.
+  const goTab = (t) => {
+    // ⚠️ שני האיפוסים מותנים ב-`aurora` בכוונה: שניהם קיימים בשביל שורת ההסבר,
+    // שהיא אורורה-בלבד. CREWDEMO — חשבון הבודקים של אפל — נשאר בהתנהגות מדויקת
+    // שהייתה לו, לפי הכלל «בזמן סבב בודקים גם שיפור הוא שינוי».
+    if (!aurora) { setTab(t); return; }
+    if (showAddForm) { setShowAddForm(false); setEditingItem(null); }
+    // 🔴 `stage` הוא הדיווח של OwnerMenu, והוא נשאר על הערך האחרון גם אחרי שהטאב
+    // התחלף. כלומר אחרי פתיחה אחת של מנה, `stage.deep` נשאר דלוק לנצח — והתנאי
+    // `!stage.deep && coachNode` הרג את **כל** שורות ההסבר, בכל הטאבים, עד שחוזרים
+    // לתפריט ויוצאים מהמנה. אותה מחלקה בדיוק כמו `browseDeep` אצל המלצר (14.9).
+    // OwnerMenu ממילא מתפרק במעבר טאב ומדווח מחדש בכניסה, אז האיפוס בטוח.
+    if (t !== "menu") setStage({ group: null, cat: null, viewing: false, deep: false });
+    setTab(t);
+  };
+
+  // ההקשר שממנו נגזרות השורות. פונקציה ולא אובייקט — אובייקט חדש בכל רנדר היה
+  // מכניס את האפקט ללולאה.
+  const coachCtx = () => ({
+    group: stage?.group,
+    cat: stage?.cat,
+    items: items.filter((i) => i.category === stage?.cat),
+    // ההקשר של שורות ההגדרות: כמה מלצרים יש, אם יש סרטון, ואם זה מנהל משני —
+    // שלושתם משנים מה הסקשן בפועל מציג.
+    members: teamMembers.length,
+    hasVideo: !!restaurant?.owner_welcome_video_url,
+    secondary: !!restaurant?.logged_in_as_name,
+  });
+
   // הגעה למסך ⇒ השורה שלו, כל עוד לא ננעלה. ⚠️ מצב האפליקציה הוא הטריגר, לא הקשה על
   // אלמנט: מנהל שהגיע דרך מסלול אחר מקבל בדיוק את אותו הסבר.
   // ⚠️ אין כאן markSeen על הצגה — זה מה שגרם ל«אחורה מוחק את ההסבר».
   useEffect(() => {
     if (!aurora) return;
-    const screen = screenOf({ tab, stage, showAddForm });
+    const screen = screenOf({ tab, stage, showAddForm, openSetting });
     const prev = prevScreenRef.current;
     if (prev !== undefined && screen !== prev && isForward(prev, screen)) {
       // צעד קדימה מקדם כל שורה ממתינה — חוץ מזו של המסך שנכנסנו אליו עכשיו.
@@ -569,11 +616,16 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       }
     }
     prevScreenRef.current = screen;
-    if (!screen || !textFor(screen)) { setStop(null); return; }
-    if (seen.has(screen)) { setStop((cur) => (cur === screen ? cur : null)); return; }
+    // ההקשר נבנה פעם אחת ומשמש גם לשער וגם לתצוגה — מסך בלי טקסט אמיתי לא
+    // נרשם כממתין, ולכן גם לא ייסגר בשקט בלי שנראה.
+    const text = screen ? textFor(screen, coachCtx()) : null;
+    if (!text) { setStop(null); return; }
+    if (seen.has(screen)) { setStop((cur) => (cur?.screen === screen ? cur : null)); return; }
     if (!pendingRef.current.has(screen)) pendingRef.current.set(screen, 0);
-    setStop(screen);
-  }, [aurora, tab, stage, showAddForm, seen, restaurant?.id]);
+    setStop({ screen, text });
+    // ⚠️ `openSetting` בתלויות — בלעדיו האפקט לא רץ מחדש בפתיחת סקשן, ושורת
+    // הפיצ׳ר פשוט לא הייתה מופיעה.
+  }, [aurora, tab, stage, showAddForm, openSetting, seen, restaurant?.id, items.length, teamMembers.length]);
 
   // Open the card that matches where the day is, once the first load has told us whether
   // today's brief already went out. Guarded by a ref so it happens exactly once — without
@@ -792,11 +844,14 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // How much of the menu a given waiter actually knows: earned score over available score.
   // The same formula as the waiter app and LearningStatus — three screens that disagreed
   // about one person would be worse than a rough number.
+  // 🔴 כרטיסי הדרכה נקראים ולא נלמדים, ולכן הם מחוץ למונה **ומחוץ** למכנה — בדיוק
+  // כמו ב-LearningStatus. שלוש הגדרות שונות הן איך שמסך אחד אמר 103% והשני 100%.
+  const learnable = countedItems(items);
   const memberPct = (memberId) => {
-    if (!items.length) return 0;
+    if (!learnable.length) return 0;
     const rows = progressByMember[memberId] || [];
     const byItem = Object.fromEntries(rows.map((r) => [r.source_item_id, r.mastery ?? 0]));
-    return Math.round((items.reduce((s, it) => s + (byItem[it.id] || 0), 0) / (items.length * 5)) * 100);
+    return Math.round((learnable.reduce((s, it) => s + (byItem[it.id] || 0), 0) / (learnable.length * 5)) * 100);
   };
   // The headline numbers, so each collapsed card answers its own question without opening.
   const teamAvgPct = teamMembers.length
@@ -933,21 +988,39 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // study minutes and the weekly bars, which the dashboard's own queries don't compute.
   const buildMemberDetail = (sel) => {
     if (!sel) return null;
-    const m = teamMembers.find((x) => x.id === sel.id);
-    if (!m) return null;
+    // 🔴 «לוחצים על מלצר ולפעמים כלום לא נפתח» (יותם, 14.9). הגיליון החזיר `null` כש-
+    // `teamMembers` לא הכיל את השורה — וזה קורה בפועל: «מי למד היום» מריץ שאילתת
+    // `team_members` משלו, ורשימת ההגדרות מציגה את שלה, כך שמלצר שהצטרף אחרי טעינת
+    // הדשבורד (או טעינה שנכשלה בשקט) מופיע ברשימה ולא ב-state. הקשה על שם חייבת
+    // לפתוח משהו — אז השורה שהמתקשר כבר מחזיק היא הגיבוי, ולא מסך ריק.
+    const m = teamMembers.find((x) => x.id === sel.id) || {
+      id: sel.id,
+      name: sel.name,
+      baseline_pct: sel.baseline ?? null,
+      total_seconds: sel.totalSeconds ?? 0,
+    };
     const rows = progressByMember[m.id] || [];
     const byItem = Object.fromEntries(rows.map((r) => [r.source_item_id, r.mastery ?? 0]));
-    const pct = memberPct(m.id);
+    // אין שורות התקדמות ב-state (אותו פער) ⇒ האחוז מגיע מהשורה של «מי למד היום»,
+    // שחישבה אותו באותה נוסחה בדיוק.
+    const pct = rows.length || sel.pct === undefined ? memberPct(m.id) : Math.round(sel.pct);
     const lb = leaderboardByMember[m.id];
     return {
       id: m.id,
       name: m.name,
       pct,
       pctColor: pct >= 80 ? "#22c08c" : pct >= 50 ? "#f3a712" : "#e0315a",
-      mastered: lb?.mastered_count || 0,
-      dishCount: items.length,
-      weak: items.filter((it) => byItem[it.id] > 0 && byItem[it.id] <= 2).map((it) => it.name),
-      untouched: items.filter((it) => !byItem[it.id]).length,
+      // ⚠️ `leaderboard.mastered_count` היה המקור כאן, והוא ריק לכל מלצר שאין לו שורת
+      // לידרבורד — לכן הגיליון הראה «0/202 נלמדו» ליד 100%. הספירה מגיעה עכשיו מאותן
+      // שורות התקדמות שמהן מחושב האחוז.
+      mastered: rows.length || sel.mastered === undefined
+        ? learnable.filter((it) => (byItem[it.id] || 0) >= 4).length
+        : sel.mastered,
+      dishCount: learnable.length,
+      weak: learnable.filter((it) => byItem[it.id] > 0 && byItem[it.id] <= 2).map((it) => it.name),
+      untouched: rows.length || sel.untouched === undefined
+        ? learnable.filter((it) => !byItem[it.id]).length
+        : sel.untouched,
       baseline: m.baseline_pct,
       totalSeconds: m.total_seconds,
       snapshots: snapshotsByMember[m.id],
@@ -1433,9 +1506,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // הסיור הישן בדיוק כפי שהיה.
   // «הבנתי» הוא אחת משתי הדרכים היחידות שנועלות שורה (השנייה: צעדים קדימה).
   const coachNode = aurora && stop
-    ? <CoachBar text={textFor(stop, { group: stage?.group, cat: stage?.cat, items: items.filter((i) => i.category === stage?.cat) })} onOk={() => {
-        pendingRef.current.delete(stop);
-        setSeen((p) => markSeen(restaurant?.id, stop, p));
+    ? <CoachBar text={stop.text} onOk={() => {
+        pendingRef.current.delete(stop.screen);
+        setSeen((p) => markSeen(restaurant?.id, stop.screen, p));
         setStop(null);
       }} />
     : null;
@@ -1912,7 +1985,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 emoji: "❓",
                 title: "על מה הצוות נבחן",
                 summary: "סוגי השאלות, עם דוגמאות מהתפריט שלכם",
-                node: <ExamExplainer items={items} />,
+                node: <ExamExplainer items={items} features={restaurant?.features} />,
               },
               {
                 key: "team",
@@ -1989,6 +2062,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                   <AccountSecurity
                     ownerCode={restaurant?.owner_code}
                     secondaryName={restaurant?.logged_in_as_name || null}
+                    managerCount={ownerUsers.length}
+                    restaurantName={restaurant?.name}
+                    onCodeChanged={(c) => onRestaurantUpdated?.({ ...restaurant, owner_code: c })}
                     onDeleted={onSignOut}
                   />
                 ),
@@ -2152,7 +2228,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 open={openSetting === "security"}
                 onToggle={() => setOpenSetting(openSetting === "security" ? null : "security")}
               >
-                <AccountSecurity ownerCode={restaurant?.owner_code} secondaryName={restaurant?.logged_in_as_name || null} onDeleted={onSignOut} managerCount={ownerUsers.length} onCodeChanged={(c) => onRestaurantUpdated?.({ ...restaurant, owner_code: c })} />
+                <AccountSecurity ownerCode={restaurant?.owner_code} secondaryName={restaurant?.logged_in_as_name || null} onDeleted={onSignOut} managerCount={ownerUsers.length} restaurantName={restaurant?.name} onCodeChanged={(c) => onRestaurantUpdated?.({ ...restaurant, owner_code: c })} />
               </SettingsSection>
 
               <SettingsSection
@@ -2206,9 +2282,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             8px above AND below the pills, and the space below is what read as "רווח
             בין הטאב לסוף הטלפון" (user, 30.8). The buttons carry their own 8px. */}
         <div className={`grid grid-cols-3 gap-1 ${aurora ? "au-tabs" : "p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]"}`}>
-          <NavButton aurora={aurora} emoji="🏠" icon={<Home size={18} />} label="בית" active={tab === "home"} onClick={() => setTab("home")} />
-          <NavButton aurora={aurora} emoji="📖" icon={<BookOpen size={18} />} label="תפריט" active={tab === "menu"} onClick={() => setTab("menu")} />
-          <NavButton aurora={aurora} emoji="⚙️" icon={<Settings size={18} />} label="הגדרות" active={tab === "settings"} onClick={() => setTab("settings")} />
+          <NavButton aurora={aurora} emoji="🏠" icon={<Home size={18} />} label="בית" active={tab === "home"} onClick={() => goTab("home")} />
+          <NavButton aurora={aurora} emoji="📖" icon={<BookOpen size={18} />} label="תפריט" active={tab === "menu"} onClick={() => goTab("menu")} />
+          <NavButton aurora={aurora} emoji="⚙️" icon={<Settings size={18} />} label="הגדרות" active={tab === "settings"} onClick={() => goTab("settings")} />
         </div>
       </div>
 

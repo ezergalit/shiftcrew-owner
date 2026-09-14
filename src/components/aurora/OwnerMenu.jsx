@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { Star, ChevronRight, ChevronLeft } from "lucide-react";
 import { categoryVisual } from "../../lib/categoryVisual";
 import { FLAG_GROUPS, effectiveTrackedFlags } from "../../lib/dishFlags";
-import { hasWarning } from "../../lib/coachStops";
+import { hasWarning, itemNoun, nounCount, nounForms } from "../../lib/coachStops";
 
 // The manager's menu tab under the «אורורה» skin.
 //
@@ -50,17 +50,18 @@ const SERVICE = "\u0000service";
 
 export const isGuide = (i) =>
   (i.category || "").startsWith("הדרכת") || (i.name || "").startsWith("מה חשוב לדעת");
-const countLabel = (cat, n) => {
-  const card = (cat || "").startsWith("הדרכת");
-  if (n === 1) return card ? "כרטיס אחד" : "מנה אחת";
-  return `${n} ${card ? "כרטיסים" : "מנות"}`;
-};
+// 🔴 היה `countLabel(cat, n)` שהסתכל רק על קידומת «הדרכת» בשם הקטגוריה, ולכן
+// קטגוריית סיגרים, מסלולי אירוע ותפריט שתייה שלם נספרו כ«מנות» (יותם, 14.9:
+// «פשוט להתאים»). עכשיו הספירה נגזרת מהפריטים עצמם — אותו `itemNoun` שהמדריך
+// משתמש בו, כך ששני המקומות לא יכולים להגיד מילים שונות על אותה רשימה.
 
 // ⚠️ Declared at module scope, NOT inside OwnerMenu. As a nested arrow function this was a
 // brand-new component *type* on every render, so React threw away and rebuilt all 152
 // cards — images included — on every keystroke in the search box.
 function Dish({ item, flagGroups, tone, merged, onOpen, onToggleStar }) {
   const vis = categoryVisual(item.category);
+  // איך קוראים לדבר הזה — כרטיס הדרכה, סיגר, משקה, פריט אירוע או מנה.
+  const word = itemNoun([item]);
   // 🔴 `tone[g.key]`, not the constant TONE — the prop is the per-restaurant map, and
   // under merged warnings pregnancy is amber. Reading the constant here is why Salon's
   // dish LIST still showed purple while the dish screen didn't (user, 30.8: "עדיין יש
@@ -94,8 +95,8 @@ function Dish({ item, flagGroups, tone, merged, onOpen, onToggleStar }) {
             type="button"
             onClick={(e) => { e.stopPropagation(); onToggleStar(item); }}
             title={item.starred
-              ? "מנה מודגשת — הצוות מתרגל אותה בעדיפות. לחצו להסרת ההדגשה."
-              : "הדגישו מנה שחשוב במיוחד שהצוות ידע — היא תקפוץ ראשונה בתרגול."}
+              ? `${word.one} ${word.fem ? "מודגשת" : "מודגש"} — הצוות מתרגל ${word.fem ? "אותה" : "אותו"} בעדיפות. לחצו להסרת ההדגשה.`
+              : `הדגישו ${word.one} שחשוב במיוחד שהצוות ידע — ${word.fem ? "היא תקפוץ ראשונה" : "הוא יקפוץ ראשון"} בתרגול.`}
             aria-label={item.starred ? `הסרת הדגשה מ${item.name}` : `הדגשת ${item.name}`}
             className={`au-star ${item.starred ? "on" : ""}`}
           >
@@ -139,6 +140,9 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
   // groups, no ⭐, and the button says what it edits (user, 29.8: "it cant say edit
   // dish on a service").
   const guide = isGuide(item);
+  // ⚠️ `guide` לבדו לא הספיק: סיגר, משקה ופריט אירוע כולם נפלו ל«המנה הבאה»
+  // ול«הקודמת» (יותם, 14.9). כל שלוש הצורות נגזרות מאותו מקום.
+  const word = nounForms([item]);
   // In merged mode pregnancy values are shown under the pitfalls heading, so the two
   // read as the one group the restaurant actually thinks in.
   const groups = flagGroups
@@ -242,7 +246,7 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
       {!item.description && <p className="au-warn">חסר תיאור — בלי תיאור אי אפשר לבנות שאלות</p>}
 
       <button type="button" onClick={() => onEdit(item)} className="au-pill w-full justify-center py-3">
-        {guide ? "עריכת ההדרכה" : "עריכת המנה"}
+        עריכת ה{word.one}
       </button>
 
       {/* ⚠️ z-[80]: above the preview overlay itself (z-70), or the zoomed photo opens
@@ -271,14 +275,14 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
             type="button" onClick={onPrev} disabled={!onPrev}
             className="flex-1 py-3 min-h-[48px] rounded-xl font-black text-sm bg-[#20232b] text-[#eef0f6] disabled:opacity-30 flex items-center justify-center gap-1.5"
           >
-            <ChevronRight size={17} /> הקודמת
+            <ChevronRight size={17} /> {word.prev}
           </button>
           <button
             type="button" onClick={onNext} disabled={!onNext}
             className="flex-1 py-3 min-h-[48px] rounded-xl font-black text-sm text-white disabled:opacity-30 flex items-center justify-center gap-1.5"
             style={{ background: "linear-gradient(135deg,#22c08c,#17805d)" }}
           >
-            {lastInCat ? "סיימתי את הקטגוריה" : <>{guide ? "ההדרכה הבאה" : "המנה הבאה"} <ChevronLeft size={17} /></>}
+            {lastInCat ? "סיימתי את הקטגוריה" : <>{word.next} <ChevronLeft size={17} /></>}
           </button>
         </div>
       )}
@@ -421,7 +425,8 @@ export default function OwnerMenu({
     const order = [...new Set(inGroupPoolForWalk.map((i) => i.category).filter(Boolean))];
     const at = order.indexOf(endOfCat);
     const nextCat = at >= 0 && at < order.length - 1 ? order[at + 1] : null;
-    const n = inGroupPoolForWalk.filter((i) => i.category === endOfCat).length;
+    const done = inGroupPoolForWalk.filter((i) => i.category === endOfCat);
+    const n = done.length;
     // The last category of a box chains into the NEXT box — same door order the tiles
     // use (service first, then the menus), so "המשך" always has somewhere to go until
     // the very last category of the very last menu (user, 30.8: "צריך להוסיף כפתור
@@ -456,7 +461,9 @@ export default function OwnerMenu({
             <span className="w-16 h-16 rounded-full bg-[#15302b] border border-[#22c08c]/40 flex items-center justify-center text-3xl mx-auto">✓</span>
             <h2 className="text-[21px] font-black text-[#eef0f6] leading-tight">עברת על כל {endOfCat}</h2>
             <p className="text-[13px] text-[#8a919e] leading-relaxed px-3">
-              {countLabel(endOfCat, n)}. לעבור עליהן שוב, או להמשיך הלאה?
+              {/* «עליהן» מול «עליהם» — הנטייה נגזרת מאותו `itemNoun`, אחרת יוצא
+                  «6 נושאים… לעבור עליהן שוב». */}
+              {nounCount(done, n)}. לעבור {nounForms(done).them} שוב, או להמשיך הלאה?
             </p>
           </div>
           {/* «להמשיך» ראשון ותמיד ירוק (יותם, 31.8) — ההמשך הוא ברירת המחדל,
@@ -540,7 +547,7 @@ export default function OwnerMenu({
         <span className="icon" aria-hidden>{photo ? <img src={photo} alt="" loading="lazy" /> : vis.emoji}</span>
         <span className="flex-1 min-w-0">
           <h3 className="line-clamp-1">{m2}</h3>
-          <p>{nCats === 1 ? "קטגוריה אחת" : `${nCats} קטגוריות`} · {countLabel(food[0]?.category, food.length)}</p>
+          <p>{nCats === 1 ? "קטגוריה אחת" : `${nCats} קטגוריות`} · {nounCount(food)}</p>
         </span>
         <ChevronLeft size={16} className="chev" />
       </button>
@@ -551,7 +558,7 @@ export default function OwnerMenu({
     return (
       <button key={c} type="button" className="glass cat" onClick={() => setCat(c)}>
         <span className="icon" aria-hidden>{photo ? <img src={photo} alt="" loading="lazy" /> : categoryVisual(c).emoji}</span>
-        <span className="flex-1 min-w-0"><h3 className="line-clamp-1">{c}</h3><p>{countLabel(c, list.length)}</p></span>
+        <span className="flex-1 min-w-0"><h3 className="line-clamp-1">{c}</h3><p>{nounCount(list)}</p></span>
         <ChevronLeft size={16} className="chev" />
       </button>
     );
@@ -565,13 +572,26 @@ export default function OwnerMenu({
   const inGroupPool = group === SERVICE ? guides : !group ? pool : pool.filter((i) => i.menuGroup === group);
   const groupCats = [...new Set(inGroupPool.map((i) => i.category).filter(Boolean))];
   const title = group === SERVICE ? "הדרכות שירות" : group || "התפריט";
+  // הרשימה שמוצגת עכשיו ברמת הפריטים — גם מקור המילה לכותרת ולכפתור ההוספה.
+  const catList = cat ? inGroupPool.filter((i) => i.category === cat) : [];
+  // 🔴 המקרא נגזר מ-`tracked_flags` של המסעדה, כלומר הוא הוצג בכל קטגוריה — גם
+  // בקטגוריה שאין בה ולו אזהרה אחת (כל 11 קטגוריות השתייה של סלון). המנהל ראה
+  // מקרא של צבעים שלא מופיעים בשום מקום על המסך, וזו בדיוק התלונה «מסבירים לי על
+  // אזהרה כאשר אין אזהרה» (יותם, 14.9) — רק שהפעם המסך עצמו הוא שטען אותה, ולא
+  // המדריך. מוצג רק מה שבאמת צבוע כאן; במסעדה ממוזגת הריון נספר עם המוקשים.
+  const catKeyGroups = keyGroups.filter((g) => g.key !== "kashrut" && catList.some((i) => (
+    (i[g.key] || []).length > 0 || (merged && g.key === "pitfalls" && (i.pregnancy || []).length > 0)
+  )));
+  const addScope = cat ? catList : inGroupPool.filter((i) => !isGuide(i));
 
   return (
     <div className="space-y-3">
       <div className="au-head">
         <h1 className="flex-1 min-w-0">{cat || title}</h1>
         <button type="button" className="au-pill flex-none" onClick={() => onAdd(cat)}>
-          + {group === SERVICE ? "הדרכה חדשה" : "מנה חדשה"}
+          {/* «+ מנה חדשה» מעל קטגוריית «הדרכת סושי» סתר את הכותרת שמעליה, שכבר
+              אמרה «6 נושאים». הכפתור מדבר על מה שבקטגוריה/בתפריט שפתוחים עכשיו. */}
+          + {group === SERVICE ? "הדרכה חדשה" : nounForms(addScope).fresh}
         </button>
       </div>
 
@@ -591,7 +611,8 @@ export default function OwnerMenu({
 
       {q.trim() && (
         <div className="space-y-2">
-          <p className="au-hint">{results.length === 0 ? "לא נמצאו מנות" : countLabel("", results.length)}</p>
+          {/* «לא נמצאו מנות» על חיפוש של סיגר או פריט אירוע הוא אותה טעות במילה. */}
+          <p className="au-hint">{results.length === 0 ? "לא נמצא כלום" : nounCount(results)}</p>
           {results.map((item) => (
             <Dish
               key={item.id}
@@ -608,7 +629,10 @@ export default function OwnerMenu({
 
       {!group && !cat && !q.trim() && (
         <>
-          <p className="au-hint">בוחרים תפריט, ואז קטגוריה — לחיצה על מנה פותחת אותה לעיון</p>
+          {/* 🔴 היה «…— לחיצה על מנה פותחת אותה לעיון»: הוראה על הקשה שנמצאת שתי
+              רמות מכאן, ובתיבת ההדרכות גם פשוט לא נכונה (יותם, 14.9). כל מסך
+              מתאר את ההקשה שאפשר לעשות בו. */}
+          <p className="au-hint">בוחרים תפריט, ואז קטגוריה</p>
           {items.length === 0 && emptyNote}
           <div className="flex flex-col gap-3">
             {/* ⚠️ Service training comes FIRST (user, 30.8), before the food menus. It is
@@ -631,21 +655,27 @@ export default function OwnerMenu({
 
       {group && !cat && !q.trim() && (
         <div className="flex flex-col gap-3">
+          <p className="au-hint">לחצו על קטגוריה כדי לראות מה יש בה</p>
           {groupCats.map((c) => catTile(c, inGroupPool.filter((i) => i.category === c)))}
         </div>
       )}
 
       {cat && !q.trim() && (
         <div className="space-y-2">
+          {/* אותה שורה שיש למלצר ברמה הזאת — הספירה ומשפט ההקשה, במילה של מה
+              שברשימה. המדריך לא חוזר עליה; הוא מוסיף רק את מה שאין כאן. */}
+          <p className="au-hint">{nounCount(catList)} · {itemNoun(catList).tap}</p>
           {/* The colour key, where the colours actually appear. keyGroups already folds
               merged restaurants down to two colours (red אלרגיות · amber מוקשים). */}
-          <div className="flex flex-wrap gap-1.5 px-0.5">
-            {keyGroups.filter((g) => g.key !== "kashrut").map((g) => (
-              <span key={g.key} className={`chip ${tone[g.key] || "amber"}`}>
-                <i className="dot" />{merged && g.key === "pitfalls" ? "מוקשים ורגישות" : KEY_LABEL[g.key] || g.label}
-              </span>
-            ))}
-          </div>
+          {catKeyGroups.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-0.5">
+              {catKeyGroups.map((g) => (
+                <span key={g.key} className={`chip ${tone[g.key] || "amber"}`}>
+                  <i className="dot" />{merged && g.key === "pitfalls" ? "מוקשים ורגישות" : KEY_LABEL[g.key] || g.label}
+                </span>
+              ))}
+            </div>
+          )}
           {inGroupPool.filter((i) => i.category === cat).map((item) => (
             <Dish
               key={item.id}

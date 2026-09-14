@@ -82,10 +82,15 @@ export default function LearningStatus({ restaurant, onSelectMember, onRows, onM
       }
       const isK = (r) => (r.category || "").startsWith("הדרכת") || (r.name || "").startsWith("מה חשוב לדעת");
       const guideCats = new Set([...byCat.entries()].filter(([, v]) => v.every(isK)).map(([k]) => k));
-      const total = (menu.data || []).filter((r) => !guideCats.has(r.category || "")).length;
+      const counted = (menu.data || []).filter((r) => !guideCats.has(r.category || ""));
+      const total = counted.length;
+      // 🔴 המונה חייב להיות מאותה קבוצה כמו המכנה. קודם נסכמו **כל** שורות ההתקדמות
+      // (כולל כרטיסי ההדרכה) חלקי מנות-בלבד, ולכן מלצר שלמד הכול הוצג 103%.
+      const countedIds = new Set(counted.map((r) => r.source_item_id));
       const today = startOfDay();
       const byMember = new Map();
       for (const p of progress || []) {
+        if (!countedIds.has(p.source_item_id)) continue;
         const e = byMember.get(p.team_member_id) || { sum: 0, mastered: 0, weak: 0 };
         e.sum += p.mastery || 0;
         if ((p.mastery || 0) >= 4) e.mastered++;
