@@ -483,6 +483,8 @@ export default function OwnerMenu({
             onClick={() => { setEndOfCat(null); setGroup(null); setCat(null); }}>
             {group === SERVICE ? "סיימת את ההדרכות" : `סיימת את ${group || "התפריט"}`} — לכל התפריטים
           </button>
+          {/* גם זה Overlay מלא-מסך (portal ל-body) — הפס חייב להתארח כאן, אחרת הוא נעלם. */}
+          {coachSlot}
         </div>
       </div>,
       document.body,
