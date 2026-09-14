@@ -17,7 +17,7 @@ import SmartSuggestions from "../components/SmartSuggestions";
 import { categoryVisual } from "../lib/categoryVisual";
 import GuidedTour from "../components/GuidedTour";
 import CoachBar from "../components/aurora/CoachBar";
-import { STOPS, screenOf, loadSeen, markSeen, resetSeen, isForward, FORWARD_DISMISS } from "../lib/coachStops";
+import { textFor, screenOf, loadSeen, markSeen, resetSeen, isForward, FORWARD_DISMISS } from "../lib/coachStops";
 import OwnerWelcomeVideo from "./OwnerWelcomeVideo";
 import BriefAssistant, { TagField, BriefCarryOver } from "../components/BriefAssistant";
 import BriefReadBoard from "../components/BriefReadBoard";
@@ -569,7 +569,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
       }
     }
     prevScreenRef.current = screen;
-    if (!screen || !STOPS[screen]) { setStop(null); return; }
+    if (!screen || !textFor(screen)) { setStop(null); return; }
     if (seen.has(screen)) { setStop((cur) => (cur === screen ? cur : null)); return; }
     if (!pendingRef.current.has(screen)) pendingRef.current.set(screen, 0);
     setStop(screen);
@@ -1433,7 +1433,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
   // הסיור הישן בדיוק כפי שהיה.
   // «הבנתי» הוא אחת משתי הדרכים היחידות שנועלות שורה (השנייה: צעדים קדימה).
   const coachNode = aurora && stop
-    ? <CoachBar text={STOPS[stop]} onOk={() => {
+    ? <CoachBar text={textFor(stop, { group: stage?.group, cat: stage?.cat })} onOk={() => {
         pendingRef.current.delete(stop);
         setSeen((p) => markSeen(restaurant?.id, stop, p));
         setStop(null);
