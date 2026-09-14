@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { KeyRound, Trash2, Loader2, AlertTriangle, Check, Clock } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import CodeChanger from "./aurora/CodeChanger";
 import { passwordProblem } from "../auth/OwnerLogin";
 
 const db = supabase.schema("menu_app");
@@ -26,7 +27,7 @@ const COOLDOWN_S = 60;
 //   3. a 60-second wait, then an explicit "are you sure".
 // The wait is the one that catches the accident: 1 and 2 are things a determined
 // finger does anyway.
-export default function AccountSecurity({ ownerCode, secondaryName, onDeleted }) {
+export default function AccountSecurity({ ownerCode, secondaryName, onDeleted, managerCount = 0, onCodeChanged }) {
   const [pwCurrent, setPwCurrent] = useState("");
   const [pwNew, setPwNew] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
@@ -146,6 +147,20 @@ export default function AccountSecurity({ ownerCode, secondaryName, onDeleted })
 
   return (
     <>
+      {/* ---- קוד הבעלים ---- */}
+      {/* קוד וסיסמה הם שני הפרטים של אותו מסך כניסה, ולכן הם מוחלפים באותו מקום
+          (יותם, 14.9: «לא לפצל את זה»). השרת בודק את שינוי הקוד מול הסיסמה הראשית,
+          ולכן מנהל משני לא רואה את הטופס — הוא ממילא לא יכול להשלים אותו. */}
+      {!secondaryName && (
+        <div className="bg-[#16181c] rounded-lg p-4 border border-[#22252b] space-y-2">
+          <p className="font-bold text-[#eef0f6] flex items-center gap-2"><KeyRound size={15} /> קוד הבעלים</p>
+          <p className="text-xs text-[#8a8aa0] leading-relaxed">
+            הקוד שמקלידים במסך הכניסה, יחד עם הסיסמה. כרגע: <b className="text-[#eef0f6] tracking-wider" dir="ltr">{ownerCode}</b>
+          </p>
+          <CodeChanger kind="owner" current={ownerCode} others={managerCount} onChanged={onCodeChanged} />
+        </div>
+      )}
+
       {/* ---- change password ---- */}
       <div className="bg-[#16181c] rounded-lg p-4 border border-[#22252b] space-y-2">
         <p className="font-bold text-[#eef0f6] flex items-center gap-2"><KeyRound size={15} /> החלפת סיסמה</p>

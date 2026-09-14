@@ -272,6 +272,9 @@ export default function LearningStatus({ restaurant, onSelectMember, onRows, onM
 // ⚠️ Wording is deliberately genderless. `team_members` stores no gender, and "למדה"/"למד"
 // guessed from a name is worse than a noun phrase that is right for everyone.
 function AuroraStatus({ rows, onSelectMember, onMessage, messagedToday, onInvite }) {
+  // ⚠️ מעל ה-early returns — hook אחרי `return` הוא «Rendered fewer hooks than expected».
+  const [openPending, setOpenPending] = useState(false);
+
   if (rows === null)
     return <p className="text-[12.5px] text-[#8a919e] py-6 text-center">טוען את סטטוס הצוות…</p>;
 
@@ -293,6 +296,9 @@ function AuroraStatus({ rows, onSelectMember, onMessage, messagedToday, onInvite
   const studied = rows.filter((r) => r.studiedToday);
   const seen = rows.filter((r) => !r.studiedToday && r.seenToday);
   const away = rows.filter((r) => !r.studiedToday && !r.seenToday);
+  // ⚠️ מי שלמד היום נמצא על המסך; כל השאר נפתחים בלחיצה. עם 50 או 100 מלצרים רשימה
+  // אחת ארוכה היא לא מסך בית (יותם, 14.9) — היא גלילה שאי אפשר לקרוא ממנה כלום.
+  const pending = [...seen, ...away];
 
   const note = (r) => {
     if (r.studiedToday) return `${fmtMins(r.studiedTodaySeconds)} לימוד היום`;
@@ -303,7 +309,7 @@ function AuroraStatus({ rows, onSelectMember, onMessage, messagedToday, onInvite
 
   // Weakest first within each group: this list is a to-do, not a leaderboard.
   const byPct = (a, b) => a.pct - b.pct;
-  const ordered = [...studied.sort(byPct), ...seen.sort(byPct), ...away.sort(byPct)];
+  const ordered = [...studied].sort(byPct);
 
   return (
     <>
@@ -313,41 +319,71 @@ function AuroraStatus({ rows, onSelectMember, onMessage, messagedToday, onInvite
       <p className="text-[12px] text-[#8a919e] -mt-2 mb-1.5 leading-relaxed">
         {`למדו היום ${studied.length} · נכנסו ולא למדו ${seen.length} · לא נכנסו ${away.length}`}
       </p>
+      {ordered.length === 0 && (
+        <p className="text-[12px] text-[#8a919e] py-2 leading-relaxed">אף אחד עדיין לא למד היום.</p>
+      )}
       {ordered.map((r) => (
-        <div key={r.id} className="au-member">
-          <span className="av" aria-hidden>{auInitials(r.name)}</span>
+        <AuMemberRow key={r.id} r={r} note={note} dot={dot}
+          onSelectMember={onSelectMember} onMessage={onMessage} messagedToday={messagedToday} />
+      ))}
+      {pending.length > 0 && (
+        <>
           <button
             type="button"
-            onClick={() => onSelectMember?.(r)}
-            className="flex-1 min-w-0 text-right bg-transparent border-0 p-0 font-inherit text-inherit cursor-pointer"
+            onClick={() => setOpenPending((o) => !o)}
+            className="au-wide mt-2.5 flex items-center justify-center gap-2"
+            aria-expanded={openPending}
           >
-            <span className="nm block truncate">{r.name}</span>
-            <span className="st block" style={r.seenToday && !r.studiedToday ? { color: "var(--amber)" } : undefined}>
-              {note(r)}
-            </span>
+            {openPending ? "סגירה" : `${pending.length} ${pending.length === 1 ? "שעדיין לא למד היום" : "שעדיין לא למדו היום"}`}
           </button>
-          {/* The nudge sits only next to someone who has not learned today — that is the
-              entire point of the button, and the group it belongs to. */}
-          {!r.studiedToday && onMessage && (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onMessage(r); }}
-              title={messagedToday?.[r.id] ? "כבר נשלחה תזכורת היום" : "שליחת תזכורת"}
-              aria-label={messagedToday?.[r.id] ? `כבר נשלחה תזכורת ל${r.name}` : `שליחת תזכורת ל${r.name}`}
-              className="au-star"
-              style={messagedToday?.[r.id] ? { color: "var(--em)" } : undefined}
-            >
-              {messagedToday?.[r.id] ? "✓" : "✉"}
-            </button>
+          {openPending && (
+            <div className="mt-2 max-h-[52vh] overflow-y-auto">
+              {[...seen].sort(byPct).concat([...away].sort(byPct)).map((r) => (
+                <AuMemberRow key={r.id} r={r} note={note} dot={dot}
+                  onSelectMember={onSelectMember} onMessage={onMessage} messagedToday={messagedToday} />
+              ))}
+            </div>
           )}
-          <span className="pc" style={{ color: pctColor(r.pct) }}>
-            {Math.round(r.pct)}%
-            <i style={{ background: dot(r) }} />
-          </span>
-        </div>
-      ))}
+        </>
+      )}
       <p className="text-[11px] text-[#6b7280] text-center pt-2.5">לחצו על שם לפרטים המלאים</p>
     </>
+  );
+}
+
+// שורת מלצר אחת — משמשת גם את «מי למד היום» וגם את המגירה, כדי ששתיהן לא ייפרדו.
+function AuMemberRow({ r, note, dot, onSelectMember, onMessage, messagedToday }) {
+  return (
+    <div className="au-member">
+      <span className="av" aria-hidden>{auInitials(r.name)}</span>
+      <button
+        type="button"
+        onClick={() => onSelectMember?.(r)}
+        className="flex-1 min-w-0 text-right bg-transparent border-0 p-0 font-inherit text-inherit cursor-pointer"
+      >
+        <span className="nm block truncate">{r.name}</span>
+        <span className="st block" style={r.seenToday && !r.studiedToday ? { color: "var(--amber)" } : undefined}>
+          {note(r)}
+        </span>
+      </button>
+      {/* התזכורת יושבת רק ליד מי שלא למד היום — זו כל הסיבה שהכפתור קיים. */}
+      {!r.studiedToday && onMessage && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onMessage(r); }}
+          title={messagedToday?.[r.id] ? "כבר נשלחה תזכורת היום" : "שליחת תזכורת"}
+          aria-label={messagedToday?.[r.id] ? `כבר נשלחה תזכורת ל${r.name}` : `שליחת תזכורת ל${r.name}`}
+          className="au-star"
+          style={messagedToday?.[r.id] ? { color: "var(--em)" } : undefined}
+        >
+          {messagedToday?.[r.id] ? "✓" : "✉"}
+        </button>
+      )}
+      <span className="pc" style={{ color: pctColor(r.pct) }}>
+        {Math.round(r.pct)}%
+        <i style={{ background: dot(r) }} />
+      </span>
+    </div>
   );
 }
 

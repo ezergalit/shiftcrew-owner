@@ -9,12 +9,22 @@ const db = supabase.schema("menu_app");
 // neither is a daily job. They moved out of the main navigation into settings
 // (user, 2026-08-20); what the owner looks at every day is progress, and that now lives
 // on the home screen.
-export default function TeamRoster({ restaurant, members, onRemoved , tasksOff = false }) {
+export default function TeamRoster({ restaurant, members, onRemoved, onSelectMember, tasksOff = false }) {
   const [copied, setCopied] = useState(false);
   const [copiedTrainee, setCopiedTrainee] = useState(false);
   const [confirming, setConfirming] = useState(null); // member id awaiting confirmation
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // ⚠️ עם 50 או 100 עובדים רשימה היא לא כלי — צריך לחפש בה ולמיין אותה (יותם, 14.9).
+  const [q, setQ] = useState("");
+  const [sortBy, setSortBy] = useState("name");   // name | joined
+
+  const needle = q.trim();
+  const shown = members
+    .filter((m) => !needle || String(m.name || "").includes(needle))
+    .sort((a, b) => (sortBy === "name"
+      ? String(a.name || "").localeCompare(String(b.name || ""), "he")
+      : new Date(b.created_at) - new Date(a.created_at)));
 
   const copyCode = async () => {
     try {
@@ -113,16 +123,44 @@ export default function TeamRoster({ restaurant, members, onRemoved , tasksOff =
         </p>
       ) : (
         <div className="space-y-1.5">
-          <p className="text-[11px] font-bold text-[#8a8aa0] px-1">{membersLabel(members.length)}</p>
-          {members.map((m) => (
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="חיפוש לפי שם"
+            className="w-full bg-[#0c0d10] border border-[#22252b] rounded-xl px-3 py-2.5 text-[16px] text-[#eef0f6] placeholder:text-[#5a5f6b] focus:outline-none focus:border-[#22c08c]"
+          />
+          <div className="flex items-center gap-2">
+            <p className="text-[11px] font-bold text-[#8a8aa0] px-1 flex-1">
+              {q ? `${shown.length} מתוך ${members.length}` : membersLabel(members.length)}
+            </p>
+            {[["name", "לפי שם"], ["joined", "לפי הצטרפות"]].map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setSortBy(k)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-black ${sortBy === k ? "bg-[#22c08c] text-[#06231a]" : "bg-[#22252b] text-[#8a8aa0]"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {shown.length === 0 && (
+            <p className="text-[12px] text-[#8a8aa0] text-center py-3">אין מלצר בשם הזה.</p>
+          )}
+          {shown.map((m) => (
             <div key={m.id} className="bg-[#0c0d10] border border-[#22252b] rounded-xl p-2.5">
               <div className="flex items-center gap-2">
-                <span className="flex-1 min-w-0">
+                {/* הקשה על השורה פותחת את הנתונים של המלצר — בלי ללחוץ מחיקה קודם. */}
+                <button
+                  type="button"
+                  onClick={() => onSelectMember?.({ id: m.id, name: m.name })}
+                  className="flex-1 min-w-0 text-right bg-transparent border-0 p-0 cursor-pointer"
+                >
                   <span className="block text-[12.5px] font-bold text-[#eef0f6] truncate">{m.name}</span>
                   <span className="block text-[10px] text-[#5a5a6e]">
                     הצטרף/ה {new Date(m.created_at).toLocaleDateString("he-IL")}
                   </span>
-                </span>
+                </button>
                 <button
                   onClick={() => setConfirming(confirming === m.id ? null : m.id)}
                   title="הסרה מהצוות"

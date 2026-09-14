@@ -1870,7 +1870,6 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
             onSelectMember={setSheetFor}
             onSignOut={onSignOut}
             onCodeChanged={(patch) => onRestaurantUpdated?.({ ...restaurant, ...patch })}
-            managerCount={ownerUsers.length}
             sections={[
               {
                 key: "managers",
@@ -1919,12 +1918,13 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 key: "team",
                 emoji: "👥",
                 title: "ניהול הצוות",
-                summary: `${membersLabel(teamMembers.length)} · הסרת עובד שעזב`,
+                summary: `${membersLabel(teamMembers.length)} · חיפוש, נתונים והסרה`,
                 node: (
                   <TeamRoster
                     restaurant={restaurant}
                     members={teamMembers}
                     tasksOff={tasksOff}
+                    onSelectMember={setSheetFor}
                     onRemoved={(id) => setTeamMembers((prev) => prev.filter((m) => m.id !== id))}
                   />
                 ),
@@ -2152,7 +2152,7 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 open={openSetting === "security"}
                 onToggle={() => setOpenSetting(openSetting === "security" ? null : "security")}
               >
-                <AccountSecurity ownerCode={restaurant?.owner_code} secondaryName={restaurant?.logged_in_as_name || null} onDeleted={onSignOut} />
+                <AccountSecurity ownerCode={restaurant?.owner_code} secondaryName={restaurant?.logged_in_as_name || null} onDeleted={onSignOut} managerCount={ownerUsers.length} onCodeChanged={(c) => onRestaurantUpdated?.({ ...restaurant, owner_code: c })} />
               </SettingsSection>
 
               <SettingsSection

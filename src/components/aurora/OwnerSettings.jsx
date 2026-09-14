@@ -64,7 +64,6 @@ export default function OwnerSettings({
   onSelectMember,
   onSignOut,
   onCodeChanged,      // קוד שהוחלף ⇒ ה-state של הדשבורד מתעדכן מיד (שיתוף, תצוגת מלצר)
-  managerCount = 0,   // כמה מנהלים נוספים נכנסים עם קוד הבעלים
   sections,           // the heavier panels, rendered by the dashboard: { key, emoji, title, summary, node }
 }) {
   const [copied, setCopied] = useState(false);
@@ -115,32 +114,9 @@ export default function OwnerSettings({
             that was already shared still works — this is only the manager UI. */}
       </div>
 
-      {/* ── the team ─────────────────────────────────────────────────────── */}
-      <div className="glass">
-        <div className="au-cardhead">
-          <b>הצוות</b>
-          <span>{membersLabel(teamMembers.length)}</span>
-        </div>
-        {teamMembers.length === 0 ? (
-          <p className="text-[12.5px] text-[#8a919e] leading-relaxed">
-            עדיין אין אף אחד. שתפו את הקוד שלמעלה — מלצר שנכנס איתו מופיע כאן מיד.
-          </p>
-        ) : (
-          teamMembers.map((m) => {
-            const pct = memberPct(m.id);
-            return (
-              <button key={m.id} type="button" className="au-member" onClick={() => onSelectMember?.({ id: m.id, name: m.name })}>
-                <span className="av" aria-hidden>{initials(m.name)}</span>
-                <span className="flex-1 min-w-0">
-                  <span className="nm block truncate">{m.name}</span>
-                  <span className="st block">{lastSeenNote(m.last_seen_at)}</span>
-                </span>
-                <span className="pc" style={{ color: pctColor(pct) }}>{Math.round(pct)}%</span>
-              </button>
-            );
-          })
-        )}
-      </div>
+      {/* 🚫 רשימת הצוות הפתוחה ירדה (יותם, 14.9: «כל הדף של הצוות מיותר בהגדרות כי
+          הוא מופיע פעמיים»). מה שנשאר הוא המגירה «ניהול הצוות» למטה — שם יש חיפוש,
+          מיון, והקשה על מלצר פותחת את הנתונים שלו. */}
 
       {/* ── one accordion, one open at a time ────────────────────────────────
           פרטי המסעדה used to sit in a glass card of its own above this group — same
@@ -160,20 +136,8 @@ export default function OwnerSettings({
           )}
           <div className="srow"><span>מנות בתפריט</span><span className="v">{itemCount}</span></div>
           <div className="srow"><span>קוד בעלים (לכניסה)</span><span className="v tracking-wider" dir="ltr">{restaurant?.owner_code}</span></div>
-          {/* קוד הבעלים נבדק בשרת מול סיסמת החשבון הראשית, ולכן מנהל משני לא יכול להשלים
-              את הפעולה — אותו שער שיש ל-AccountSecurity, ובאותה לשון. */}
-          <div className="pt-2">
-            {restaurant?.logged_in_as_name ? (
-              <p className="text-[12px] text-[#8a919e] leading-relaxed">שינוי קוד הבעלים שמור לבעל/ת החשבון הראשי/ת.</p>
-            ) : (
-              <CodeChanger
-                kind="owner"
-                current={restaurant?.owner_code}
-                others={managerCount}
-                onChanged={(c) => onCodeChanged?.({ owner_code: c })}
-              />
-            )}
-          </div>
+          {/* שינוי קוד הבעלים יושב ב«חשבון ואבטחה» יחד עם הסיסמה — שני הפרטים שמזינים
+              באותו מסך כניסה, ולכן הם מוחלפים באותו מקום (יותם, 14.9). */}
         </Section>
         {sections.map((s) => (
           <Section
