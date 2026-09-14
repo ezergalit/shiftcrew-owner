@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Home, BookOpen, Users, Settings, ListChecks, Plus, Edit2, Trash2, Check, AlertTriangle, ChefHat, ClipboardPaste, X, UserPlus, Camera, Star, Target, Stethoscope, Store, ShieldCheck, Compass, ChevronLeft, ChevronRight, Flame, TrendingUp, Megaphone, BarChart3, Lightbulb } from "lucide-react";
 import LearningStatus from "../components/LearningStatus";
@@ -16,7 +16,7 @@ import OperatorLine from "../components/OperatorLine";
 import SmartSuggestions from "../components/SmartSuggestions";
 import { categoryVisual } from "../lib/categoryVisual";
 import GuidedTour from "../components/GuidedTour";
-import OwnerTutorial from "../components/aurora/OwnerTutorial";
+import CoachBar from "../components/aurora/CoachBar";
 import OwnerWelcomeVideo from "./OwnerWelcomeVideo";
 import BriefAssistant, { TagField, BriefCarryOver } from "../components/BriefAssistant";
 import BriefReadBoard from "../components/BriefReadBoard";
@@ -300,8 +300,24 @@ async function downscaleImage(file, maxDim = 2576) {
   return { media_type: "image/jpeg", data: canvas.toDataURL("image/jpeg", 0.92).split(",")[1] };
 }
 
+// כל משפט מבקש פעולה אחת, והמדריך מתקדם כשהיא נעשתה — לא כשמקישים «הבא».
+const COACH_TEXT = [
+  "זה מסך הבית — כאן רואים מי מהצוות למד היום. עכשיו הקישו על ״תפריט״ בסרגל למטה.",
+  "פתחו מנה אחת — זו בדיוק המנה שהצוות לומד.",
+  "מכאן עורכים אותה, וכל שינוי מגיע לצוות מיד. סגרו כשסיימתם לקרוא.",
+  "עכשיו ״הגדרות״ — שם קוד ההצטרפות של הצוות, ו״תצוגת מלצר״ שמראה מה הם רואים.",
+];
+
 export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpdated }) {
   const [tab, setTab] = useState("home"); // home | menu | settings
+
+  // ══ המדריך: חמישה משפטים על האפליקציה האמיתית ══
+  // הטקסטים מתארים פעולה אחת כל אחד, והמדריך מתקדם כשהיא נעשתה בפועל.
+  const [coachAt, setCoachAt] = useState(0);
+  const [stage, setStage] = useState({ group: null, cat: null, viewing: false, deep: false });
+  const onStage = useCallback((n) => setStage((p) => (
+    p.group === n.group && p.cat === n.cat && p.viewing === n.viewing && p.deep === n.deep ? p : n
+  )), []);
   // ⚠️ The «אורורה» skin is opt-in per restaurant (restaurants.features.design),
   // exactly like the waiter app. A restaurant without the flag — CREWDEMO, which
   // Apple's reviewer and the Play testers open — renders the old screens byte for byte.
@@ -535,6 +551,20 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [menuLoaded, restaurant?.id]);
+
+  // ── קידום המדריך ──
+  // כל צעד מסתיים כשמצב האפליקציה מראה שהפעולה נעשתה. ⚠️ ההשוואה היא למצב, לא להקשה:
+  // מנהל שהגיע לתפריט דרך מסלול אחר מקבל את אותה התקדמות, ואין צעד שיכול «לפספס» קליק.
+  useEffect(() => {
+    if (!tourActive) return;
+    const reached =
+      coachAt === 0 ? tab === "menu"
+      : coachAt === 1 ? stage.viewing
+      : coachAt === 2 ? (showAddForm || !stage.viewing)
+      : coachAt === 3 ? tab === "settings"
+      : false;
+    if (reached) setCoachAt((a) => a + 1);
+  }, [tourActive, coachAt, tab, stage, showAddForm]);
 
   // Open the card that matches where the day is, once the first load has told us whether
   // today's brief already went out. Guarded by a ref so it happens exactly once — without
@@ -1390,6 +1420,21 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     );
   }
 
+  // המדריך רץ רק על העור החדש; העור הקלאסי (CREWDEMO — חשבון הבודקים) ממשיך עם
+  // הסיור הישן בדיוק כפי שהיה.
+  const coachOn = tourActive && aurora;
+  const closeCoach = () => { setCoachAt(0); handleTourClose(); };
+  const coachNode = coachOn ? (
+    <CoachBar
+      text={coachAt >= COACH_TEXT.length ? "זהו — הכול אצלכם. בהצלחה!" : COACH_TEXT[coachAt]}
+      index={Math.min(coachAt, COACH_TEXT.length - 1)}
+      total={COACH_TEXT.length}
+      done={coachAt >= COACH_TEXT.length}
+      onSkip={closeCoach}
+      onDone={closeCoach}
+    />
+  ) : null;
+
   return (
     <div className={`h-screen mx-auto text-[#eef0f6] flex flex-col ${aurora ? "aurora-skin" : "max-w-md bg-[#0c0d10]"}`} dir="rtl">
       {aurora && (<><div className="aurora" aria-hidden><i /><i /><i /><i /></div><div className="grain" aria-hidden /></>)}
@@ -1568,6 +1613,8 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                "עריכת המנה" button and every ⭐ silently did nothing. */
             onOpenDish={openDishEditor}
             onToggleStar={toggleStar}
+            onStage={onStage}
+            coachSlot={coachNode}
             scrollRef={scrollRef}
             dishForm={showAddForm ? (
               /* The skinned editor: labelled fields, and closed lists collapsed to the
@@ -2137,6 +2184,10 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
         )}
       </div>
 
+      {/* ⚠️ בעומק (מסך מנה / סוף קטגוריה) הפס מתארח בתוך אותו portal — שני עותקים
+          בבת אחת היו נערמים זה על זה. */}
+      {!stage.deep && coachNode}
+
       {/* Bottom Navigation */}
       <div className={aurora ? "au-nav" : "border-t border-[#22252b] bg-[#16181c]"}>
         {/* 🔴 The inset belongs to exactly one element. `.au-nav` above already pads by
@@ -2235,17 +2286,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
           onSent={(id, body) => setMessagedToday((prev) => ({ ...prev, [id]: { body, readAt: null } }))}
         />
       )}
-      {/* מדריך אינטראקטיבי — עותק של המסעדה, לצורך הלימוד בלבד (יותם, 13.9). הסיור הישן
-          (שכבה עם זרקור מעל הדשבורד החי) נשאר לעור הקלאסי, שבו המסכים אחרים לגמרי —
-          CREWDEMO, חשבון הבודקים, מקבל בדיוק את מה שהיה. */}
-      {tourActive && aurora && (
-        <OwnerTutorial
-          restaurant={restaurant}
-          items={items}
-          teamMembers={teamMembers}
-          onDone={handleTourClose}
-        />
-      )}
+      {/* המדריך של «אורורה» הוא `coachNode` מעל הסרגל — לא שכבה ולא עותק. הסיור הישן
+          נשאר לעור הקלאסי, שבו המסכים אחרים לגמרי: CREWDEMO, חשבון הבודקים, מקבל
+          בדיוק את מה שהיה. */}
       {tourActive && !aurora && (
         <GuidedTour
           onNavigate={setTab}

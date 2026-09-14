@@ -132,7 +132,7 @@ function Dish({ item, flagGroups, tone, merged, onOpen, onToggleStar }) {
 // פה, שיהיה קצר ולעניין"). No empty ingredient block, no "no warnings recorded" card, no
 // nine category chips — one line naming the category this dish is in. A preview that
 // lists what a dish does *not* have is as long as the edit form and reads like a form.
-function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleStar, onPrev, onNext, pos, lastInCat }) {
+function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleStar, onPrev, onNext, pos, lastInCat, coachSlot }) {
   const [zoom, setZoom] = useState(false);
   // A guide is not a dish, so it must not be read like one — no price, no warning
   // groups, no ⭐, and the button says what it edits (user, 29.8: "it cant say edit
@@ -253,6 +253,11 @@ function DishPreview({ item, flagGroups, tone, merged, onBack, onEdit, onToggleS
         </button>, document.body)}
      </div>
 
+      {/* ⚠️ המדריך מתארח כאן ולא עושה `position: fixed` מעל המסך: מסך המנה הוא portal
+          מלא-מסך ב-z-70, וכל שכבה שתנסה לשבת מעליו מבחוץ או תיכלא בכרטיס זכוכית או
+          תכסה את הפקדים. אח של סרגל החצים = נראה תמיד, מכסה כלום. */}
+      {coachSlot}
+
       {/* The pager is a bar of its own, outside the scroll — identical to the waiter's
           (user, 30.8: "כפתור המנה הבאה צריך להיות בדיוק כמו אפליקציית המלצרים… נשאר
           איתך בזמן שאתה מגולל במנה ארוכה"). Big, green, and pinned: walking the menu
@@ -291,12 +296,22 @@ export default function OwnerMenu({
   operatorLine,
   emptyNote,
   scrollRef,
+  onStage,
+  coachSlot = null,
 }) {
   const [group, setGroup] = useState(null);   // null = every menu
   const [cat, setCat] = useState(null);       // null = every category
   const [q, setQ] = useState("");
   const [viewing, setViewing] = useState(null);   // the dish being READ, not edited
   const [endOfCat, setEndOfCat] = useState(null); // the category just finished, if any
+
+  // מה שהמדריך קורא: באיזה תפריט/קטגוריה אנחנו, ואיזו מנה נפתחה. אין כאן שום מדידה —
+  // המדריך מתקדם ממצב האפליקציה, ולכן הוא לא יכול «לפספס» הקשה או להיתקע על אלמנט.
+  // `deep` = מסך מלא פתוח (מנה או סוף קטגוריה). שניהם portal ל-body, ולכן הפס
+  // שיושב מעל הסרגל נשאר מאחוריהם — הוא מוחלף בעותק שמתארח בתוך המסך עצמו.
+  useEffect(() => {
+    onStage?.({ group, cat, viewing: !!viewing, deep: !!viewing || !!endOfCat });
+  }, [group, cat, viewing, endOfCat, onStage]);
   // "menu" | "guides" — service training is not the menu (user, 29.8), so it is a
   // section of its own rather than a category chip sitting among the courses.
 
@@ -495,6 +510,7 @@ export default function OwnerMenu({
           ? () => go(at + 1)
           : () => { setEndOfCat(fresh.category); setViewing(null); }}
         lastInCat={at >= 0 && at === sibs.length - 1}
+        coachSlot={coachSlot}
         onBack={() => setViewing(null)}
         /* ⚠️ `viewing` is NOT cleared: closing the editor must land back on the dish
            you were reading, not on the list you came from three taps ago (user, 30.8). */
