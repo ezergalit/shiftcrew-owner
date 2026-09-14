@@ -17,6 +17,7 @@ import SmartSuggestions from "../components/SmartSuggestions";
 import { categoryVisual } from "../lib/categoryVisual";
 import GuidedTour from "../components/GuidedTour";
 import CoachBar from "../components/aurora/CoachBar";
+import { STOPS, screenOf, loadSeen, markSeen, resetSeen } from "../lib/coachStops";
 import OwnerWelcomeVideo from "./OwnerWelcomeVideo";
 import BriefAssistant, { TagField, BriefCarryOver } from "../components/BriefAssistant";
 import BriefReadBoard from "../components/BriefReadBoard";
@@ -300,20 +301,14 @@ async function downscaleImage(file, maxDim = 2576) {
   return { media_type: "image/jpeg", data: canvas.toDataURL("image/jpeg", 0.92).split(",")[1] };
 }
 
-// כל משפט מבקש פעולה אחת, והמדריך מתקדם כשהיא נעשתה — לא כשמקישים «הבא».
-const COACH_TEXT = [
-  "זה מסך הבית — כאן רואים מי מהצוות למד היום. עכשיו הקישו על ״תפריט״ בסרגל למטה.",
-  "פתחו מנה אחת — זו בדיוק המנה שהצוות לומד.",
-  "מכאן עורכים אותה, וכל שינוי מגיע לצוות מיד. סגרו כשסיימתם לקרוא.",
-  "עכשיו ״הגדרות״ — שם קוד ההצטרפות של הצוות, ו״תצוגת מלצר״ שמראה מה הם רואים.",
-];
-
 export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpdated }) {
   const [tab, setTab] = useState("home"); // home | menu | settings
 
-  // ══ המדריך: חמישה משפטים על האפליקציה האמיתית ══
-  // הטקסטים מתארים פעולה אחת כל אחד, והמדריך מתקדם כשהיא נעשתה בפועל.
-  const [coachAt, setCoachAt] = useState(0);
+  // ══ המדריך: כל מסך מסביר את עצמו בפעם הראשונה ══
+  // הטקסטים והמיפוי ב-`lib/coachStops.js`. `stop` נשאר עד «הבנתי» או עד עזיבת המסך,
+  // כדי שהשורה לא תיעלם מתחת לאצבע תוך כדי קריאה.
+  const [seen, setSeen] = useState(() => loadSeen(restaurant?.id));
+  const [stop, setStop] = useState(null);
   const [stage, setStage] = useState({ group: null, cat: null, viewing: false, deep: false });
   const onStage = useCallback((n) => setStage((p) => (
     p.group === n.group && p.cat === n.cat && p.viewing === n.viewing && p.deep === n.deep ? p : n
@@ -552,19 +547,17 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [menuLoaded, restaurant?.id]);
 
-  // ── קידום המדריך ──
-  // כל צעד מסתיים כשמצב האפליקציה מראה שהפעולה נעשתה. ⚠️ ההשוואה היא למצב, לא להקשה:
-  // מנהל שהגיע לתפריט דרך מסלול אחר מקבל את אותה התקדמות, ואין צעד שיכול «לפספס» קליק.
+  // ── המדריך ──
+  // הגעה למסך חדש ⇒ השורה שלו, פעם אחת. ⚠️ מצב האפליקציה הוא הטריגר, לא הקשה על
+  // אלמנט: מנהל שהגיע דרך מסלול אחר מקבל בדיוק את אותו הסבר.
   useEffect(() => {
-    if (!tourActive) return;
-    const reached =
-      coachAt === 0 ? tab === "menu"
-      : coachAt === 1 ? stage.viewing
-      : coachAt === 2 ? (showAddForm || !stage.viewing)
-      : coachAt === 3 ? tab === "settings"
-      : false;
-    if (reached) setCoachAt((a) => a + 1);
-  }, [tourActive, coachAt, tab, stage, showAddForm]);
+    if (!aurora) return;
+    const screen = screenOf({ tab, stage, showAddForm });
+    if (!screen || !STOPS[screen]) { setStop(null); return; }
+    if (seen.has(screen)) { setStop((cur) => (cur === screen ? cur : null)); return; }
+    setSeen((prev) => markSeen(restaurant?.id, screen, prev));
+    setStop(screen);
+  }, [aurora, tab, stage, showAddForm, seen, restaurant?.id]);
 
   // Open the card that matches where the day is, once the first load has told us whether
   // today's brief already went out. Guarded by a ref so it happens exactly once — without
@@ -1422,18 +1415,9 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
 
   // המדריך רץ רק על העור החדש; העור הקלאסי (CREWDEMO — חשבון הבודקים) ממשיך עם
   // הסיור הישן בדיוק כפי שהיה.
-  const coachOn = tourActive && aurora;
-  const closeCoach = () => { setCoachAt(0); handleTourClose(); };
-  const coachNode = coachOn ? (
-    <CoachBar
-      text={coachAt >= COACH_TEXT.length ? "זהו — הכול אצלכם. בהצלחה!" : COACH_TEXT[coachAt]}
-      index={Math.min(coachAt, COACH_TEXT.length - 1)}
-      total={COACH_TEXT.length}
-      done={coachAt >= COACH_TEXT.length}
-      onSkip={closeCoach}
-      onDone={closeCoach}
-    />
-  ) : null;
+  const coachNode = aurora && stop
+    ? <CoachBar text={STOPS[stop]} onOk={() => setStop(null)} />
+    : null;
 
   return (
     <div className={`h-screen mx-auto text-[#eef0f6] flex flex-col ${aurora ? "aurora-skin" : "max-w-md bg-[#0c0d10]"}`} dir="rtl">
@@ -1947,14 +1931,14 @@ export default function OwnerDashboard({ restaurant, onSignOut, onRestaurantUpda
                 : {
                     key: "tour",
                     emoji: "🧭",
-                    title: "סיור מודרך באפליקציה",
-                    summary: "לעבור שוב על מה שיש בכל טאב",
+                    title: "ההסברים על המסכים",
+                    summary: "להחזיר את שורת ההסבר בכל מסך",
                     node: (
                       <button
-                        onClick={() => { setTourActive(true); setTab("home"); }}
+                        onClick={() => { setSeen(resetSeen(restaurant?.id)); setTab("home"); }}
                         className="au-wide"
                       >
-                        🧭 להתחיל את הסיור
+                        🧭 להציג שוב את ההסברים
                       </button>
                     ),
                   },
