@@ -1491,3 +1491,11 @@ a better user experience while explaining to them our app (how to use)»*.
 
 נמצא בסבב בודקים אדוורסרי (16 טענות, כל אחת עברה מפריך נפרד). שאר הממצאים של אותו
 סבב היו בצד המלצר — ר' `wt-judge/CLAUDE.md`, «שני סבבי בודקים אדוורסריים».
+
+### 📱 14.9 — «פתיחה בחלון מלא» ירד מתצוגת המלצר
+
+יותם: *«remove the button from the waiter in the owner app preview to go to view on
+google — remove that button.»* הכפתור (`ExternalLink`) פתח את אפליקציית הצוות
+בטאב דפדפן, כלומר הוציא את המנהל מהאפליקציה שלו. בסרגל נשארו רענון וסגירה.
+ℹ️ `WAITER_URL` נשאר בשימוש — הוא בונה את ה-`src` של ה-iframe וגם שומר על בדיקת
+ה-origin של ה-postMessage; רק ה-import של האייקון ירד איתו.
