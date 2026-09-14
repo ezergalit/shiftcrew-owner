@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Smartphone, X, RotateCw, ExternalLink } from "lucide-react";
+import { Smartphone, X, RotateCw } from "lucide-react";
 
 // Live preview of the team (waiter) app inside the owner app (user request, 2026-08-20):
 // the owner should always be able to see exactly what their waiters see. The real app is
@@ -78,10 +78,6 @@ export default function WaiterPreview({ teamCode, variant }) {
             className="w-11 h-11 rounded-xl bg-[#191b1f] flex items-center justify-center text-[#8a8aa0] active:scale-95 transition-transform">
             <RotateCw size={16} />
           </button>
-          <a href={WAITER_URL} target="_blank" rel="noreferrer" title="פתיחה בחלון מלא" aria-label="פתיחה בחלון מלא"
-            className="w-11 h-11 rounded-xl bg-[#191b1f] flex items-center justify-center text-[#8a8aa0] active:scale-95 transition-transform">
-            <ExternalLink size={16} />
-          </a>
           <button onClick={() => setOpen(false)} title="סגירה" aria-label="סגירה"
             className="w-11 h-11 rounded-xl bg-[#e0315a] flex items-center justify-center text-white active:scale-95 transition-transform">
             <X size={18} />
