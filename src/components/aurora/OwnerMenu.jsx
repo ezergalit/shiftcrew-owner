@@ -557,7 +557,12 @@ export default function OwnerMenu({
     );
   };
 
-  const inGroupPool = group === SERVICE ? guides : pool.filter((i) => i.menuGroup === group);
+  // ⚠️ `!group` = «כל התפריטים», לא «תפריט בשם null». חיפוש פותח מנה בלי לקבוע `group`
+  // (הוא סורק את כל התפריט), ומסך סוף-הקטגוריה נושא את ה-null הזה הלאה יחד עם `cat` —
+  // ואז השוואה קשיחה ל-null לא התאימה לאף שורה, כי לכל מנה בשתי המסעדות יש `menuGroup`.
+  // התוצאה: קטגוריה שנפתחה מחיפוש הוצגה עם צ׳יפי הצבעים ובלי אף מנה. אצל המלצר
+  // (`inMenu` ב-MenuBrowser) השומר הזה קיים; העותק בצד הניהול השמיט אותו.
+  const inGroupPool = group === SERVICE ? guides : !group ? pool : pool.filter((i) => i.menuGroup === group);
   const groupCats = [...new Set(inGroupPool.map((i) => i.category).filter(Boolean))];
   const title = group === SERVICE ? "הדרכות שירות" : group || "התפריט";
 
