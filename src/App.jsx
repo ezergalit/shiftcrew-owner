@@ -5,6 +5,7 @@ import { supabase } from "./lib/supabase";
 import OwnerLogin from "./auth/OwnerLogin";
 import OwnerDashboard, { RESTAURANT_COLUMNS } from "./screens/OwnerDashboard";
 import OperatorPanel from "./screens/OperatorPanel";
+import ThemeStudio from "./screens/ThemeStudio";
 import { setSessionToken } from "./lib/appSession";
 
 const SESSION_KEY = "menu-app-owner-session";
@@ -18,10 +19,35 @@ const DEV_BYPASS_AUTH = import.meta.env.VITE_DEV_BYPASS_AUTH === "true";
 export default function App() {
   // Operator-only control board (?operator=1) — pending owner requests per restaurant,
   // each copyable as a ready-made Claude Code message. Never linked from the owner UI.
+  // Two boards now: the request queue, and the colour studio that writes features.theme
+  // so a restaurant's palette stops being an app update.
   if (new URLSearchParams(window.location.search).has("operator")) {
-    return <OperatorPanel />;
+    return <OperatorBoards />;
   }
   return <OwnerApp />;
+}
+
+// Tabs live here rather than inside OperatorPanel so the request queue keeps working
+// exactly as it did — a new screen should not be able to break an existing one.
+function OperatorBoards() {
+  const [view, setView] = useState(
+    new URLSearchParams(window.location.search).has("studio") ? "studio" : "queue");
+  const Tab = ({ id, children }) => (
+    <button onClick={() => setView(id)}
+      className={`min-h-[44px] px-4 rounded-xl text-sm font-bold ${view === id
+        ? "bg-[#22c08c] text-[#06231a]" : "bg-[#16181c] text-[#8a8aa0] border border-[#22252b]"}`}>
+      {children}
+    </button>
+  );
+  return (
+    <div className="min-h-screen bg-[#0c0d10]" dir="rtl">
+      <div className="flex gap-2 p-4 pb-0">
+        <Tab id="queue">בקשות</Tab>
+        <Tab id="studio">עיצוב</Tab>
+      </div>
+      {view === "queue" ? <OperatorPanel /> : <ThemeStudio />}
+    </div>
+  );
 }
 
 function OwnerApp() {
