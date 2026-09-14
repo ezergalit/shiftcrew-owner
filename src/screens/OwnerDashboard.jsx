@@ -3108,7 +3108,7 @@ function MenuSetupTutorial({ restaurant, onDone }) {
               disabled={saving}
               className="w-full bg-[#6d5efc] text-white font-bold py-3 rounded-lg hover:bg-[#5b4ef0] transition disabled:opacity-60"
             >
-              {saving ? "שומר…" : `שמירה — ${totalDishes} מנות`}
+              {saving ? "שומר…" : `שמירה — ${totalDishes === 1 ? "מנה אחת" : `${totalDishes} מנות`}`}
             </button>
             <button onClick={() => setPhase("paste")} className="w-full bg-[#22252b] text-[#8a8aa0] font-bold py-3 rounded-lg hover:bg-[#2c2e35] transition">
               חזרה להדבקה
