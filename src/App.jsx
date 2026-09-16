@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
-import BrandMark from "./components/BrandMark";
 import { supabase } from "./lib/supabase";
 import OwnerLogin from "./auth/OwnerLogin";
 import OwnerDashboard, { RESTAURANT_COLUMNS } from "./screens/OwnerDashboard";
@@ -104,13 +103,20 @@ function OwnerApp() {
   );
 }
 
+// The loading screen shown while a saved session is checked. It used to be the old tile on a
+// flat background, so every app launch flashed the retired look before the new login or home
+// (user, 16.9). Same icon, glow and aurora backdrop as the login screen now.
 function Splash() {
   return (
-    <div className="min-h-screen bg-[#0c0d10] text-gray-100 max-w-md mx-auto flex flex-col items-center justify-center gap-4" dir="rtl">
-      <div className="w-16 h-16 rounded-3xl bg-[#0F5C46] flex items-center justify-center">
-        <BrandMark size={40} />
+    <div className="aurora-skin h-full min-h-screen flex flex-col items-center justify-center gap-7 text-[#eef0f6]" dir="rtl">
+      <div className="aurora" aria-hidden><i></i><i></i><i></i><i></i></div>
+      <div className="grain" aria-hidden></div>
+      <div className="relative w-[88px] h-[88px]">
+        <div className="absolute -inset-6 rounded-full bg-[radial-gradient(circle,rgba(34,192,140,0.30),transparent_68%)]" aria-hidden />
+        <img src="/icon-512.png" alt="CrewMenu" width="88" height="88"
+          className="relative w-full h-full rounded-[26px] border border-[rgba(238,240,246,0.12)] shadow-[0_18px_40px_rgba(0,0,0,0.45)]" />
       </div>
-      <Loader2 size={22} className="animate-spin text-gray-500" />
+      <Loader2 size={22} className="animate-spin text-[rgba(34,192,140,0.85)]" />
     </div>
   );
 }
