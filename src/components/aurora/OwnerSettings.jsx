@@ -9,7 +9,10 @@ import CodeChanger from "./CodeChanger";
 // manager genuinely performs here: adding a waiter. Everything under it is set to our
 // recommendation already and exists so it CAN be adjusted, not so it must be.
 
-const WAITER_URL = "https://shiftcrew-waiter.vercel.app";
+// The team app is unlisted on the App Store — this link is the only way to reach it, search
+// won't find it. Google Play is still in review, so Android gets a "not yet" line and no
+// link (user, 16.9: "only app store for now").
+const TEAM_APP_STORE_URL = "https://apps.apple.com/il/app/id6802032911";
 
 
 
@@ -71,7 +74,8 @@ export default function OwnerSettings({
   const code = restaurant?.team_code || "";
   const shareText =
     `הצטרפו לצוות של ${restaurant?.name || "המסעדה"} ב-CrewMenu 👋\n\n` +
-    `1. פותחים: ${WAITER_URL}\n` +
+    `1. מורידים את האפליקציה מה-App Store:\n${TEAM_APP_STORE_URL}\n` +
+    `(באנדרואיד — האפליקציה עוד לא זמינה ב-Google Play)\n` +
     `2. מזינים את הקוד: ${code}\n` +
     `3. כותבים שם פרטי ומשפחה — וזהו.\n\n` +
     `כאן לומדים את התפריט ואת השירות של המסעדה.`;
