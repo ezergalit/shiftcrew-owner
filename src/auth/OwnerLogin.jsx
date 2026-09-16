@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { Loader2, AlertTriangle, Eye, EyeOff } from "lucide-react";
-import BrandMark from "../components/BrandMark";
+import { Loader2, AlertTriangle, Eye, EyeOff, KeyRound } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { setSessionToken } from "../lib/appSession";
 import { RESTAURANT_COLUMNS } from "../screens/OwnerDashboard";
@@ -38,6 +37,44 @@ function toSession(restaurant) {
     // so the session must remember which one this login was.
     loggedInAsName: restaurant.logged_in_as_name ?? null
   };
+}
+
+// The login used to be the last corner of the app still on the retired purple look — the
+// first thing a manager saw (user, 16.9). It now matches the waiter's join screen exactly:
+// same app icon, same aurora backdrop, same lit card. The two files live in different repos,
+// so the card and field styles below are a deliberate copy of shiftcrew-waiter's TeamLogin.
+// 16px+ text in every input: below that iOS Safari zooms the page on focus.
+const FIELD_BASE = "w-full rounded-2xl px-4 text-[#eef0f6] bg-[rgba(12,13,16,0.55)] border border-[rgba(238,240,246,0.10)] placeholder:text-[rgba(238,240,246,0.28)] placeholder:font-normal outline-none transition-[border-color,box-shadow,background-color] duration-200 focus:border-[rgba(34,192,140,0.65)] focus:bg-[rgba(34,192,140,0.06)] focus:shadow-[0_0_0_4px_rgba(34,192,140,0.14)]";
+const FIELD = `${FIELD_BASE} h-[52px] text-[16px] font-semibold`;
+const CODE_FIELD = `${FIELD_BASE} h-[60px] text-[20px] font-bold text-center tracking-[0.2em] placeholder:text-[15px] placeholder:tracking-normal`;
+const LABEL = "block text-[13px] font-medium text-[#8a919e] mb-2 px-1";
+const primaryButton = (ready) => `w-full h-[56px] rounded-2xl text-[17px] font-bold flex items-center justify-center gap-2 transition-[transform,box-shadow,opacity] duration-200 active:scale-[0.98] ${
+  ready
+    ? "bg-[linear-gradient(180deg,#35d8a2,#1faf80)] text-[#06231a] shadow-[0_14px_32px_rgba(34,192,140,0.34),inset_0_1px_0_rgba(255,255,255,0.28)]"
+    : "bg-[rgba(238,240,246,0.07)] text-[rgba(238,240,246,0.35)] cursor-not-allowed"
+}`;
+
+// Frosted card with an emerald hairline along the top edge and a faint glow under it.
+function FormCard({ icon, title, subtitle, children }) {
+  return (
+    <div className="relative overflow-hidden rounded-[28px] p-[22px] bg-[linear-gradient(160deg,rgba(40,46,54,0.80),rgba(19,22,27,0.66))] border border-[rgba(238,240,246,0.09)] backdrop-blur-xl shadow-[0_24px_60px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(238,240,246,0.07)]">
+      <div aria-hidden className="absolute inset-x-10 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(34,192,140,0.75),transparent)]" />
+      <div aria-hidden className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 w-72 h-40 rounded-full bg-[radial-gradient(closest-side,rgba(34,192,140,0.16),transparent)]" />
+      <div className="relative space-y-5">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 shrink-0 rounded-2xl grid place-items-center text-[#22c08c] bg-[rgba(34,192,140,0.12)] border border-[rgba(34,192,140,0.28)]">
+            {icon}
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-[18px] font-bold leading-tight">{title}</h2>
+            {subtitle && <p className="text-[13px] text-[#8a919e] mt-0.5 leading-snug">{subtitle}</p>}
+          </div>
+        </div>
+        <div aria-hidden className="h-px bg-[rgba(238,240,246,0.07)]" />
+        {children}
+      </div>
+    </div>
+  );
 }
 
 export default function OwnerLogin({ onGranted }) {
@@ -170,15 +207,6 @@ export default function OwnerLogin({ onGranted }) {
     }
   };
 
-  // The login screen used to be the last corner of the app still on the old purple look —
-  // the first thing a manager saw was the design we had already retired (user, 16.9). It now
-  // borrows the aurora backdrop and glass card from the screens right behind it.
-  // 16px text in every input: below that iOS Safari zooms the page on focus.
-  const field = "w-full h-[52px] rounded-2xl px-4 text-[16px] font-semibold text-[#eef0f6] bg-[rgba(238,240,246,0.05)] border border-[rgba(238,240,246,0.10)] placeholder:text-[rgba(238,240,246,0.28)] placeholder:font-normal outline-none transition-[border-color,box-shadow,background-color] duration-200 focus:border-[rgba(34,192,140,0.6)] focus:bg-[rgba(34,192,140,0.05)] focus:shadow-[0_0_0_4px_rgba(34,192,140,0.12)]";
-  const label = "block text-[13px] font-medium text-[#8a919e] mb-2 px-1";
-  const primary = (ready) => `w-full h-[54px] rounded-2xl text-[16px] font-bold flex items-center justify-center gap-2 transition-[transform,background-color,box-shadow] duration-200 active:scale-[0.98] ${
-    ready ? "bg-[#22c08c] text-[#06231a] shadow-[0_12px_30px_rgba(34,192,140,0.30)]" : "bg-[rgba(238,240,246,0.07)] text-[rgba(238,240,246,0.35)] cursor-not-allowed"
-  }`;
   const errorBox = err && (
     <div role="alert" className="flex items-start gap-2 rounded-xl px-3 py-2.5 bg-[rgba(229,72,77,0.10)] border border-[rgba(229,72,77,0.30)] text-[13px] leading-relaxed text-[#f27d8d]">
       <AlertTriangle size={15} className="shrink-0 mt-0.5" />
@@ -192,7 +220,7 @@ export default function OwnerLogin({ onGranted }) {
   const eye = (
     <button type="button" onClick={() => setShowPassword(!showPassword)}
       aria-label={showPassword ? "הסתרת הסיסמה" : "הצגת הסיסמה"}
-      className="absolute left-1.5 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-xl text-[#8a919e] active:bg-[rgba(238,240,246,0.06)]">
+      className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-xl text-[#8a919e] active:bg-[rgba(238,240,246,0.06)]">
       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
     </button>
   );
@@ -202,110 +230,105 @@ export default function OwnerLogin({ onGranted }) {
       <div className="aurora" aria-hidden><i></i><i></i><i></i><i></i></div>
       <div className="grain" aria-hidden></div>
 
-      <form onSubmit={submit} className="flex-1 overflow-y-auto flex flex-col px-6 pt-[calc(env(safe-area-inset-top,0px)+4.5rem)] pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)]">
+      <form onSubmit={submit} className="flex-1 overflow-y-auto flex flex-col px-6 pt-[calc(env(safe-area-inset-top,0px)+4rem)] pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)]">
         <div className="text-center mb-8">
           <div className="relative w-[76px] h-[76px] mx-auto mb-5">
             <div className="absolute -inset-5 rounded-full bg-[radial-gradient(circle,rgba(34,192,140,0.28),transparent_68%)]" aria-hidden />
-            <div className="relative w-full h-full rounded-[24px] bg-[#0F5C46] border border-[rgba(238,240,246,0.12)] shadow-[0_18px_40px_rgba(0,0,0,0.45)] flex items-center justify-center">
-              <BrandMark size={46} />
-            </div>
+            <img src="/icon-512.png" alt="CrewMenu" width="76" height="76"
+              className="relative w-full h-full rounded-[24px] border border-[rgba(238,240,246,0.12)] shadow-[0_18px_40px_rgba(0,0,0,0.45)]" />
           </div>
           <h1 className="text-[32px] font-extrabold leading-none tracking-tight">CrewMenu</h1>
           <p className="text-[14px] text-[#8a919e] mt-3">ניהול תפריט והדרכת צוות</p>
         </div>
 
-        <div className="glass">
-          <div className="p-1 space-y-4">
-            {signup && (
-              <div className="flex gap-1 rounded-2xl p-1 bg-[rgba(238,240,246,0.05)] border border-[rgba(238,240,246,0.08)]">
-                {[["enter", "כניסה"], ["create", "יצירה"]].map(([m, text]) => (
-                  <button key={m} type="button" onClick={() => { setMode(m); setErr(""); }}
-                    className={`flex-1 h-10 rounded-xl text-[14px] font-semibold transition-colors ${
-                      mode === m ? "bg-[rgba(34,192,140,0.16)] text-[#22c08c]" : "text-[#8a919e]"
-                    }`}>
-                    {text}
-                  </button>
-                ))}
-              </div>
-            )}
+        <FormCard icon={<KeyRound size={20} />}
+          title={mode === "enter" ? "כניסה לניהול" : "יצירת חשבון"}
+          subtitle={mode === "enter" ? "קוד הבעלים והסיסמה של המסעדה" : "מסעדה חדשה — שם, קוד כניסה וסיסמה"}>
+          {signup && (
+            <div className="flex gap-1 rounded-2xl p-1 bg-[rgba(12,13,16,0.55)] border border-[rgba(238,240,246,0.08)]">
+              {[["enter", "כניסה"], ["create", "יצירה"]].map(([m, text]) => (
+                <button key={m} type="button" onClick={() => { setMode(m); setErr(""); }}
+                  className={`flex-1 h-10 rounded-xl text-[14px] font-semibold transition-colors ${
+                    mode === m ? "bg-[rgba(34,192,140,0.16)] text-[#22c08c]" : "text-[#8a919e]"
+                  }`}>
+                  {text}
+                </button>
+              ))}
+            </div>
+          )}
 
-            {mode === "enter" ? (
-              <>
-                <div>
-                  <h2 className="text-[19px] font-bold">כניסה לניהול</h2>
-                  <p className="text-[13px] text-[#8a919e] mt-1">עם קוד הבעלים והסיסמה של המסעדה</p>
+          {mode === "enter" ? (
+            <>
+              <div>
+                <label htmlFor="owner-code" className={LABEL}>קוד בעלים</label>
+                <input id="owner-code" value={code} onChange={(e) => setCode(e.target.value)}
+                  placeholder="ABC123" dir="ltr" autoComplete="off" autoCorrect="off" spellCheck={false}
+                  className={CODE_FIELD} />
+              </div>
+              <div>
+                <label htmlFor="owner-password" className={LABEL}>סיסמה</label>
+                <div className="relative">
+                  <input id="owner-password" type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••" autoComplete="off" dir="ltr"
+                    className={`${FIELD} text-center px-12`} />
+                  {eye}
                 </div>
-                <div>
-                  <label htmlFor="owner-code" className={label}>קוד בעלים</label>
-                  <input id="owner-code" value={code} onChange={(e) => setCode(e.target.value)}
-                    placeholder="לדוגמה: ABC123" dir="ltr" autoComplete="off" autoCorrect="off" spellCheck={false}
-                    className={`${field} text-center tracking-[0.12em] placeholder:tracking-normal`} />
-                </div>
-                <div>
-                  <label htmlFor="owner-password" className={label}>סיסמה</label>
-                  <div className="relative">
-                    <input id="owner-password" type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••" autoComplete="off" dir="ltr"
-                      className={`${field} text-center px-12`} />
-                    {eye}
-                  </div>
-                </div>
-                {errorBox}
-                <button type="submit" disabled={!code.trim() || !password.trim() || busy}
-                  className={primary(code.trim() && password.trim() && !busy)}>
-                  {busy ? <><Loader2 size={18} className="animate-spin" /> מתחבר…</> : "כניסה"}
+              </div>
+              {errorBox}
+              <button type="submit" disabled={!code.trim() || !password.trim() || busy}
+                className={primaryButton(code.trim() && password.trim() && !busy)}>
+                {busy ? <><Loader2 size={18} className="animate-spin" /> מתחבר…</> : "כניסה"}
+              </button>
+              {forgot === "sent" ? (
+                <p className="text-[13px] text-[#22c08c] text-center leading-relaxed">
+                  הבקשה נשלחה למפעיל — ניצור קשר עם סיסמה זמנית.
+                </p>
+              ) : (
+                <button type="button" onClick={sendForgot} disabled={busy}
+                  className="w-full text-center text-[13px] text-[#8a919e] -mt-1 py-1">
+                  שכחתי סיסמה
                 </button>
-                {forgot === "sent" ? (
-                  <p className="text-[13px] text-[#22c08c] text-center leading-relaxed">
-                    הבקשה נשלחה למפעיל — ניצור קשר עם סיסמה זמנית.
-                  </p>
-                ) : (
-                  <button type="button" onClick={sendForgot} disabled={busy}
-                    className="w-full text-center text-[13px] text-[#8a919e] py-1">
-                    שכחתי סיסמה
-                  </button>
-                )}
-              </>
-            ) : (
-              <>
-                <div>
-                  <label htmlFor="new-name" className={label}>שם המסעדה</label>
-                  <input id="new-name" value={name} onChange={(e) => setName(e.target.value)}
-                    placeholder="המסעדה שלי" dir="rtl"
-                    className={`${field} text-right`} />
+              )}
+            </>
+          ) : (
+            <>
+              <div>
+                <label htmlFor="new-name" className={LABEL}>שם המסעדה</label>
+                <input id="new-name" value={name} onChange={(e) => setName(e.target.value)}
+                  placeholder="המסעדה שלי" dir="rtl"
+                  className={`${FIELD} text-right`} />
+              </div>
+              <div>
+                <label htmlFor="new-code" className={LABEL}>קוד כניסה — בחרו קוד שתזכרו</label>
+                <input id="new-code" value={newCode} onChange={(e) => setNewCode(e.target.value)}
+                  placeholder="SALON2026" dir="ltr" autoComplete="off" autoCapitalize="characters" autoCorrect="off" spellCheck={false}
+                  className={CODE_FIELD} />
+                <p className="text-[12px] text-[#8a919e] mt-2 px-1 leading-relaxed">
+                  זה הקוד שתקלידו כדי להיכנס בפעם הבאה — 4-12 אותיות באנגלית וספרות.
+                </p>
+              </div>
+              <div>
+                <label htmlFor="new-password" className={LABEL}>סיסמת בעלים</label>
+                <div className="relative">
+                  <input id="new-password" type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
+                    placeholder="לפחות 8 תווים" autoComplete="new-password" dir="ltr"
+                    className={`${FIELD} text-center px-12`} />
+                  {eye}
                 </div>
-                <div>
-                  <label htmlFor="new-code" className={label}>קוד כניסה — בחרו קוד שתזכרו</label>
-                  <input id="new-code" value={newCode} onChange={(e) => setNewCode(e.target.value)}
-                    placeholder="לדוגמה: SALON2026" dir="ltr" autoComplete="off" autoCapitalize="characters" autoCorrect="off" spellCheck={false}
-                    className={`${field} text-center tracking-[0.12em] placeholder:tracking-normal`} />
-                  <p className="text-[12px] text-[#8a919e] mt-2 px-1 leading-relaxed">
-                    זה הקוד שתקלידו כדי להיכנס בפעם הבאה — 4-12 אותיות באנגלית וספרות.
-                  </p>
-                </div>
-                <div>
-                  <label htmlFor="new-password" className={label}>סיסמת בעלים</label>
-                  <div className="relative">
-                    <input id="new-password" type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
-                      placeholder="לפחות 8 תווים" autoComplete="new-password" dir="ltr"
-                      className={`${field} text-center px-12`} />
-                    {eye}
-                  </div>
-                  {/* Stated before they type, and again the moment it's wrong — a rule you
-                      only learn from a rejection is a rule you learn too late. */}
-                  <p className={`text-[12px] mt-2 px-1 leading-relaxed ${password && pwProblem ? "text-[#f27d8d] font-semibold" : "text-[#8a919e]"}`}>
-                    {password && pwProblem ? pwProblem : "8 תווים לפחות. אין דרישה לאותיות גדולות או סימנים."}
-                  </p>
-                </div>
-                {errorBox}
-                <button type="submit" disabled={!name.trim() || !!pwProblem || !newCode.trim() || busy}
-                  className={primary(name.trim() && !pwProblem && newCode.trim() && !busy)}>
-                  {busy ? <><Loader2 size={18} className="animate-spin" /> יוצר…</> : "יצירה"}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+                {/* Stated before they type, and again the moment it's wrong — a rule you
+                    only learn from a rejection is a rule you learn too late. */}
+                <p className={`text-[12px] mt-2 px-1 leading-relaxed ${password && pwProblem ? "text-[#f27d8d] font-semibold" : "text-[#8a919e]"}`}>
+                  {password && pwProblem ? pwProblem : "8 תווים לפחות. אין דרישה לאותיות גדולות או סימנים."}
+                </p>
+              </div>
+              {errorBox}
+              <button type="submit" disabled={!name.trim() || !!pwProblem || !newCode.trim() || busy}
+                className={primaryButton(name.trim() && !pwProblem && newCode.trim() && !busy)}>
+                {busy ? <><Loader2 size={18} className="animate-spin" /> יוצר…</> : "יצירה"}
+              </button>
+            </>
+          )}
+        </FormCard>
 
         <p className="mt-auto pt-10 text-center text-[12px] leading-relaxed text-[#6b7280]">
           הקוד והסיסמה מגיעים מאיתנו כשהחשבון נפתח.
