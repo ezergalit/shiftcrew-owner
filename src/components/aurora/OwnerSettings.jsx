@@ -13,6 +13,10 @@ import CodeChanger from "./CodeChanger";
 // won't find it. Google Play is still in review, so Android gets a "not yet" line and no
 // link (user, 16.9: "only app store for now").
 const TEAM_APP_STORE_URL = "https://apps.apple.com/il/app/id6802032911";
+// api.whatsapp.com, not wa.me: wa.me answers with a 302 whose Location turns every emoji into
+// U+FFFD (checked 16.9 with iOS, Android and desktop user agents: the wave emoji arrived broken).
+// api.whatsapp.com is the page wa.me redirects to, and both open the WhatsApp app directly.
+const WHATSAPP_SEND = "https://api.whatsapp.com/send";
 
 
 
@@ -70,6 +74,7 @@ export default function OwnerSettings({
   sections,           // the heavier panels, rendered by the dashboard: { key, emoji, title, summary, node }
 }) {
   const [copied, setCopied] = useState(false);
+  const [shared, setShared] = useState(false);
 
   const code = restaurant?.team_code || "";
   const shareText =
@@ -79,6 +84,15 @@ export default function OwnerSettings({
     `2. מזינים את הקוד: ${code}\n` +
     `3. כותבים שם פרטי ומשפחה — וזהו.\n\n` +
     `כאן לומדים את התפריט ואת השירות של המסעדה.`;
+
+  // Yotam, 16.9: the first share sometimes reached WhatsApp without the message, and the second
+  // tap brought it through. Whatever WhatsApp does on that first open, the full text also goes to
+  // the clipboard on the same tap, so an empty chat is one paste away from the real message.
+  const share = () => {
+    try { navigator.clipboard?.writeText(shareText)?.catch(() => {}); } catch { /* clipboard blocked — the link still carries the text */ }
+    setShared(true);
+    setTimeout(() => setShared(false), 8000);
+  };
 
   const copy = async () => {
     try {
@@ -102,9 +116,10 @@ export default function OwnerSettings({
         <div className="flex items-center justify-center gap-2 flex-wrap">
           <a
             className="au-pill"
-            href={`https://wa.me/?text=${encodeURIComponent(shareText)}`}
+            href={`${WHATSAPP_SEND}?text=${encodeURIComponent(shareText)}`}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={share}
           >
             שיתוף בוואטסאפ
           </a>
@@ -113,6 +128,9 @@ export default function OwnerSettings({
           </button>
           <CodeChanger kind="team" current={code} restaurantName={restaurant?.name} onChanged={(c) => onCodeChanged?.({ team_code: c })} />
         </div>
+        {shared && (
+          <p className="exp">ההודעה המלאה הועתקה — אם היא לא מופיעה בוואטסאפ, מדביקים אותה בצ׳אט.</p>
+        )}
         {/* 🚫 The trainee code is hidden for now (user, 29.8: "cancel the code for waiters
             that are starting out"). The column and the server path are untouched — a code
             that was already shared still works — this is only the manager UI. */}
