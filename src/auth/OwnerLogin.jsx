@@ -4,6 +4,7 @@ import BrandMark from "../components/BrandMark";
 import { supabase } from "../lib/supabase";
 import { setSessionToken } from "../lib/appSession";
 import { RESTAURANT_COLUMNS } from "../screens/OwnerDashboard";
+import "../aurora.css";
 
 const SESSION_KEY = "menu-app-owner-session";
 const db = supabase.schema("menu_app");
@@ -169,120 +170,145 @@ export default function OwnerLogin({ onGranted }) {
     }
   };
 
+  // The login screen used to be the last corner of the app still on the old purple look —
+  // the first thing a manager saw was the design we had already retired (user, 16.9). It now
+  // borrows the aurora backdrop and glass card from the screens right behind it.
+  // 16px text in every input: below that iOS Safari zooms the page on focus.
+  const field = "w-full h-[52px] rounded-2xl px-4 text-[16px] font-semibold text-[#eef0f6] bg-[rgba(238,240,246,0.05)] border border-[rgba(238,240,246,0.10)] placeholder:text-[rgba(238,240,246,0.28)] placeholder:font-normal outline-none transition-[border-color,box-shadow,background-color] duration-200 focus:border-[rgba(34,192,140,0.6)] focus:bg-[rgba(34,192,140,0.05)] focus:shadow-[0_0_0_4px_rgba(34,192,140,0.12)]";
+  const label = "block text-[13px] font-medium text-[#8a919e] mb-2 px-1";
+  const primary = (ready) => `w-full h-[54px] rounded-2xl text-[16px] font-bold flex items-center justify-center gap-2 transition-[transform,background-color,box-shadow] duration-200 active:scale-[0.98] ${
+    ready ? "bg-[#22c08c] text-[#06231a] shadow-[0_12px_30px_rgba(34,192,140,0.30)]" : "bg-[rgba(238,240,246,0.07)] text-[rgba(238,240,246,0.35)] cursor-not-allowed"
+  }`;
+  const errorBox = err && (
+    <div role="alert" className="flex items-start gap-2 rounded-xl px-3 py-2.5 bg-[rgba(229,72,77,0.10)] border border-[rgba(229,72,77,0.30)] text-[13px] leading-relaxed text-[#f27d8d]">
+      <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+      <span>{err}</span>
+    </div>
+  );
+  // Operator model: restaurants don't sign themselves up — the operator opens the account
+  // and hands over the code. The create tab stays for the operator (?signup=1); owners only
+  // ever see the sign-in form, so a one-tab switcher no longer sits on top of it.
+  const signup = new URLSearchParams(window.location.search).has("signup");
+  const eye = (
+    <button type="button" onClick={() => setShowPassword(!showPassword)}
+      aria-label={showPassword ? "הסתרת הסיסמה" : "הצגת הסיסמה"}
+      className="absolute left-1.5 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-xl text-[#8a919e] active:bg-[rgba(238,240,246,0.06)]">
+      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+    </button>
+  );
+
   return (
-    <div className="h-full max-w-md mx-auto flex flex-col bg-[#0c0d10] text-[#eef0f6]" dir="rtl">
-      <div className="px-7 pt-[max(3.5rem,env(safe-area-inset-top))] pb-2 text-center">
-        <div className="w-16 h-16 rounded-3xl bg-[#0F5C46] flex items-center justify-center mx-auto mb-4">
-          <BrandMark size={40} />
-        </div>
-        <h1 className="text-3xl font-black leading-tight">CrewMenu</h1>
-        <p className="text-sm text-[#8a8aa0] font-semibold mt-2 leading-relaxed">
-          ניהול תפריט והדרכת צוות
-        </p>
-      </div>
+    <div className="aurora-skin h-full flex flex-col text-[#eef0f6]" dir="rtl">
+      <div className="aurora" aria-hidden><i></i><i></i><i></i><i></i></div>
+      <div className="grain" aria-hidden></div>
 
-      <form onSubmit={submit} className="flex-1 px-6 pt-4 flex flex-col">
-        <div className="bg-[#16181c] border border-[#22252b] rounded-3xl shadow-[0_2px_14px_rgba(30,25,70,0.05)] p-5 space-y-4">
-          <div className="flex gap-2 bg-[#1c1e22] rounded-2xl p-1">
-            {/* Operator model: restaurants don't sign themselves up — the operator opens
-                the account and hands over the code. The create tab stays in the code for
-                the operator (open the page with ?signup=1); owners only ever see הכנסה. */}
-            {(new URLSearchParams(window.location.search).has("signup")
-              ? [["enter", "כניסה"], ["create", "יצירה"]]
-              : [["enter", "כניסה"]]
-            ).map(([m, label]) => (
-              <button key={m} type="button" onClick={() => { setMode(m); setErr(""); }}
-                className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors ${
-                  mode === m ? "bg-[#6d5efc] text-white shadow-sm" : "text-[#8a8aa0]"
-                }`}>
-                {label}
-              </button>
-            ))}
+      <form onSubmit={submit} className="flex-1 overflow-y-auto flex flex-col px-6 pt-[calc(env(safe-area-inset-top,0px)+4.5rem)] pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)]">
+        <div className="text-center mb-8">
+          <div className="relative w-[76px] h-[76px] mx-auto mb-5">
+            <div className="absolute -inset-5 rounded-full bg-[radial-gradient(circle,rgba(34,192,140,0.28),transparent_68%)]" aria-hidden />
+            <div className="relative w-full h-full rounded-[24px] bg-[#0F5C46] border border-[rgba(238,240,246,0.12)] shadow-[0_18px_40px_rgba(0,0,0,0.45)] flex items-center justify-center">
+              <BrandMark size={46} />
+            </div>
           </div>
-
-          {mode === "enter" ? (
-            <>
-              <div>
-                <p className="text-[12px] font-bold text-[#8a8aa0] mb-1.5 px-1">קוד בעלים</p>
-                <input value={code} onChange={(e) => setCode(e.target.value)}
-                  placeholder="לדוגמה: ABC123" dir="ltr" autoComplete="off"
-                  className="w-full bg-[#0c0d10] border border-[#22252b] rounded-2xl px-3.5 py-3 text-sm font-bold text-[#eef0f6] text-center placeholder:text-[#b4b4c4] focus:outline-none focus:border-[#6d5efc]" />
-              </div>
-              <div>
-                <p className="text-[12px] font-bold text-[#8a8aa0] mb-1.5 px-1">סיסמה</p>
-                <div className="relative">
-                  <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••" autoComplete="off"
-                    className="w-full bg-[#0c0d10] border border-[#22252b] rounded-2xl px-3.5 py-3 text-sm font-bold text-[#eef0f6] text-center placeholder:text-[#b4b4c4] focus:outline-none focus:border-[#6d5efc]" />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-3 top-3 text-[#8a8aa0]">
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-              </div>
-              {err && <p className="text-xs font-bold text-[#e0315a] flex items-center gap-1.5"><AlertTriangle size={14} /> {err}</p>}
-              <button type="submit" disabled={!code.trim() || !password.trim() || busy}
-                className={`w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 transition-colors ${
-                  code.trim() && password.trim() && !busy ? "bg-[#6d5efc] text-white active:bg-[#5b4ef0] shadow-[0_6px_18px_rgba(109,94,252,0.35)]" : "bg-[#22252b] text-[#b4b4c4] cursor-not-allowed"
-                }`}>
-                {busy ? <><Loader2 size={18} className="animate-spin" /> מתחבר…</> : "כניסה"}
-              </button>
-              {forgot === "sent" ? (
-                <p className="text-[11px] text-[#22c08c] font-bold text-center leading-relaxed">
-                  הבקשה נשלחה למפעיל — ניצור קשר עם סיסמה זמנית.
-                </p>
-              ) : (
-                <button type="button" onClick={sendForgot} disabled={busy}
-                  className="w-full text-center text-[11px] text-[#8a8aa0] font-bold underline underline-offset-2">
-                  שכחתי סיסמה
-                </button>
-              )}
-            </>
-          ) : (
-            <>
-              <div>
-                <p className="text-[12px] font-bold text-[#8a8aa0] mb-1.5 px-1">שם המסעדה</p>
-                <input value={name} onChange={(e) => setName(e.target.value)}
-                  placeholder="המסעדה שלי" dir="rtl"
-                  className="w-full bg-[#0c0d10] border border-[#22252b] rounded-2xl px-3.5 py-3 text-sm font-bold text-[#eef0f6] text-right placeholder:text-[#b4b4c4] focus:outline-none focus:border-[#6d5efc]" />
-              </div>
-              <div>
-                <p className="text-[12px] font-bold text-[#8a8aa0] mb-1.5 px-1">קוד כניסה — בחרו קוד שתזכרו</p>
-                <input value={newCode} onChange={(e) => setNewCode(e.target.value)}
-                  placeholder="לדוגמה: SALON2026" dir="ltr" autoComplete="off" autoCapitalize="characters"
-                  className="w-full bg-[#0c0d10] border border-[#22252b] rounded-2xl px-3.5 py-3 text-sm font-bold text-[#eef0f6] text-center placeholder:text-[#b4b4c4] focus:outline-none focus:border-[#6d5efc]" />
-                <p className="text-[11px] text-[#8a8aa0] mt-1.5 px-1 leading-relaxed">
-                  זה הקוד שתקלידו כדי להיכנס בפעם הבאה — 4-12 אותיות באנגלית וספרות.
-                </p>
-              </div>
-              <div>
-                <p className="text-[12px] font-bold text-[#8a8aa0] mb-1.5 px-1">סיסמת בעלים</p>
-                <div className="relative">
-                  <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
-                    placeholder="לפחות 8 תווים" autoComplete="new-password"
-                    className="w-full bg-[#0c0d10] border border-[#22252b] rounded-2xl px-3.5 py-3 text-sm font-bold text-[#eef0f6] text-center placeholder:text-[#b4b4c4] focus:outline-none focus:border-[#6d5efc]" />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-3 top-3 text-[#8a8aa0]">
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-                {/* Stated before they type, and again the moment it's wrong — a rule you
-                    only learn from a rejection is a rule you learn too late. */}
-                <p className={`text-[11px] mt-1.5 px-1 leading-relaxed ${password && pwProblem ? "text-[#e0315a] font-bold" : "text-[#8a8aa0]"}`}>
-                  {password && pwProblem ? pwProblem : "8 תווים לפחות. אין דרישה לאותיות גדולות או סימנים."}
-                </p>
-              </div>
-              {err && <p className="text-xs font-bold text-[#e0315a] flex items-center gap-1.5"><AlertTriangle size={14} /> {err}</p>}
-              <button type="submit" disabled={!name.trim() || !!pwProblem || !newCode.trim() || busy}
-                className={`w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 transition-colors ${
-                  name.trim() && !pwProblem && newCode.trim() && !busy ? "bg-[#6d5efc] text-white active:bg-[#5b4ef0] shadow-[0_6px_18px_rgba(109,94,252,0.35)]" : "bg-[#22252b] text-[#b4b4c4] cursor-not-allowed"
-                }`}>
-                {busy ? <><Loader2 size={18} className="animate-spin" /> יוצר…</> : "יצירה"}
-              </button>
-            </>
-          )}
+          <h1 className="text-[32px] font-extrabold leading-none tracking-tight">CrewMenu</h1>
+          <p className="text-[14px] text-[#8a919e] mt-3">ניהול תפריט והדרכת צוות</p>
         </div>
 
-        <p className="text-center text-[12px] text-[#8a8aa0] font-semibold mt-auto pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] leading-relaxed">
-          CrewMenu · ניהול תפריט + מאמן לימוד לצוות
+        <div className="glass">
+          <div className="p-1 space-y-4">
+            {signup && (
+              <div className="flex gap-1 rounded-2xl p-1 bg-[rgba(238,240,246,0.05)] border border-[rgba(238,240,246,0.08)]">
+                {[["enter", "כניסה"], ["create", "יצירה"]].map(([m, text]) => (
+                  <button key={m} type="button" onClick={() => { setMode(m); setErr(""); }}
+                    className={`flex-1 h-10 rounded-xl text-[14px] font-semibold transition-colors ${
+                      mode === m ? "bg-[rgba(34,192,140,0.16)] text-[#22c08c]" : "text-[#8a919e]"
+                    }`}>
+                    {text}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {mode === "enter" ? (
+              <>
+                <div>
+                  <h2 className="text-[19px] font-bold">כניסה לניהול</h2>
+                  <p className="text-[13px] text-[#8a919e] mt-1">עם קוד הבעלים והסיסמה של המסעדה</p>
+                </div>
+                <div>
+                  <label htmlFor="owner-code" className={label}>קוד בעלים</label>
+                  <input id="owner-code" value={code} onChange={(e) => setCode(e.target.value)}
+                    placeholder="לדוגמה: ABC123" dir="ltr" autoComplete="off" autoCorrect="off" spellCheck={false}
+                    className={`${field} text-center tracking-[0.12em] placeholder:tracking-normal`} />
+                </div>
+                <div>
+                  <label htmlFor="owner-password" className={label}>סיסמה</label>
+                  <div className="relative">
+                    <input id="owner-password" type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••" autoComplete="off" dir="ltr"
+                      className={`${field} text-center px-12`} />
+                    {eye}
+                  </div>
+                </div>
+                {errorBox}
+                <button type="submit" disabled={!code.trim() || !password.trim() || busy}
+                  className={primary(code.trim() && password.trim() && !busy)}>
+                  {busy ? <><Loader2 size={18} className="animate-spin" /> מתחבר…</> : "כניסה"}
+                </button>
+                {forgot === "sent" ? (
+                  <p className="text-[13px] text-[#22c08c] text-center leading-relaxed">
+                    הבקשה נשלחה למפעיל — ניצור קשר עם סיסמה זמנית.
+                  </p>
+                ) : (
+                  <button type="button" onClick={sendForgot} disabled={busy}
+                    className="w-full text-center text-[13px] text-[#8a919e] py-1">
+                    שכחתי סיסמה
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                <div>
+                  <label htmlFor="new-name" className={label}>שם המסעדה</label>
+                  <input id="new-name" value={name} onChange={(e) => setName(e.target.value)}
+                    placeholder="המסעדה שלי" dir="rtl"
+                    className={`${field} text-right`} />
+                </div>
+                <div>
+                  <label htmlFor="new-code" className={label}>קוד כניסה — בחרו קוד שתזכרו</label>
+                  <input id="new-code" value={newCode} onChange={(e) => setNewCode(e.target.value)}
+                    placeholder="לדוגמה: SALON2026" dir="ltr" autoComplete="off" autoCapitalize="characters" autoCorrect="off" spellCheck={false}
+                    className={`${field} text-center tracking-[0.12em] placeholder:tracking-normal`} />
+                  <p className="text-[12px] text-[#8a919e] mt-2 px-1 leading-relaxed">
+                    זה הקוד שתקלידו כדי להיכנס בפעם הבאה — 4-12 אותיות באנגלית וספרות.
+                  </p>
+                </div>
+                <div>
+                  <label htmlFor="new-password" className={label}>סיסמת בעלים</label>
+                  <div className="relative">
+                    <input id="new-password" type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)}
+                      placeholder="לפחות 8 תווים" autoComplete="new-password" dir="ltr"
+                      className={`${field} text-center px-12`} />
+                    {eye}
+                  </div>
+                  {/* Stated before they type, and again the moment it's wrong — a rule you
+                      only learn from a rejection is a rule you learn too late. */}
+                  <p className={`text-[12px] mt-2 px-1 leading-relaxed ${password && pwProblem ? "text-[#f27d8d] font-semibold" : "text-[#8a919e]"}`}>
+                    {password && pwProblem ? pwProblem : "8 תווים לפחות. אין דרישה לאותיות גדולות או סימנים."}
+                  </p>
+                </div>
+                {errorBox}
+                <button type="submit" disabled={!name.trim() || !!pwProblem || !newCode.trim() || busy}
+                  className={primary(name.trim() && !pwProblem && newCode.trim() && !busy)}>
+                  {busy ? <><Loader2 size={18} className="animate-spin" /> יוצר…</> : "יצירה"}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        <p className="mt-auto pt-10 text-center text-[12px] leading-relaxed text-[#6b7280]">
+          הקוד והסיסמה מגיעים מאיתנו כשהחשבון נפתח.
         </p>
       </form>
     </div>
